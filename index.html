@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Inventario CEDIS — Curvas en tiempo real</title>
+
+  <!-- PWA -->
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#0ea5e9">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+
+  <!-- UI básica (Tailwind CDN para ir rápido) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Chart.js para el gráfico -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1"></script>
+
+  <style>
+    /* Sombra sutil para tarjetas */
+    .card{ box-shadow:0 6px 24px rgba(0,0,0,.08), 0 2px 6px rgba(0,0,0,.04); }
+    /* Lista de sugerencias */
+    #suggestions li{ cursor:pointer }
+    /* Puntero deshabilitado */
+    .disabled{ opacity:.5; pointer-events:none }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen">
+  <header class="bg-sky-600 text-white">
+    <div class="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
+      <h1 class="text-lg sm:text-2xl font-semibold">Inventario CEDIS – Curvas</h1>
+      <button id="btnInstall" class="hidden bg-white/10 hover:bg-white/20 px-3 py-1 rounded">Instalar</button>
+    </div>
+  </header>
+
+  <main class="max-w-5xl mx-auto px-4 py-6 space-y-6">
+    <!-- Buscador -->
+    <section class="card bg-white rounded-2xl p-4">
+      <div class="flex flex-col gap-3">
+        <label class="text-sm text-slate-500">
+          Busca por <b>código</b> o <b>nombre de suministro</b>
+        </label>
+        <div class="relative">
+          <input id="q" type="search" placeholder="Ej.: 101098001 o amoxicilina" class="w-full rounded-xl border border-slate-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-sky-500">
+          <ul id="suggestions" class="absolute z-10 mt-1 w-full bg-white border border-slate-200 rounded-xl max-h-64 overflow-auto hidden"></ul>
+        </div>
+        <div class="flex gap-2">
+          <button id="btnBuscar" class="bg-sky-600 hover:bg-sky-700 text-white px-4 py-2 rounded-xl">Buscar</button>
+          <button id="btnLimpiar" class="bg-slate-100 hover:bg-slate-200 px-4 py-2 rounded-xl">Limpiar</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Panel datos -->
+    <section class="grid md:grid-cols-3 gap-4">
+      <div class="card bg-white rounded-2xl p-4 md:col-span-1 space-y-3">
+        <h2 class="font-semibold text-slate-700">Detalle</h2>
+        <div class="text-sm space-y-1">
+          <div><span class="text-slate-500">Código:</span> <span id="lblCodigo" class="font-mono">—</span></div>
+          <div><span class="text-slate-500">Suministro:</span> <span id="lblSuministro">—</span></div>
+          <div><span class="text-slate-500">KB_min:</span> <span id="lblKBmin" class="font-mono">—</span></div>
+          <div><span class="text-slate-500">Crítico:</span> <span id="lblCritico" class="font-mono">—</span></div>
+          <div class="text-xs text-slate-500 pt-2">Fuente: API Inventario CEDIS (Apps Script)</div>
+        </div>
+      </div>
+
+      <div class="card bg-white rounded-2xl p-4 md:col-span-2">
+        <div class="flex items-center justify-between mb-2">
+          <h2 class="font-semibold text-slate-700">Curva de Inventario</h2>
+          <div class="text-xs text-slate-500" id="lblActualizado">—</div>
+        </div>
+        <canvas id="chart" height="140"></canvas>
+      </div>
+    </section>
+  </main>
+
+  <footer class="py-8 text-center text-xs text-slate-400">
+    v1.0 • PWA • Actualiza en tiempo real
+  </footer>
+
+  <script>
+  // ========= CONFIG =========
+  const API_BASE = 'https://script.google.com/macros/s/AKfycbxQsD4XJICmZg-5eiZIAEjJ3GZz-GmqvhvMWtiznEOu7SafIKxWopo5iIVy7ufrq_qq/exec'; // <<<<<< PÉGALA AQUÍ (termina en /exec)
+  // Ej.: const API_BASE = 'https://script.google.com/macros/s/AKfycbx.../exec';
+
+  // ========= Estado y helpers =========
+  const el = sel => document.querySelector(sel);
+  const els = sel => Array.from(document.querySelectorAll(sel));
+  const q = el('#q');
+  const suggestions = el('#suggestions');
+  const btnBuscar = el('#btnBuscar');
+  const btnLimpiar = el('#btnLimpiar');
+  const lblCodigo = el('#lblCodigo');
+  const lblSuministro = el('#lblSuministro');
+  const lblKBmin = el('#lblKBmin');
+  const lblCritico = el('#lblCritico');
+  const lblAct = el('#lblActualizado');
+
+  let deferPrompt; // PWA install event
+  let chart;
+
+  // Debounce
+  let tDeb = null;
+  q.addEventListener('input', () => {
+    clearTimeout(tDeb);
+    const term = q.value.trim();
+    if (!term) { hideSuggestions(); return; }
+    tDeb = setTimeout(() => doSearch(term), 200);
+  });
+
+  q.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter') {
+      hideSuggestions();
+      launchSearch();
+    }
+  });
+
+  btnBuscar.addEventListener('click', launchSearch);
+  btnLimpiar.addEventListener('click', () => {
+    q.value = '';
+    hideSuggestions();
+    renderItem(null);
+  });
+
+  function showSuggestions(items){
+    if (!items || !items.length) { hideSuggestions(); return; }
+    suggestions.innerHTML = items.map(it => (
+      `<li class="px-3 py-2 hover:bg-slate-100 border-b border-slate-100"
+           data-cod="${it.codigo}">
+         <div class="font-medium">${it.suministro}</div>
+         <div class="text-xs text-slate-500">${it.codigo}</div>
+       </li>`
+    )).join('');
+    suggestions.classList.remove('hidden');
+    els('#suggestions li').forEach(li => {
+      li.addEventListener('click', () => {
+        const cod = li.getAttribute('data-cod');
+        q.value = cod;     // lo convertimos a código para la búsqueda final
+        hideSuggestions();
+        fetchItem(cod);
+      });
+    });
+  }
+  function hideSuggestions(){ suggestions.classList.add('hidden'); suggestions.innerHTML=''; }
+
+  async function doSearch(term){
+    try{
+      const url = new URL(API_BASE);
+      url.searchParams.set('action','search');
+      url.searchParams.set('q', term);
+      const res = await fetch(url.toString(), {cache:'no-store'});
+      const data = await res.json();
+      showSuggestions(data.items || []);
+    }catch(e){ console.error('search error', e); }
+  }
+
+  function launchSearch(){
+    const term = q.value.trim();
+    if (!term) return;
+    // si parece código (solo dígitos), voy directo a item
+    if (/^\d{6,}$/.test(term)) {
+      fetchItem(term);
+    } else {
+      doSearch(term); // mostrará coincidencias
+    }
+  }
+
+  async function fetchItem(code){
+    try{
+      // Cache local: mejora UX y permite ver algo offline
+      const cacheKey = 'item:' + code;
+      const cached = localStorage.getItem(cacheKey);
+      if (cached) renderItem(JSON.parse(cached), true);
+
+      const url = new URL(API_BASE);
+      url.searchParams.set('action','item');
+      url.searchParams.set('code', code);
+      const res = await fetch(url.toString(), {cache:'no-store'});
+      const data = await res.json();
+      localStorage.setItem(cacheKey, JSON.stringify(data));
+      renderItem(data);
+    }catch(e){
+      console.error('item error', e);
+      alert('No se pudo obtener el detalle. Revisa la conexión o el código.');
+    }
+  }
+
+  function renderItem(data, fromCache=false){
+    if (!data) {
+      lblCodigo.textContent = '—';
+      lblSuministro.textContent = '—';
+      lblKBmin.textContent = '—';
+      lblCritico.textContent = '—';
+      lblAct.textContent = '—';
+      if (chart) chart.destroy();
+      return;
+    }
+    const puntos = (data.puntos||[]).sort((a,b)=> a.fecha.localeCompare(b.fecha));
+    lblCodigo.textContent = data.codigo || '—';
+    lblSuministro.textContent = data.suministro || '—';
+    lblKBmin.textContent = (data.kb_min ?? '—');
+    lblCritico.textContent = (data.critico ?? '—');
+    lblAct.textContent = (fromCache?'(caché) ':'') + new Date().toLocaleString();
+
+    // Gráfico
+    const ctx = el('#chart').getContext('2d');
+    const labels = puntos.map(p=>p.fecha);
+    const inv = puntos.map(p=>Number(p.inventario));
+
+    const datasets = [
+      {
+        label:'Inventario',
+        data: inv,
+        borderWidth: 2,
+        tension: .2
+      }
+    ];
+    if (Number.isFinite(+data.kb_min)) {
+      datasets.push({
+        label:'KB_min',
+        data: labels.map(()=> +data.kb_min),
+        borderDash:[6,6],
+        pointRadius:0,
+        borderWidth:1
+      });
+    }
+    if (Number.isFinite(+data.critico)) {
+      datasets.push({
+        label:'Crítico',
+        data: labels.map(()=> +data.critico),
+        pointRadius:0,
+        borderWidth:1
+      });
+    }
+
+    if (chart) chart.destroy();
+    chart = new Chart(ctx, {
+      type:'line',
+      data:{ labels, datasets },
+      options:{
+        responsive:true,
+        maintainAspectRatio:false,
+        interaction:{ intersect:false, mode:'index' },
+        plugins:{
+          legend:{ position:'top' },
+          tooltip:{ callbacks:{
+            label(ctx){
+              const v = ctx.parsed.y;
+              return `${ctx.dataset.label}: ${new Intl.NumberFormat().format(v)}`;
+            }
+          }}
+        },
+        scales:{
+          x:{ ticks:{ maxRotation:0 } },
+          y:{ beginAtZero:false }
+        }
+      }
+    });
+  }
+
+  // ========= PWA / Service Worker =========
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./sw.js').catch(console.error);
+    });
+  }
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferPrompt = e;
+    el('#btnInstall').classList.remove('hidden');
+  });
+  el('#btnInstall').addEventListener('click', async () => {
+    if (!deferPrompt) return;
+    deferPrompt.prompt();
+    await deferPrompt.userChoice;
+    deferPrompt = null;
+    el('#btnInstall').classList.add('hidden');
+  });
+  </script>
+</body>
+</html>
