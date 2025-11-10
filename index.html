@@ -242,7 +242,7 @@ function groupByDateSum(points){
   }
   // Devuelve array ordenado por fecha asc
   return Object.keys(bucket)
-    .sort((a,b)=> a.localeCompare(b))
+    .sort((a,b)=> new Date(a) - new Date(b))  // <-- antes estaba localeCompare
     .map(fecha => ({ fecha, inventario: bucket[fecha] }));
 }
 
@@ -395,11 +395,22 @@ datasets.push({
           label(c){ return `${c.dataset.label}: ${nf.format(c.parsed.y)}`; }
         }}
       },
-      scales:{
-        x:{ ticks:{ maxRotation:0, autoSkip:true, maxTicksLimit:10 } },
-        y:{ beginAtZero:false }
+scales: {
+  x: {
+    ticks: {
+      autoSkip: true,
+      maxRotation: 0,
+      minRotation: 0,
+      autoSkipPadding: 8,
+      // Muestra ~6 etiquetas uniformemente espaciadas
+      callback: (value, index, ticks) => {
+        const step = Math.ceil(ticks.length / 6); // ajusta 6→8 si quieres más
+        return index % step === 0 ? labels[index] : '';
       }
-    },
+    }
+  },
+  y: { beginAtZero: false }
+},
     plugins:[lastValuePlugin]
   });
 }
@@ -425,4 +436,5 @@ el('#btnInstall')?.addEventListener('click', async () => {
 </script>
 </body>
 </html>
+
 
