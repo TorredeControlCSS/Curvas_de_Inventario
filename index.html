@@ -193,16 +193,31 @@ function launchSearch(){
 
 async function fetchItem(code){
   try{
-    // caché local para UX/offline
+    // 1) Render inmediato si hay caché
     const cacheKey = 'item:' + code;
     const cached = localStorage.getItem(cacheKey);
     if (cached) renderItem(JSON.parse(cached), true);
 
+    // 2) Pide el item
     const url = new URL(API_BASE);
     url.searchParams.set('action','item');
     url.searchParams.set('code', code);
     const res = await fetch(url.toString(), {cache:'no-store'});
     const data = await res.json();
+
+    // 3) Si el nombre de suministro vino vacío, intenta obtenerlo con 'search'
+    if (!data.suministro) {
+      try {
+        const sUrl = new URL(API_BASE);
+        sUrl.searchParams.set('action','search');
+        sUrl.searchParams.set('q', code);
+        const sRes = await fetch(sUrl.toString(), {cache:'no-store'});
+        const sData = await sRes.json();
+        const hit = (sData.items||[]).find(it => (it.codigo||'') == String(code));
+        if (hit && hit.suministro) data.suministro = hit.suministro;
+      } catch(_) {}
+    }
+
     localStorage.setItem(cacheKey, JSON.stringify(data));
     renderItem(data);
   }catch(e){
@@ -211,8 +226,23 @@ async function fetchItem(code){
   }
 }
 
+// Agrupa por fecha sumando inventario (para consolidar lotes del mismo día)
+function groupByDateSum(points){
+  const bucket = {};
+  for (const p of (points||[])) {
+    const f = String(p.fecha || '').trim();
+    const inv = Number(p.inventario || 0);
+    if (!f) continue;
+    bucket[f] = (bucket[f] || 0) + inv;
+  }
+  // Devuelve array ordenado por fecha asc
+  return Object.keys(bucket)
+    .sort((a,b)=> a.localeCompare(b))
+    .map(fecha => ({ fecha, inventario: bucket[fecha] }));
+}
+
 function renderItem(data, fromCache=false){
-  // Reset si no hay data
+  // Reset
   if (!data) {
     lblCodigo.textContent = '—';
     lblSuministro.textContent = '—';
@@ -227,10 +257,15 @@ function renderItem(data, fromCache=false){
   }
 
   const nf = new Intl.NumberFormat();
-  // Asegurar orden por fecha (AAAA-MM-DD)
-  const puntos = (data.puntos||[]).slice().sort((a,b)=> a.fecha.localeCompare(b.fecha));
+
+  // 1) Consolidar por día (suma por fecha) y ordenar
+  const puntosRaw = Array.isArray(data.puntos) ? data.puntos : [];
+  const puntos = groupByDateSum(puntosRaw);
+
+  // 2) Último punto
   const last = puntos[puntos.length-1];
 
+  // 3) Pintar panel
   lblCodigo.textContent     = data.codigo || '—';
   lblSuministro.textContent = data.suministro || '—';
   lblKBmin.textContent      = (data.kb_min ?? '—');
@@ -239,20 +274,19 @@ function renderItem(data, fromCache=false){
   lblUltFec.textContent     = last ? last.fecha : '—';
   lblAct.textContent        = (fromCache?'(caché) ':'') + new Date().toLocaleString();
 
-  // Título dinámico del gráfico: "código — suministro"
+  // 4) Título: COD — SUMINISTRO
   ttlChartEl.textContent = `${data.codigo || '—'} — ${data.suministro || '—'}`;
 
-  // === GRÁFICO (tipo área) ===
-  const ctx    = el('#chart').getContext('2d');
+  // 5) Datos para Chart
   const labels = puntos.map(p=>p.fecha);
-  const inv    = puntos.map(p=>Number(p.inventario));
+  const inv    = puntos.map(p=>Number(p.inventario||0));
 
   const datasets = [
     {
       label:'Inventario',
       data: inv,
-      borderColor: 'rgba(59,130,246,1)',        // azul
-      backgroundColor: 'rgba(59,130,246,0.15)', // área azul
+      borderColor: 'rgba(59,130,246,1)',
+      backgroundColor: 'rgba(59,130,246,0.15)',
       pointRadius: 2,
       borderWidth: 2,
       tension: .2,
@@ -264,7 +298,7 @@ function renderItem(data, fromCache=false){
     datasets.push({
       label:'KB_min',
       data: labels.map(()=> +data.kb_min),
-      borderColor: 'rgba(234,179,8,1)',       // amarillo
+      borderColor: 'rgba(234,179,8,1)',
       backgroundColor: 'rgba(234,179,8,0.10)',
       pointRadius:0,
       borderWidth:1,
@@ -275,7 +309,7 @@ function renderItem(data, fromCache=false){
     datasets.push({
       label:'Crítico',
       data: labels.map(()=> +data.critico),
-      borderColor: 'rgba(239,68,68,1)',       // rojo
+      borderColor: 'rgba(239,68,68,1)',
       backgroundColor: 'rgba(239,68,68,0.10)',
       pointRadius:0,
       borderWidth:1,
@@ -283,7 +317,36 @@ function renderItem(data, fromCache=false){
     });
   }
 
+  // 6) Plugin para escribir etiqueta con el último valor al final de cada serie
+  const lastValuePlugin = {
+    id: 'lastValuePlugin',
+    afterDatasetsDraw(chart, args, pluginOptions) {
+      const {ctx, chartArea, data, scales} = chart;
+      ctx.save();
+      ctx.font = '12px sans-serif';
+      ctx.textBaseline = 'middle';
+
+      chart.data.datasets.forEach((ds, i) => {
+        const meta = chart.getDatasetMeta(i);
+        if (!meta || !meta.data || !meta.data.length) return;
+        const lastPoint = meta.data[meta.data.length-1];
+        const val = ds.data[ds.data.length-1];
+        if (lastPoint && val != null && isFinite(val)) {
+          const x = lastPoint.x + 6;                 // un poco a la derecha del punto
+          const y = lastPoint.y;
+          const label = `${nf.format(Number(val))}`;
+          ctx.fillStyle = (ds.borderColor || '#334155');
+          ctx.fillText(label, x, y);
+        }
+      });
+
+      ctx.restore();
+    }
+  };
+
+  // 7) Render
   if (chart) chart.destroy();
+  const ctx = document.getElementById('chart').getContext('2d');
   chart = new Chart(ctx, {
     type:'line',
     data:{ labels, datasets },
@@ -294,17 +357,15 @@ function renderItem(data, fromCache=false){
       plugins:{
         legend:{ position:'top' },
         tooltip:{ callbacks:{
-          label(ctx){
-            const v = ctx.parsed.y;
-            return `${ctx.dataset.label}: ${nf.format(v)}`;
-          }
+          label(c){ return `${c.dataset.label}: ${nf.format(c.parsed.y)}`; }
         }}
       },
       scales:{
-        x:{ ticks:{ maxRotation:0 } },
+        x:{ ticks:{ maxRotation:0, autoSkip:true, maxTicksLimit:10 } },
         y:{ beginAtZero:false }
       }
-    }
+    },
+    plugins:[lastValuePlugin]
   });
 }
 
@@ -329,5 +390,6 @@ el('#btnInstall')?.addEventListener('click', async () => {
 </script>
 </body>
 </html>
+
 
 
