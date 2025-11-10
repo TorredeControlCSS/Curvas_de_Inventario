@@ -8,9 +8,9 @@
   <!-- PWA -->
   <link rel="manifest" href="manifest.webmanifest">
   <meta name="theme-color" content="#0ea5e9">
-  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icon-192.png">
 
-  <!-- UI básica -->
+  <!-- UI (Tailwind CDN) -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1"></script>
@@ -22,24 +22,33 @@
   </style>
 </head>
 <body class="bg-slate-50 text-slate-800 min-h-screen">
+  <!-- HEADER -->
   <header class="bg-sky-600 text-white">
-    <div class="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
-      <h1 class="text-lg sm:text-2xl font-semibold">Inventario CEDIS – Curvas</h1>
+    <div class="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <!-- LOGO (usa el icono del PWA) -->
+        <img src="icon-192.png" alt="CSS" class="w-9 h-9 rounded-lg shadow-sm bg-white/90 p-1">
+        <h1 class="text-lg sm:text-2xl font-semibold">Inventario CEDIS – Curvas</h1>
+      </div>
       <button id="btnInstall" class="hidden bg-white/10 hover:bg-white/20 px-3 py-1 rounded">Instalar</button>
     </div>
   </header>
 
-  <main class="max-w-5xl mx-auto px-4 py-6 space-y-6">
-    <!-- Buscador -->
+  <main class="max-w-6xl mx-auto px-4 py-6 space-y-6">
+    <!-- BUSCADOR -->
     <section class="card bg-white rounded-2xl p-4">
       <div class="flex flex-col gap-3">
         <label class="text-sm text-slate-500">
           Busca por <b>código</b> o <b>nombre de suministro</b>
         </label>
+
         <div class="relative">
-          <input id="q" type="search" placeholder="Ej.: 101098001 o amoxicilina" class="w-full rounded-xl border border-slate-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-sky-500">
+          <input id="q" type="search" placeholder="Ej.: 101098001 o amlodipina"
+                 class="w-full rounded-xl border border-slate-300 px-4 py-3 pr-10 focus:outline-none focus:ring-2 focus:ring-sky-500">
+          <button id="btnClearInput" class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xl hidden" aria-label="Limpiar">×</button>
           <ul id="suggestions" class="absolute z-10 mt-1 w-full bg-white border border-slate-200 rounded-xl max-h-64 overflow-auto hidden"></ul>
         </div>
+
         <div class="flex gap-2">
           <button id="btnBuscar" class="bg-sky-600 hover:bg-sky-700 text-white px-4 py-2 rounded-xl">Buscar</button>
           <button id="btnLimpiar" class="bg-slate-100 hover:bg-slate-200 px-4 py-2 rounded-xl">Limpiar</button>
@@ -47,8 +56,9 @@
       </div>
     </section>
 
-    <!-- Panel datos -->
+    <!-- PANEL DATOS + GRÁFICO -->
     <section class="grid md:grid-cols-3 gap-4">
+      <!-- DETALLE -->
       <div class="card bg-white rounded-2xl p-4 md:col-span-1 space-y-3">
         <h2 class="font-semibold text-slate-700">Detalle</h2>
         <div class="text-sm space-y-1">
@@ -56,17 +66,19 @@
           <div><span class="text-slate-500">Suministro:</span> <span id="lblSuministro">—</span></div>
           <div><span class="text-slate-500">KB_min:</span> <span id="lblKBmin" class="font-mono">—</span></div>
           <div><span class="text-slate-500">Crítico:</span> <span id="lblCritico" class="font-mono">—</span></div>
+          <div><span class="text-slate-500">Último inventario:</span> <span id="lblUltInv" class="font-mono">—</span></div>
+          <div><span class="text-slate-500">Fecha último:</span> <span id="lblUltFec" class="font-mono">—</span></div>
           <div class="text-xs text-slate-500 pt-2">Fuente: API Inventario CEDIS (Apps Script)</div>
         </div>
       </div>
 
+      <!-- GRÁFICO -->
       <div class="card bg-white rounded-2xl p-4 md:col-span-2">
         <div class="flex items-center justify-between mb-2">
           <h2 class="font-semibold text-slate-700">Curva de Inventario</h2>
           <div class="text-xs text-slate-500" id="lblActualizado">—</div>
         </div>
-        <!-- ALTURA DEL GRÁFICO -->
-        <div class="relative h-80">
+        <div class="h-[360px]">
           <canvas id="chart"></canvas>
         </div>
       </div>
@@ -74,36 +86,51 @@
   </main>
 
   <footer class="py-8 text-center text-xs text-slate-400">
-    v1.0 • PWA • Actualiza en tiempo real
+    v1.1 • PWA • Actualiza en tiempo real
   </footer>
 
   <script>
   // ========= CONFIG =========
+  // URL de tu Apps Script desplegado (termina en /exec)
   const API_BASE = 'https://script.google.com/macros/s/AKfycbxQsD4XJICmZg-5eiZIAEjJ3GZz-GmqvhvMWtiznEOu7SafIKxWopo5iIVy7ufrq_qq/exec';
 
-  // ========= Estado y helpers =========
-  const el = sel => document.querySelector(sel);
-  const els = sel => Array.from(document.querySelectorAll(sel));
+  // ========= Estado & helpers =========
+  const el  = s => document.querySelector(s);
+  const els = s => Array.from(document.querySelectorAll(s));
   const q = el('#q');
+  const btnClearInput = el('#btnClearInput');
   const suggestions = el('#suggestions');
   const btnBuscar = el('#btnBuscar');
   const btnLimpiar = el('#btnLimpiar');
+
   const lblCodigo = el('#lblCodigo');
   const lblSuministro = el('#lblSuministro');
   const lblKBmin = el('#lblKBmin');
   const lblCritico = el('#lblCritico');
+  const lblUltInv = el('#lblUltInv');
+  const lblUltFec = el('#lblUltFec');
   const lblAct = el('#lblActualizado');
 
   let deferPrompt; // PWA install event
   let chart;
 
-  // Debounce
+  // ==== INPUT UX ====
+  q.addEventListener('input', () => {
+    btnClearInput.classList.toggle('hidden', q.value.trim()==='');
+  });
+  btnClearInput.addEventListener('click', () => {
+    q.value='';
+    btnClearInput.classList.add('hidden');
+    hideSuggestions();
+  });
+
+  // ==== Debounce búsqueda (350 ms) ====
   let tDeb = null;
   q.addEventListener('input', () => {
     clearTimeout(tDeb);
     const term = q.value.trim();
     if (!term) { hideSuggestions(); return; }
-    tDeb = setTimeout(() => doSearch(term), 200);
+    tDeb = setTimeout(() => doSearch(term), 350);
   });
 
   q.addEventListener('keydown', (ev) => {
@@ -116,6 +143,7 @@
   btnBuscar.addEventListener('click', launchSearch);
   btnLimpiar.addEventListener('click', () => {
     q.value = '';
+    btnClearInput.classList.add('hidden');
     hideSuggestions();
     renderItem(null);
   });
@@ -123,7 +151,8 @@
   function showSuggestions(items){
     if (!items || !items.length) { hideSuggestions(); return; }
     suggestions.innerHTML = items.map(it => (
-      `<li class="px-3 py-2 hover:bg-slate-100 border-b border-slate-100" data-cod="${it.codigo}">
+      `<li class="px-3 py-2 hover:bg-slate-100 border-b border-slate-100"
+           data-cod="${it.codigo}">
          <div class="font-medium">${it.suministro}</div>
          <div class="text-xs text-slate-500">${it.codigo}</div>
        </li>`
@@ -132,7 +161,7 @@
     els('#suggestions li').forEach(li => {
       li.addEventListener('click', () => {
         const cod = li.getAttribute('data-cod');
-        q.value = cod;
+        q.value = cod; // pasar a búsqueda por código
         hideSuggestions();
         fetchItem(cod);
       });
@@ -163,6 +192,7 @@
 
   async function fetchItem(code){
     try{
+      // caché local para UX/offline
       const cacheKey = 'item:' + code;
       const cached = localStorage.getItem(cacheKey);
       if (cached) renderItem(JSON.parse(cached), true);
@@ -172,20 +202,6 @@
       url.searchParams.set('code', code);
       const res = await fetch(url.toString(), {cache:'no-store'});
       const data = await res.json();
-
-      // COMPLETAR SUMINISTRO SI NO VIENE EN /item
-      if (!data.suministro) {
-        try {
-          const u2 = new URL(API_BASE);
-          u2.searchParams.set('action','search');
-          u2.searchParams.set('q', code);
-          const r2 = await fetch(u2.toString(), {cache:'no-store'});
-          const d2 = await r2.json();
-          const hit = (d2.items || []).find(x => String(x.codigo).trim() === String(code).trim());
-          if (hit && hit.suministro) data.suministro = hit.suministro;
-        } catch(_){}
-      }
-
       localStorage.setItem(cacheKey, JSON.stringify(data));
       renderItem(data);
     }catch(e){
@@ -200,51 +216,63 @@
       lblSuministro.textContent = '—';
       lblKBmin.textContent = '—';
       lblCritico.textContent = '—';
+      lblUltInv.textContent = '—';
+      lblUltFec.textContent = '—';
       lblAct.textContent = '—';
       if (chart) chart.destroy();
       return;
     }
 
-    // Guard si no hay puntos
-    if (!Array.isArray(data.puntos) || data.puntos.length === 0) {
-      lblCodigo.textContent     = data.codigo ?? '—';
-      lblSuministro.textContent = data.suministro ?? '—';
-      lblKBmin.textContent      = data.kb_min ?? '—';
-      lblCritico.textContent    = data.critico ?? '—';
-      lblAct.textContent        = (fromCache?'(caché) ':'') + new Date().toLocaleString();
-      if (chart) chart.destroy();
-      return;
-    }
+    const nf = new Intl.NumberFormat();
+    const puntos = (data.puntos||[]).sort((a,b)=> a.fecha.localeCompare(b.fecha));
+    const last = puntos[puntos.length-1];
 
-    const puntos = data.puntos.sort((a,b)=> a.fecha.localeCompare(b.fecha));
     lblCodigo.textContent     = data.codigo || '—';
     lblSuministro.textContent = data.suministro || '—';
     lblKBmin.textContent      = (data.kb_min ?? '—');
     lblCritico.textContent    = (data.critico ?? '—');
+    lblUltInv.textContent     = last ? nf.format(Number(last.inventario||0)) : '—';
+    lblUltFec.textContent     = last ? last.fecha : '—';
     lblAct.textContent        = (fromCache?'(caché) ':'') + new Date().toLocaleString();
 
+    // === GRÁFICO (tipo área al estilo Sheets) ===
     const ctx = el('#chart').getContext('2d');
     const labels = puntos.map(p=>p.fecha);
-    const inv = puntos.map(p=>Number(p.inventario));
+    const inv    = puntos.map(p=>Number(p.inventario));
 
     const datasets = [
-      { label:'Inventario', data: inv, borderWidth: 2, tension: .2 }
+      {
+        label:'Inventario',
+        data: inv,
+        borderColor: 'rgba(59,130,246,1)',        // azul
+        backgroundColor: 'rgba(59,130,246,0.15)', // azul translúcido
+        pointRadius: 2,
+        borderWidth: 2,
+        tension: .2,
+        fill: 'origin'
+      }
     ];
+
     if (Number.isFinite(+data.kb_min)) {
       datasets.push({
         label:'KB_min',
         data: labels.map(()=> +data.kb_min),
-        borderDash:[6,6],
+        borderColor: 'rgba(234,179,8,1)',       // amarillo
+        backgroundColor: 'rgba(234,179,8,0.10)',
         pointRadius:0,
-        borderWidth:1
+        borderWidth:1,
+        fill: false
       });
     }
     if (Number.isFinite(+data.critico)) {
       datasets.push({
         label:'Crítico',
         data: labels.map(()=> +data.critico),
+        borderColor: 'rgba(239,68,68,1)',       // rojo
+        backgroundColor: 'rgba(239,68,68,0.10)',
         pointRadius:0,
-        borderWidth:1
+        borderWidth:1,
+        fill: false
       });
     }
 
@@ -261,7 +289,7 @@
           tooltip:{ callbacks:{
             label(ctx){
               const v = ctx.parsed.y;
-              return `${ctx.dataset.label}: ${new Intl.NumberFormat().format(v)}`;
+              return `${ctx.dataset.label}: ${nf.format(v)}`;
             }
           }}
         },
