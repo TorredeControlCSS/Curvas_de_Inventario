@@ -395,11 +395,6 @@ datasets.push({
           label(c){ return `${c.dataset.label}: ${nf.format(c.parsed.y)}`; }
         }}
       },
-      // 👇 agrega este bloque aquí
-  layout:{
-    padding:{ top:8, right:36, bottom:8, left:8 }
-  },
-      
 scales: {
   x: {
     ticks: {
@@ -441,6 +436,3 @@ el('#btnInstall')?.addEventListener('click', async () => {
 </script>
 </body>
 </html>
-
-
-
