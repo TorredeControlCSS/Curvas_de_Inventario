@@ -299,6 +299,36 @@ function renderItem(data, fromCache=false){
     }
   ];
 
+// --- Promedio móvil de 30 días (ventana por fecha) ---
+const dateObjs = labels.map(d => new Date(d));
+
+// calcula promedio usando los últimos 30 días (no 30 puntos)
+const avg30 = labels.map((_, i) => {
+  const to = dateObjs[i];
+  const from = new Date(to);
+  from.setDate(from.getDate() - 29); // ventana de 30 días
+
+  let sum = 0, cnt = 0;
+  for (let k = i; k >= 0 && dateObjs[k] >= from; k--) {
+    const v = Number(inv[k] || 0);
+    sum += v; cnt++;
+  }
+  return cnt ? (sum / cnt) : null; // null evita dibujar si no hay datos
+});
+
+// agrega la serie al chart
+datasets.push({
+  label: 'Promedio 30 días',
+  data: avg30,
+  borderColor: 'rgba(100,116,139,1)',      // slate-500
+  backgroundColor: 'rgba(100,116,139,0.08)',
+  pointRadius: 0,
+  borderWidth: 2,
+  borderDash: [6,4],
+  tension: .2,
+  fill: false
+});
+
   if (Number.isFinite(+data.kb_min)) {
     datasets.push({
       label:'KB_min',
@@ -395,3 +425,4 @@ el('#btnInstall')?.addEventListener('click', async () => {
 </script>
 </body>
 </html>
+
