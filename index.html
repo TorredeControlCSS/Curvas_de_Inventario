@@ -10,17 +10,14 @@
   <meta name="theme-color" content="#0ea5e9">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
 
-  <!-- UI básica (Tailwind CDN para ir rápido) -->
+  <!-- UI básica -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Chart.js para el gráfico -->
+  <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1"></script>
 
   <style>
-    /* Sombra sutil para tarjetas */
     .card{ box-shadow:0 6px 24px rgba(0,0,0,.08), 0 2px 6px rgba(0,0,0,.04); }
-    /* Lista de sugerencias */
     #suggestions li{ cursor:pointer }
-    /* Puntero deshabilitado */
     .disabled{ opacity:.5; pointer-events:none }
   </style>
 </head>
@@ -68,7 +65,10 @@
           <h2 class="font-semibold text-slate-700">Curva de Inventario</h2>
           <div class="text-xs text-slate-500" id="lblActualizado">—</div>
         </div>
-        <canvas id="chart" height="140"></canvas>
+        <!-- ALTURA DEL GRÁFICO -->
+        <div class="relative h-80">
+          <canvas id="chart"></canvas>
+        </div>
       </div>
     </section>
   </main>
@@ -79,8 +79,7 @@
 
   <script>
   // ========= CONFIG =========
-  const API_BASE = 'https://script.google.com/macros/s/AKfycbxQsD4XJICmZg-5eiZIAEjJ3GZz-GmqvhvMWtiznEOu7SafIKxWopo5iIVy7ufrq_qq/exec'; // <<<<<< PÉGALA AQUÍ (termina en /exec)
-  // Ej.: const API_BASE = 'https://script.google.com/macros/s/AKfycbx.../exec';
+  const API_BASE = 'https://script.google.com/macros/s/AKfycbxQsD4XJICmZg-5eiZIAEjJ3GZz-GmqvhvMWtiznEOu7SafIKxWopo5iIVy7ufrq_qq/exec';
 
   // ========= Estado y helpers =========
   const el = sel => document.querySelector(sel);
@@ -124,8 +123,7 @@
   function showSuggestions(items){
     if (!items || !items.length) { hideSuggestions(); return; }
     suggestions.innerHTML = items.map(it => (
-      `<li class="px-3 py-2 hover:bg-slate-100 border-b border-slate-100"
-           data-cod="${it.codigo}">
+      `<li class="px-3 py-2 hover:bg-slate-100 border-b border-slate-100" data-cod="${it.codigo}">
          <div class="font-medium">${it.suministro}</div>
          <div class="text-xs text-slate-500">${it.codigo}</div>
        </li>`
@@ -134,7 +132,7 @@
     els('#suggestions li').forEach(li => {
       li.addEventListener('click', () => {
         const cod = li.getAttribute('data-cod');
-        q.value = cod;     // lo convertimos a código para la búsqueda final
+        q.value = cod;
         hideSuggestions();
         fetchItem(cod);
       });
@@ -156,17 +154,15 @@
   function launchSearch(){
     const term = q.value.trim();
     if (!term) return;
-    // si parece código (solo dígitos), voy directo a item
     if (/^\d{6,}$/.test(term)) {
       fetchItem(term);
     } else {
-      doSearch(term); // mostrará coincidencias
+      doSearch(term);
     }
   }
 
   async function fetchItem(code){
     try{
-      // Cache local: mejora UX y permite ver algo offline
       const cacheKey = 'item:' + code;
       const cached = localStorage.getItem(cacheKey);
       if (cached) renderItem(JSON.parse(cached), true);
@@ -176,6 +172,20 @@
       url.searchParams.set('code', code);
       const res = await fetch(url.toString(), {cache:'no-store'});
       const data = await res.json();
+
+      // COMPLETAR SUMINISTRO SI NO VIENE EN /item
+      if (!data.suministro) {
+        try {
+          const u2 = new URL(API_BASE);
+          u2.searchParams.set('action','search');
+          u2.searchParams.set('q', code);
+          const r2 = await fetch(u2.toString(), {cache:'no-store'});
+          const d2 = await r2.json();
+          const hit = (d2.items || []).find(x => String(x.codigo).trim() === String(code).trim());
+          if (hit && hit.suministro) data.suministro = hit.suministro;
+        } catch(_){}
+      }
+
       localStorage.setItem(cacheKey, JSON.stringify(data));
       renderItem(data);
     }catch(e){
@@ -194,25 +204,31 @@
       if (chart) chart.destroy();
       return;
     }
-    const puntos = (data.puntos||[]).sort((a,b)=> a.fecha.localeCompare(b.fecha));
-    lblCodigo.textContent = data.codigo || '—';
-    lblSuministro.textContent = data.suministro || '—';
-    lblKBmin.textContent = (data.kb_min ?? '—');
-    lblCritico.textContent = (data.critico ?? '—');
-    lblAct.textContent = (fromCache?'(caché) ':'') + new Date().toLocaleString();
 
-    // Gráfico
+    // Guard si no hay puntos
+    if (!Array.isArray(data.puntos) || data.puntos.length === 0) {
+      lblCodigo.textContent     = data.codigo ?? '—';
+      lblSuministro.textContent = data.suministro ?? '—';
+      lblKBmin.textContent      = data.kb_min ?? '—';
+      lblCritico.textContent    = data.critico ?? '—';
+      lblAct.textContent        = (fromCache?'(caché) ':'') + new Date().toLocaleString();
+      if (chart) chart.destroy();
+      return;
+    }
+
+    const puntos = data.puntos.sort((a,b)=> a.fecha.localeCompare(b.fecha));
+    lblCodigo.textContent     = data.codigo || '—';
+    lblSuministro.textContent = data.suministro || '—';
+    lblKBmin.textContent      = (data.kb_min ?? '—');
+    lblCritico.textContent    = (data.critico ?? '—');
+    lblAct.textContent        = (fromCache?'(caché) ':'') + new Date().toLocaleString();
+
     const ctx = el('#chart').getContext('2d');
     const labels = puntos.map(p=>p.fecha);
     const inv = puntos.map(p=>Number(p.inventario));
 
     const datasets = [
-      {
-        label:'Inventario',
-        data: inv,
-        borderWidth: 2,
-        tension: .2
-      }
+      { label:'Inventario', data: inv, borderWidth: 2, tension: .2 }
     ];
     if (Number.isFinite(+data.kb_min)) {
       datasets.push({
