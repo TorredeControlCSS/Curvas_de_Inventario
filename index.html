@@ -279,95 +279,75 @@ function renderItem(data, fromCache=false){
   lblUltFec.textContent     = last ? last.fecha : '—';
   lblAct.textContent        = (fromCache?'(caché) ':'') + new Date().toLocaleString();
 
-  // 5) Datos para Chart (área + líneas de referencia)
-const labels = puntos.map(p => p.fecha);
-const inv    = puntos.map(p => Number(p.inventario) || 0);
+  // 4) Título: COD — SUMINISTRO
+  ttlChartEl.textContent = `${data.codigo || '—'} — ${data.suministro || '—'}`;
 
-const datasets = [
-  {
-    label: 'Inventario',
-    data: inv,
-    borderColor: 'rgba(59,130,246,1)',        // azul
-    backgroundColor: 'rgba(59,130,246,0.15)', // azul translúcido
-    pointRadius: 2,
-    borderWidth: 2,
-    tension: .2,
-    fill: 'origin'
-  }
-];
+  // 5) Datos para Chart
+  const labels = puntos.map(p=>p.fecha);
+  const inv    = puntos.map(p=>Number(p.inventario||0));
 
-if (Number.isFinite(+data.kb_min)) {
-  datasets.push({
-    label: 'KB_min',
-    data: labels.map(() => +data.kb_min),
-    borderColor: 'rgba(234,179,8,1)',       // amarillo
-    backgroundColor: 'rgba(234,179,8,0.10)',
-    pointRadius: 0,
-    borderWidth: 1,
-    fill: false
-  });
-}
+  const datasets = [
+    {
+      label:'Inventario',
+      data: inv,
+      borderColor: 'rgba(59,130,246,1)',
+      backgroundColor: 'rgba(59,130,246,0.15)',
+      pointRadius: 2,
+      borderWidth: 2,
+      tension: .2,
+      fill: 'origin'
+    }
+  ];
 
-if (Number.isFinite(+data.critico)) {
-  datasets.push({
-    label: 'Crítico',
-    data: labels.map(() => +data.critico),
-    borderColor: 'rgba(239,68,68,1)',       // rojo
-    backgroundColor: 'rgba(239,68,68,0.10)',
-    pointRadius: 0,
-    borderWidth: 1,
-    fill: false
-  });
-}
-
-// Plugin para mostrar el **valor final** de cada serie
-const lastValueLabel = {
-  id: 'lastValueLabel',
-  afterDatasetsDraw(chart, args, pluginOptions) {
-    const { ctx, data } = chart;
-    data.datasets.forEach((ds, di) => {
-      const meta = chart.getDatasetMeta(di);
-      const i = (ds.data?.length || 0) - 1;
-      const pt = meta?.data?.[i];
-      if (!pt) return;
-      const value = ds.data[i];
-      ctx.save();
-      ctx.font = '12px sans-serif';
-      ctx.fillStyle = ds.borderColor || '#334155';
-      ctx.textAlign = 'left';
-      // usa nf (Intl.NumberFormat) que ya tienes arriba en tu código
-      ctx.fillText(nf.format(value), pt.x + 6, pt.y - 6);
-      ctx.restore();
+  if (Number.isFinite(+data.kb_min)) {
+    datasets.push({
+      label:'KB_min',
+      data: labels.map(()=> +data.kb_min),
+      borderColor: 'rgba(234,179,8,1)',
+      backgroundColor: 'rgba(234,179,8,0.10)',
+      pointRadius:0,
+      borderWidth:1,
+      fill: false
     });
   }
-};
+  if (Number.isFinite(+data.critico)) {
+    datasets.push({
+      label:'Crítico',
+      data: labels.map(()=> +data.critico),
+      borderColor: 'rgba(239,68,68,1)',
+      backgroundColor: 'rgba(239,68,68,0.10)',
+      pointRadius:0,
+      borderWidth:1,
+      fill: false
+    });
+  }
 
-if (chart) chart.destroy();
-const ctx = document.getElementById('chart').getContext('2d');
-chart = new Chart(ctx, {
-  type: 'line',
-  data: { labels, datasets },
-  options: {
-    responsive: true,
-    maintainAspectRatio: false,
-    interaction: { intersect: false, mode: 'index' },
-    plugins: {
-      legend: { position: 'top' },
-      tooltip: {
-        callbacks: {
-          label(c) { return `${c.dataset.label}: ${nf.format(c.parsed.y)}`; }
+  // 6) Plugin para escribir etiqueta con el último valor al final de cada serie
+  const lastValuePlugin = {
+    id: 'lastValuePlugin',
+    afterDatasetsDraw(chart, args, pluginOptions) {
+      const {ctx, chartArea, data, scales} = chart;
+      ctx.save();
+      ctx.font = '12px sans-serif';
+      ctx.textBaseline = 'middle';
+
+      chart.data.datasets.forEach((ds, i) => {
+        const meta = chart.getDatasetMeta(i);
+        if (!meta || !meta.data || !meta.data.length) return;
+        const lastPoint = meta.data[meta.data.length-1];
+        const val = ds.data[ds.data.length-1];
+        if (lastPoint && val != null && isFinite(val)) {
+          const x = lastPoint.x + 6;                 // un poco a la derecha del punto
+          const y = lastPoint.y;
+          const label = `${nf.format(Number(val))}`;
+          ctx.fillStyle = (ds.borderColor || '#334155');
+          ctx.fillText(label, x, y);
         }
-      }
-    },
-    scales: {
-      x: {
-        ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 12 }
-      },
-      y: { beginAtZero: false }
+      });
+
+      ctx.restore();
     }
-  },
-  plugins: [lastValueLabel]
-});
+  };
 
   // 7) Render
   if (chart) chart.destroy();
