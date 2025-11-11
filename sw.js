@@ -1,52 +1,46 @@
-// sw.js
-const CACHE = 'cedis-cache-v1';
-const APP_SHELL = [
+// BUMP de versión para forzar recacheo
+const CACHE = 'cedis-cache-v5';
+const PRECACHE = [
   './',
   './index.html',
   './manifest.webmanifest',
   './icons/icon-192.png',
-  './icons/icon-512.png',
-  // CDNs quedan fuera: el navegador los cachea bien, pero si quieres, añádelos también
+  './icons/icon-512.png'
 ];
 
-self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE).then(c => c.addAll(APP_SHELL))
-  );
+self.addEventListener('install', e => {
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(PRECACHE)));
   self.skipWaiting();
 });
 
-self.addEventListener('activate', (event) => {
-  event.waitUntil(
+self.addEventListener('activate', e => {
+  e.waitUntil(
     caches.keys().then(keys =>
-      Promise.all(keys.map(k => (k===CACHE?null:caches.delete(k))))
-    )
+      Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))
   );
   self.clients.claim();
 });
 
-self.addEventListener('fetch', (event) => {
-  const req = event.request;
+// Estrategia: cache-first para propios assets, network-first para API
+self.addEventListener('fetch', e => {
+  const url = new URL(e.request.url);
 
-  // Estrategia "Stale-While-Revalidate" para GET (incluye API)
-  if (req.method === 'GET') {
-    event.respondWith((async () => {
-      const cache = await caches.open(CACHE);
-      const cached = await cache.match(req);
-      const fetchPromise = fetch(req).then(res => {
-        // sólo cacheamos 200 OK
-        if (res && res.status === 200) cache.put(req, res.clone());
+  // API de Apps Script: siempre intenta red, fallback a cache si existiera
+  if (url.href.includes('script.google.com/macros')) {
+    e.respondWith(
+      fetch(e.request).then(res => {
+        const clone = res.clone();
+        caches.open(CACHE).then(c => c.put(e.request, clone)).catch(()=>{});
         return res;
-      }).catch(() => null);
-
-      // Devuelve rápido caché, y en paralelo actualiza
-      return cached || fetchPromise || new Response('{"offline":true}', {
-        headers:{'Content-Type':'application/json'}
-      });
-    })());
+      }).catch(() => caches.match(e.request))
+    );
     return;
   }
 
-  // Fallback directo
-  event.respondWith(fetch(req));
+  // Assets locales: cache primero
+  if (url.origin === location.origin) {
+    e.respondWith(
+      caches.match(e.request).then(cached => cached || fetch(e.request))
+    );
+  }
 });
