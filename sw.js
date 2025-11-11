@@ -9,41 +9,37 @@ const ASSETS = [
   'https://cdn.jsdelivr.net/npm/chart.js@4.4.1'
 ];
 
-// install
 self.addEventListener('install', e=>{
   e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)));
   self.skipWaiting();
 });
 
-// activate (limpieza)
 self.addEventListener('activate', e=>{
   e.waitUntil(
-    caches.keys().then(keys=>Promise.all(keys.map(k=> k!==CACHE && caches.delete(k))))
+    caches.keys().then(keys=>Promise.all(
+      keys.filter(k=>k!==CACHE).map(k=>caches.delete(k))
+    ))
   );
   self.clients.claim();
 });
 
-// fetch: cache-first para estáticos, network-first para la API
+// Network-first para la API; cache-first para estáticos
 self.addEventListener('fetch', e=>{
   const url = new URL(e.request.url);
-  const isAPI = url.href.includes('script.google.com/macros');
+  const isApi = url.searchParams.get('action');
 
-  if (isAPI) {
+  if (isApi){
     e.respondWith(
-      fetch(e.request).then(res=>{
-        return res;
-      }).catch(()=> caches.match(e.request))
+      fetch(e.request).then(resp=>{
+        const clone = resp.clone();
+        caches.open(CACHE).then(c=>c.put(e.request, clone));
+        return resp;
+      }).catch(()=>caches.match(e.request))
     );
     return;
   }
 
   e.respondWith(
-    caches.match(e.request).then(cached=>{
-      return cached || fetch(e.request).then(res=>{
-        const copy = res.clone();
-        caches.open(CACHE).then(c=>c.put(e.request, copy));
-        return res;
-      });
-    })
+    caches.match(e.request).then(res=> res || fetch(e.request))
   );
 });

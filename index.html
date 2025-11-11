@@ -3,25 +3,21 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Inventario CEDIS — Curvas en tiempo real</title>
+  <title>CEDIS Panama — Curvas de Inventario</title>
 
   <!-- PWA -->
   <link rel="manifest" href="manifest.webmanifest">
   <meta name="theme-color" content="#0ea5e9">
 
-  <!-- Ícono (más rápido que base64) -->
-  <link rel="apple-touch-icon" href="icons/icon-192.png">
-
-  <!-- UI (Tailwind CDN) -->
+  <!-- UI -->
   <script src="https://cdn.tailwindcss.com"></script>
+
   <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1"></script>
 
   <style>
     .card{ box-shadow:0 6px 24px rgba(0,0,0,.08), 0 2px 6px rgba(0,0,0,.04); }
     #suggestions li{ cursor:pointer }
-    .disabled{ opacity:.5; pointer-events:none }
-    .empty-msg{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#94a3b8; font-size:.9rem }
   </style>
 </head>
 <body class="bg-white text-slate-800 min-h-screen">
@@ -29,8 +25,9 @@
   <header class="bg-sky-600 text-white">
     <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
       <div class="flex items-center gap-3">
-        <img src="icons/icon-192.png" alt="DINALOG - CSS Panamá"
-             class="h-10 sm:h-12 md:h-14 w-auto mr-1 select-none" loading="eager" decoding="async"/>
+        <!-- Logo desde tu repo (sin base64) -->
+        <img src="./icons/icon-192.png" alt="DINALOG - CSS Panamá"
+             class="h-10 sm:h-12 md:h-16 w-auto mr-2 select-none" loading="eager" decoding="async">
         <h1 class="text-lg sm:text-2xl font-semibold">CEDIS Panama – Curvas de Inventario</h1>
       </div>
       <button id="btnInstall" class="hidden bg-white/10 hover:bg-white/20 px-3 py-1 rounded">Instalar</button>
@@ -82,8 +79,7 @@
           <h2 id="ttlChart" class="font-semibold text-slate-700">Curva de Inventario</h2>
           <div class="text-xs text-slate-500" id="lblActualizado">—</div>
         </div>
-        <div class="h-[360px] relative">
-          <div id="empty" class="empty-msg hidden">Sin datos para graficar</div>
+        <div class="h-[360px]">
           <canvas id="chart"></canvas>
         </div>
       </div>
@@ -94,11 +90,9 @@
     v1.2 • PWA • Actualiza en tiempo real
   </footer>
 
-  <!-- ======== APP SCRIPT ======== -->
 <script>
 /* ========= CONFIG ========= */
 const API_BASE = 'https://script.google.com/macros/s/AKfycbxQsD4XJICmZg-5eiZIAEjJ3GZz-GmqvhvMWtiznEOu7SafIKxWopo5iIVy7ufrq_qq/exec';
-const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutos
 
 /* ========= Estado & helpers ========= */
 const el  = s => document.querySelector(s);
@@ -119,26 +113,29 @@ const lblUltFec   = el('#lblUltFec');
 const lblAct      = el('#lblActualizado');
 const lblProm30   = el('#lblProm30');
 const ttlChartEl  = el('#ttlChart');
-const emptyMsg    = el('#empty');
 
 let deferPrompt; // PWA install event
 let chart;
-const nf = new Intl.NumberFormat('es-PA');
-const df = new Intl.DateTimeFormat('es-PA', {day:'2-digit', month:'2-digit', year:'numeric'});
+const nf = new Intl.NumberFormat('en-US');
 
-/* ========= Caché con TTL ========= */
-function cacheSet(key, value){
-  const payload = {t: Date.now(), v: value};
-  localStorage.setItem(key, JSON.stringify(payload));
+/* ========= Util: fecha DD/MM/YYYY robusta ========= */
+function parseDMY(str) {
+  // Acepta 01/07/2025 o 1/7/25
+  if (!str) return null;
+  const m = String(str).trim().match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+  if (!m) return null;
+  let d = +m[1], mo = +m[2]-1, y = +m[3];
+  if (y < 100) y += 2000;
+  const dt = new Date(y, mo, d);
+  // Valida
+  if (dt.getFullYear()!==y || dt.getMonth()!==mo || dt.getDate()!==d) return null;
+  return dt;
 }
-function cacheGet(key){
-  const raw = localStorage.getItem(key);
-  if (!raw) return null;
-  try{
-    const {t, v} = JSON.parse(raw);
-    if (Date.now() - t > CACHE_TTL_MS) return null;
-    return v;
-  }catch{ return null; }
+function fmtDMY(dt){
+  const dd = String(dt.getDate()).padStart(2,'0');
+  const mm = String(dt.getMonth()+1).padStart(2,'0');
+  const yy = dt.getFullYear();
+  return `${dd}/${mm}/${yy}`;
 }
 
 /* ========= INPUT UX ========= */
@@ -154,7 +151,7 @@ q.addEventListener('input', () => {
   clearTimeout(tDeb);
   const term = q.value.trim();
   if (term.length < 2) { hideSuggestions(); return; }
-  tDeb = setTimeout(() => doSearch(term), 250);
+  tDeb = setTimeout(() => doSearch(term), 280);
 });
 
 q.addEventListener('keydown', (ev) => {
@@ -196,11 +193,6 @@ let searchCtrl = null, itemCtrl = null;
 
 async function doSearch(term){
   try{
-    // caché
-    const cKey = 'search:' + term.toLowerCase();
-    const cVal = cacheGet(cKey);
-    if (cVal) { showSuggestions(cVal.items || []); return; }
-
     if (searchCtrl) searchCtrl.abort();
     searchCtrl = new AbortController();
 
@@ -210,7 +202,6 @@ async function doSearch(term){
 
     const res = await fetch(url, {cache:'no-store', signal: searchCtrl.signal});
     const data = await res.json();
-    cacheSet(cKey, data);
     showSuggestions(data.items || []);
   }catch(e){
     if (e.name !== 'AbortError') console.error('search error', e);
@@ -229,31 +220,19 @@ function launchSearch(){
   else doSearch(term);
 }
 
-/* ========= Adaptador de payloads ========= */
-function pickItemShape(raw){
-  // Acepta {codigo, suministro, kb_min, critico, puntos:[{fecha, inventario}]}
-  // o estructuras anidadas comunes: {item:{...}}, {data:{...}}
-  const v = raw?.item || raw?.data || raw || {};
-  return {
-    codigo:    v.codigo ?? v.code ?? '',
-    suministro:v.suministro ?? v.name ?? v.descripcion ?? '',
-    kb_min:    v.kb_min ?? v.kbmin ?? v.kb ?? null,
-    critico:   v.critico ?? v.critical ?? null,
-    puntos:    Array.isArray(v.puntos) ? v.puntos
-              : Array.isArray(v.series) ? v.series
-              : []
-  };
-}
+/* ========= Cache helpers ========= */
+function cacheKey(code){ return 'item:'+code; }
 
 /* ========= Item con cache + cancelación ========= */
 async function fetchItem(code){
   try{
     setLoading(true);
 
-    const cKey = 'item:' + code;
-    const cVal = cacheGet(cKey);
-    if (cVal) renderItem(pickItemShape(cVal), true);
+    // 1) Render inmediato si hay caché
+    const cached = localStorage.getItem(cacheKey(code));
+    if (cached) renderItem(JSON.parse(cached), true);
 
+    // 2) Cancela llamada anterior y pide el item
     if (itemCtrl) itemCtrl.abort();
     itemCtrl = new AbortController();
 
@@ -263,8 +242,23 @@ async function fetchItem(code){
     const res = await fetch(url, {cache:'no-store', signal: itemCtrl.signal});
     const data = await res.json();
 
-    cacheSet(cKey, data);
-    renderItem(pickItemShape(data));
+    // 3) Si falta el nombre, intenta obtenerlo por 'search'
+    if (!data.suministro) {
+      try {
+        if (searchCtrl) searchCtrl.abort();
+        searchCtrl = new AbortController();
+        const sUrl = new URL(API_BASE);
+        sUrl.searchParams.set('action','search');
+        sUrl.searchParams.set('q', code);
+        const sRes = await fetch(sUrl, {cache:'no-store', signal: searchCtrl.signal});
+        const sData = await sRes.json();
+        const hit = (sData.items||[]).find(it => (it.codigo||'') == String(code));
+        if (hit?.suministro) data.suministro = hit.suministro;
+      } catch(_) {}
+    }
+
+    localStorage.setItem(cacheKey(code), JSON.stringify(data));
+    renderItem(data);
   }catch(e){
     if (e.name !== 'AbortError') {
       console.error('item error', e);
@@ -275,66 +269,35 @@ async function fetchItem(code){
   }
 }
 
-/* ========= Utilitarios de FECHA ========= */
-// Convierte "DD/MM/AAAA" (o "D/M/AA") a Date sin ambigüedad
-function parseDMY(s){
-  if (!s) return null;
-  if (s instanceof Date) return s;
-  const str = String(s).trim();
-  const m = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
-  if (m){
-    let d = +m[1], mo = +m[2]-1, y = +m[3];
-    if (y < 100) y += 2000; // por si vienen '24'
-    const dt = new Date(Date.UTC(y, mo, d));
-    return dt;
-  }
-  // intento final: ISO
-  const iso = new Date(str);
-  return isNaN(+iso) ? null : iso;
-}
-
-function fmtDate(d){
-  try { return df.format(d); } catch { return String(d); }
-}
-
-/* ========= Curado de datos ========= */
-// Agrupa por fecha (día) sumando inventario y limpia outliers de año raro (<2019)
+/* ========= Utilitarios de datos ========= */
+// Agrupa por fecha (dd/mm/yyyy) sumando inventario
 function groupByDateSum(points){
-  const bucket = {};
+  const bucket = new Map(); // clave: time (ms), valor: suma
   for (const p of (points||[])) {
     const dt = parseDMY(p.fecha);
     if (!dt) continue;
-    const y = dt.getUTCFullYear();
-    if (y < 2019) continue; // evita 1907/1937 causados por parseos malos de origen
-    const key = fmtDate(dt); // etiqueta final dd/mm/aaaa
+    const t = dt.getTime();
     const inv = Number(p.inventario || 0);
-    bucket[key] = (bucket[key] || 0) + inv;
+    bucket.set(t, (bucket.get(t)||0) + inv);
   }
-  const entries = Object.entries(bucket)
-    .map(([fecha, inventario]) => ({fecha, inventario}))
-    .sort((a,b)=>{
-      const [ad,am,ay] = a.fecha.split('/').map(Number);
-      const [bd,bm,by] = b.fecha.split('/').map(Number);
-      return new Date(by,bm-1,bd) - new Date(ay,am-1,ad) < 0 ? -1 : 1;
-    });
-  return entries;
+  const arr = Array.from(bucket.entries())
+    .sort((a,b)=> a[0]-b[0])
+    .map(([t, inventario]) => ({ fecha: new Date(t), inventario }));
+  return arr;
 }
 
-// SMA 30 días hasta cada fecha (promedio móvil simple)
-function sma30(labels, serie){
-  // labels ya están como "dd/mm/aaaa"
-  const toDate = s => {
-    const [d,m,y] = s.split('/').map(Number);
-    return new Date(Date.UTC(y, m-1, d));
-  };
-  const dts = labels.map(toDate);
-  return labels.map((_, i) => {
-    const to = dts[i];
-    const from = new Date(to); from.setUTCDate(from.getUTCDate()-29);
-    let sum=0, cnt=0;
-    for (let k=i; k>=0 && dts[k]>=from; k--) { sum += Number(serie[k]||0); cnt++; }
-    return cnt ? sum/cnt : null;
-  });
+// SMA 30 días sobre serie diaria (ventana por fecha)
+function sma30(points){
+  const out = new Array(points.length).fill(null);
+  let j = 0, sum = 0, cnt = 0;
+  for (let i=0;i<points.length;i++){
+    const to = points[i].fecha;
+    const from = new Date(to); from.setDate(from.getDate()-29);
+    while (j<=i && points[j].fecha < from){ sum -= points[j].inventario; cnt--; j++; }
+    sum += points[i].inventario; cnt++;
+    out[i] = cnt ? (sum/cnt) : null;
+  }
+  return out;
 }
 
 /* ========= Render ========= */
@@ -350,45 +313,45 @@ function renderItem(data, fromCache=false){
     lblProm30.textContent = '—';
     lblAct.textContent = '—';
     ttlChartEl.textContent = 'Curva de Inventario';
-    emptyMsg.classList.add('hidden');
     if (chart) chart.destroy();
     return;
   }
 
   // 1) Consolidar por día y ordenar
-  const puntos = groupByDateSum(data.puntos);
+  const puntos = groupByDateSum(Array.isArray(data.puntos) ? data.puntos : []);
+  if (!puntos.length){
+    // Limpia UI si no hay puntos
+    lblCodigo.textContent = data.codigo || '—';
+    lblSuministro.textContent = data.suministro || '—';
+    lblKBmin.textContent = (data.kb_min != null ? nf.format(+data.kb_min) : '—');
+    lblCritico.textContent = (data.critico != null ? nf.format(+data.critico) : '—');
+    lblProm30.textContent = '—';
+    lblUltInv.textContent = '—';
+    lblUltFec.textContent = '—';
+    lblAct.textContent = (fromCache?'(caché) ':'') + new Date().toLocaleString();
+    ttlChartEl.textContent = `${data.codigo || '—'} — ${data.suministro || '—'}`;
+    if (chart) chart.destroy();
+    return;
+  }
 
   // 2) Series
-  const labels = puntos.map(p=>p.fecha);
-  const inv    = puntos.map(p=>Number(p.inventario||0));
-  const avg30  = sma30(labels, inv);
-
-  // Últimos
-  const lastInv = inv.length ? inv[inv.length-1] : null;
-  const lastLbl = labels.length ? labels[labels.length-1] : null;
-  const lastAvg = avg30.length ? avg30[avg30.length-1] : null;
+  const labels = puntos.map(p=> fmtDMY(p.fecha));   // visibles (dd/mm/yyyy)
+  const inv    = puntos.map(p=> Number(p.inventario||0));
+  const avg30  = sma30(puntos);
+  const last   = puntos[puntos.length-1];
 
   // 3) Panel
   lblCodigo.textContent     = data.codigo || '—';
   lblSuministro.textContent = data.suministro || '—';
   lblKBmin.textContent      = (data.kb_min != null ? nf.format(+data.kb_min) : '—');
   lblCritico.textContent    = (data.critico != null ? nf.format(+data.critico) : '—');
-  lblUltInv.textContent     = (lastInv != null ? nf.format(lastInv) : '—');
-  lblUltFec.textContent     = (lastLbl || '—');
-  lblProm30.textContent     = (lastAvg != null ? nf.format(lastAvg) : '—');
+  lblUltInv.textContent     = nf.format(Number(last.inventario||0));
+  lblUltFec.textContent     = fmtDMY(last.fecha);
+  lblProm30.textContent     = (avg30[avg30.length-1] != null ? nf.format(avg30[avg30.length-1]) : '—');
   lblAct.textContent        = (fromCache?'(caché) ':'') + new Date().toLocaleString();
   ttlChartEl.textContent    = `${data.codigo || '—'} — ${data.suministro || '—'}`;
 
-  // 4) Si no hay puntos válidos, mensaje y gráfico vacío
-  if (!labels.length){
-    if (chart) chart.destroy();
-    emptyMsg.classList.remove('hidden');
-    return;
-  } else {
-    emptyMsg.classList.add('hidden');
-  }
-
-  // Datasets
+  // 4) Datasets
   const datasets = [
     {
       label:'Inventario',
@@ -444,7 +407,9 @@ function renderItem(data, fromCache=false){
     id: 'lastValuePlugin',
     afterDatasetsDraw(chart, args) {
       const {ctx} = chart;
-      ctx.save(); ctx.font = '12px sans-serif'; ctx.textBaseline = 'middle';
+      ctx.save();
+      ctx.font = '12px sans-serif';
+      ctx.textBaseline = 'middle';
       chart.data.datasets.forEach((ds, i) => {
         const meta = chart.getDatasetMeta(i);
         if (!meta?.data?.length) return;
@@ -454,7 +419,8 @@ function renderItem(data, fromCache=false){
         const pt = meta.data[idx];
         const val = +ds.data[idx];
         if (!pt || !isFinite(val)) return;
-        const x = pt.x + 6, y = pt.y;
+        const x = pt.x + 6;
+        const y = pt.y;
         ctx.fillStyle = Array.isArray(ds.borderColor) ? ds.borderColor[0] : (ds.borderColor || '#334155');
         ctx.fillText(nf.format(val), x, y);
       });
@@ -462,19 +428,19 @@ function renderItem(data, fromCache=false){
     }
   };
 
-  // Eje X: quincenal + último
+  // 5) X ticks: 1ro de mes, cada 14 días y último dato
   function xTickCallback(value, index, ticks){
     const isLast = index === (ticks.length-1);
     if (isLast) return labels[index];
-    // mostrar cada 14 días aproximados respecto al primero
-    const [d0,m0,y0] = labels[0].split('/').map(Number);
-    const [di,mi,yi] = labels[index].split('/').map(Number);
-    const t0 = Date.UTC(y0,m0-1,d0);
-    const ti = Date.UTC(yi,mi-1,di);
-    const diffDays = Math.round((ti - t0)/(1000*60*60*24));
+    const dt = puntos[index].fecha;
+    if (dt.getDate()===1) return labels[index]; // inicio de mes
+    // cada 14 días respecto al inicio
+    const d0 = puntos[0].fecha;
+    const diffDays = Math.round((dt - d0)/(1000*60*60*24));
     return (diffDays % 14 === 0) ? labels[index] : '';
   }
 
+  // Render chart
   if (chart) chart.destroy();
   const ctx = document.getElementById('chart').getContext('2d');
   chart = new Chart(ctx, {
@@ -492,7 +458,7 @@ function renderItem(data, fromCache=false){
       scales: {
         x: {
           ticks: { autoSkip:false, maxRotation:0, minRotation:0, callback: xTickCallback },
-          grid: { display:true }
+          grid: { drawOnChartArea: true }
         },
         y: { beginAtZero:false }
       }
@@ -507,14 +473,15 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js').catch(console.error);
   });
 }
+let installEvt=null;
 window.addEventListener('beforeinstallprompt', (e) => {
-  e.preventDefault(); deferPrompt = e;
+  e.preventDefault(); installEvt = e;
   el('#btnInstall')?.classList.remove('hidden');
 });
 el('#btnInstall')?.addEventListener('click', async () => {
-  if (!deferPrompt) return;
-  deferPrompt.prompt(); await deferPrompt.userChoice;
-  deferPrompt = null; el('#btnInstall')?.classList.add('hidden');
+  if (!installEvt) return;
+  installEvt.prompt(); await installEvt.userChoice;
+  installEvt = null; el('#btnInstall')?.classList.add('hidden');
 });
 </script>
 </body>
