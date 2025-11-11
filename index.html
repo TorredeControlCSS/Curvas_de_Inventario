@@ -407,7 +407,7 @@ function renderItem(data, fromCache=false){
     const d0 = new Date(labels[0]);
     const di = new Date(labels[index]);
     const diffDays = Math.round((di - d0)/(1000*60*60*24));
-    return (diffDays % 7 === 0) ? labels[index] : '';
+    return (diffDays % 14 === 0) ? labels[index] : '';
   }
 
   // Render
@@ -457,3 +457,4 @@ el('#btnInstall')?.addEventListener('click', async () => {
   deferPrompt = null; el('#btnInstall')?.classList.add('hidden');
 });
 </script>
+
