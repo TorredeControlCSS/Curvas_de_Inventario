@@ -1,19 +1,19 @@
 <!doctype html>
 <html lang="es">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>CEDIS Panama — Curvas de Inventario</title>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>CEDIS Panama – Curvas de Inventario</title>
 
   <!-- PWA -->
-  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="manifest" href="./manifest.webmanifest">
   <meta name="theme-color" content="#0ea5e9">
+  <link rel="apple-touch-icon" href="./icons/icon-192.png">
 
   <!-- UI -->
   <script src="https://cdn.tailwindcss.com"></script>
-
   <!-- Chart.js -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 
   <style>
     .card{ box-shadow:0 6px 24px rgba(0,0,0,.08), 0 2px 6px rgba(0,0,0,.04); }
@@ -25,9 +25,8 @@
   <header class="bg-sky-600 text-white">
     <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
       <div class="flex items-center gap-3">
-        <!-- Logo desde tu repo (sin base64) -->
         <img src="./icons/icon-192.png" alt="DINALOG - CSS Panamá"
-             class="h-10 sm:h-12 md:h-16 w-auto mr-2 select-none" loading="eager" decoding="async">
+             class="h-10 sm:h-12 md:h-14 w-auto mr-2 select-none" loading="eager" decoding="async"/>
         <h1 class="text-lg sm:text-2xl font-semibold">CEDIS Panama – Curvas de Inventario</h1>
       </div>
       <button id="btnInstall" class="hidden bg-white/10 hover:bg-white/20 px-3 py-1 rounded">Instalar</button>
@@ -90,19 +89,22 @@
     v1.2 • PWA • Actualiza en tiempo real
   </footer>
 
+  <!-- ======== APP SCRIPT ======== -->
 <script>
 /* ========= CONFIG ========= */
 const API_BASE = 'https://script.google.com/macros/s/AKfycbxQsD4XJICmZg-5eiZIAEjJ3GZz-GmqvhvMWtiznEOu7SafIKxWopo5iIVy7ufrq_qq/exec';
+const CACHE_VERSION = 'v6'; // si cambias lógica, sube versión para invalidar
 
 /* ========= Estado & helpers ========= */
 const el  = s => document.querySelector(s);
 const els = s => Array.from(document.querySelectorAll(s));
+const nf  = new Intl.NumberFormat('es-PA');
 
-const q              = el('#q');
-const btnClearInput  = el('#btnClearInput');
-const suggestions    = el('#suggestions');
-const btnBuscar      = el('#btnBuscar');
-const btnLimpiar     = el('#btnLimpiar');
+const q             = el('#q');
+const btnClearInput = el('#btnClearInput');
+const suggestions   = el('#suggestions');
+const btnBuscar     = el('#btnBuscar');
+const btnLimpiar    = el('#btnLimpiar');
 
 const lblCodigo   = el('#lblCodigo');
 const lblSuministro = el('#lblSuministro');
@@ -114,35 +116,29 @@ const lblAct      = el('#lblActualizado');
 const lblProm30   = el('#lblProm30');
 const ttlChartEl  = el('#ttlChart');
 
-let deferPrompt; // PWA install event
 let chart;
-const nf = new Intl.NumberFormat('en-US');
+let searchCtrl = null, itemCtrl = null;
+const memCache = new Map(); // cache en RAM (últimos N)
+const MEM_LIMIT = 20;
 
-/* ========= Util: fecha DD/MM/YYYY robusta ========= */
-function parseDMY(str) {
-  // Acepta 01/07/2025 o 1/7/25
-  if (!str) return null;
-  const m = String(str).trim().match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
-  if (!m) return null;
-  let d = +m[1], mo = +m[2]-1, y = +m[3];
-  if (y < 100) y += 2000;
-  const dt = new Date(y, mo, d);
-  // Valida
-  if (dt.getFullYear()!==y || dt.getMonth()!==mo || dt.getDate()!==d) return null;
+/* ========= Utils de tiempo/fechas ========= */
+// dd/mm/yyyy -> Date(UTC)
+function parseDMY(s){
+  if(!s) return null;
+  const [d,m,y] = String(s).split(/[\/\-]/).map(Number);
+  if(!d||!m||!y) return null;
+  const dt = new Date(Date.UTC(y, m-1, d));
+  // Filtra 1900s o fechas ilógicas
+  if (dt.getUTCFullYear() < 2010 || dt.getUTCFullYear() > 2100) return null;
   return dt;
 }
-function fmtDMY(dt){
-  const dd = String(dt.getDate()).padStart(2,'0');
-  const mm = String(dt.getMonth()+1).padStart(2,'0');
-  const yy = dt.getFullYear();
-  return `${dd}/${mm}/${yy}`;
-}
+const fmtDMY = dt => new Date(dt).toLocaleDateString('es-PA',{day:'2-digit',month:'2-digit',year:'numeric'});
 
 /* ========= INPUT UX ========= */
 q.addEventListener('input', () => {
-  btnClearInput?.classList.toggle('hidden', q.value.trim()==='');
+  btnClearInput.classList.toggle('hidden', q.value.trim()==='');
 });
-btnClearInput?.addEventListener('click', () => {
+btnClearInput.addEventListener('click', () => {
   q.value=''; btnClearInput.classList.add('hidden'); hideSuggestions();
 });
 
@@ -151,26 +147,19 @@ q.addEventListener('input', () => {
   clearTimeout(tDeb);
   const term = q.value.trim();
   if (term.length < 2) { hideSuggestions(); return; }
-  tDeb = setTimeout(() => doSearch(term), 280);
+  tDeb = setTimeout(() => doSearch(term), 250);
 });
-
 q.addEventListener('keydown', (ev) => {
   if (ev.key === 'Enter') { hideSuggestions(); launchSearch(); }
 });
 
 btnBuscar.addEventListener('click', launchSearch);
-btnLimpiar.addEventListener('click', () => {
-  q.value = '';
-  btnClearInput?.classList.add('hidden');
-  hideSuggestions();
-  renderItem(null);
-});
+btnLimpiar.addEventListener('click', () => { q.value = ''; btnClearInput.classList.add('hidden'); hideSuggestions(); renderItem(null); });
 
 /* ========= Sugerencias ========= */
 function showSuggestions(items){
   if (!items || !items.length) { hideSuggestions(); return; }
-  items = items.slice(0, 10);
-  suggestions.innerHTML = items.map(it => (
+  suggestions.innerHTML = items.slice(0,10).map(it => (
     `<li class="px-3 py-2 hover:bg-slate-100 border-b border-slate-100" data-cod="${it.codigo}">
        <div class="font-medium">${it.suministro || ''}</div>
        <div class="text-xs text-slate-500">${it.codigo || ''}</div>
@@ -188,9 +177,7 @@ function showSuggestions(items){
 }
 function hideSuggestions(){ suggestions.classList.add('hidden'); suggestions.innerHTML=''; }
 
-/* ========= Buscador con cancelación ========= */
-let searchCtrl = null, itemCtrl = null;
-
+/* ========= Search con cancelación ========= */
 async function doSearch(term){
   try{
     if (searchCtrl) searchCtrl.abort();
@@ -200,17 +187,12 @@ async function doSearch(term){
     url.searchParams.set('action','search');
     url.searchParams.set('q', term);
 
-    const res = await fetch(url, {cache:'no-store', signal: searchCtrl.signal});
+    const res = await fetch(url, { cache:'no-store', signal: searchCtrl.signal });
     const data = await res.json();
     showSuggestions(data.items || []);
   }catch(e){
     if (e.name !== 'AbortError') console.error('search error', e);
   }
-}
-
-function setLoading(isLoading){
-  btnBuscar.disabled = isLoading;
-  btnBuscar.textContent = isLoading ? 'Buscando…' : 'Buscar';
 }
 
 function launchSearch(){
@@ -221,28 +203,39 @@ function launchSearch(){
 }
 
 /* ========= Cache helpers ========= */
-function cacheKey(code){ return 'item:'+code; }
+function getCacheKey(code){ return `v:${CACHE_VERSION}:item:${code}`; }
+function cacheSet(code, data){
+  localStorage.setItem(getCacheKey(code), JSON.stringify(data));
+  memCache.set(code, data);
+  if(memCache.size>MEM_LIMIT) memCache.delete(memCache.keys().next().value);
+}
+function cacheGet(code){
+  if(memCache.has(code)) return memCache.get(code);
+  const raw = localStorage.getItem(getCacheKey(code));
+  if(!raw) return null;
+  try{ const d=JSON.parse(raw); memCache.set(code, d); return d; }catch{ return null; }
+}
 
 /* ========= Item con cache + cancelación ========= */
 async function fetchItem(code){
   try{
     setLoading(true);
 
-    // 1) Render inmediato si hay caché
-    const cached = localStorage.getItem(cacheKey(code));
-    if (cached) renderItem(JSON.parse(cached), true);
+    // 1) render inmediato si hay cache
+    const cached = cacheGet(code);
+    if (cached) renderItem(cached, true);
 
-    // 2) Cancela llamada anterior y pide el item
     if (itemCtrl) itemCtrl.abort();
     itemCtrl = new AbortController();
 
     const url = new URL(API_BASE);
     url.searchParams.set('action','item');
     url.searchParams.set('code', code);
-    const res = await fetch(url, {cache:'no-store', signal: itemCtrl.signal});
+
+    const res = await fetch(url, { cache:'no-store', signal: itemCtrl.signal });
     const data = await res.json();
 
-    // 3) Si falta el nombre, intenta obtenerlo por 'search'
+    // Completa nombre si falta
     if (!data.suministro) {
       try {
         if (searchCtrl) searchCtrl.abort();
@@ -252,13 +245,13 @@ async function fetchItem(code){
         sUrl.searchParams.set('q', code);
         const sRes = await fetch(sUrl, {cache:'no-store', signal: searchCtrl.signal});
         const sData = await sRes.json();
-        const hit = (sData.items||[]).find(it => (it.codigo||'') == String(code));
+        const hit = (sData.items||[]).find(it => String(it.codigo)==String(code));
         if (hit?.suministro) data.suministro = hit.suministro;
-      } catch(_) {}
+      } catch {}
     }
 
-    localStorage.setItem(cacheKey(code), JSON.stringify(data));
-    renderItem(data);
+    cacheSet(code, data);
+    renderItem(data, false);
   }catch(e){
     if (e.name !== 'AbortError') {
       console.error('item error', e);
@@ -269,47 +262,42 @@ async function fetchItem(code){
   }
 }
 
+function setLoading(isLoading){
+  btnBuscar.disabled = isLoading;
+  btnBuscar.textContent = isLoading ? 'Buscando…' : 'Buscar';
+}
+
 /* ========= Utilitarios de datos ========= */
-// Agrupa por fecha (dd/mm/yyyy) sumando inventario
 function groupByDateSum(points){
-  const bucket = new Map(); // clave: time (ms), valor: suma
+  const bucket = new Map();
   for (const p of (points||[])) {
     const dt = parseDMY(p.fecha);
     if (!dt) continue;
-    const t = dt.getTime();
+    const key = dt.toISOString().slice(0,10); // yyyy-mm-dd (UTC)
     const inv = Number(p.inventario || 0);
-    bucket.set(t, (bucket.get(t)||0) + inv);
+    bucket.set(key, (bucket.get(key)||0) + (Number.isFinite(inv)?inv:0));
   }
-  const arr = Array.from(bucket.entries())
-    .sort((a,b)=> a[0]-b[0])
-    .map(([t, inventario]) => ({ fecha: new Date(t), inventario }));
-  return arr;
+  const rows = Array.from(bucket.entries()).sort((a,b)=> a[0].localeCompare(b[0]));
+  return rows.map(([iso, inventario]) => ({ iso, inventario }));
 }
 
-// SMA 30 días sobre serie diaria (ventana por fecha)
-function sma30(points){
-  const out = new Array(points.length).fill(null);
-  let j = 0, sum = 0, cnt = 0;
-  for (let i=0;i<points.length;i++){
-    const to = points[i].fecha;
-    const from = new Date(to); from.setDate(from.getDate()-29);
-    while (j<=i && points[j].fecha < from){ sum -= points[j].inventario; cnt--; j++; }
-    sum += points[i].inventario; cnt++;
-    out[i] = cnt ? (sum/cnt) : null;
-  }
-  return out;
+function sma30(labelsISO, serie){
+  const dates = labelsISO.map(s=>new Date(s+'T00:00:00Z'));
+  return labelsISO.map((_, i) => {
+    const to = dates[i];
+    const from = new Date(to); from.setUTCDate(from.getUTCDate()-29);
+    let sum=0, cnt=0;
+    for (let k=i; k>=0 && dates[k]>=from; k--) { const v=Number(serie[k]||0); sum+=v; cnt++; }
+    return cnt ? (sum/cnt) : null;
+  });
 }
 
 /* ========= Render ========= */
 function renderItem(data, fromCache=false){
   // Reset
   if (!data) {
-    lblCodigo.textContent = '—';
-    lblSuministro.textContent = '—';
-    lblKBmin.textContent = '—';
-    lblCritico.textContent = '—';
-    lblUltInv.textContent = '—';
-    lblUltFec.textContent = '—';
+    lblCodigo.textContent = lblSuministro.textContent = lblKBmin.textContent =
+    lblCritico.textContent = lblUltInv.textContent = lblUltFec.textContent =
     lblProm30.textContent = '—';
     lblAct.textContent = '—';
     ttlChartEl.textContent = 'Curva de Inventario';
@@ -318,40 +306,39 @@ function renderItem(data, fromCache=false){
   }
 
   // 1) Consolidar por día y ordenar
-  const puntos = groupByDateSum(Array.isArray(data.puntos) ? data.puntos : []);
-  if (!puntos.length){
-    // Limpia UI si no hay puntos
-    lblCodigo.textContent = data.codigo || '—';
-    lblSuministro.textContent = data.suministro || '—';
-    lblKBmin.textContent = (data.kb_min != null ? nf.format(+data.kb_min) : '—');
-    lblCritico.textContent = (data.critico != null ? nf.format(+data.critico) : '—');
-    lblProm30.textContent = '—';
-    lblUltInv.textContent = '—';
-    lblUltFec.textContent = '—';
-    lblAct.textContent = (fromCache?'(caché) ':'') + new Date().toLocaleString();
-    ttlChartEl.textContent = `${data.codigo || '—'} — ${data.suministro || '—'}`;
-    if (chart) chart.destroy();
-    return;
-  }
+  const puntos = groupByDateSum(Array.isArray(data.puntos)?data.puntos:[]);
 
-  // 2) Series
-  const labels = puntos.map(p=> fmtDMY(p.fecha));   // visibles (dd/mm/yyyy)
-  const inv    = puntos.map(p=> Number(p.inventario||0));
-  const avg30  = sma30(puntos);
-  const last   = puntos[puntos.length-1];
+  // 2) Serie básica
+  const labelsISO = puntos.map(p=>p.iso);               // yyyy-mm-dd
+  const labelsDMY = labelsISO.map(iso => {
+    const [y,m,d]=iso.split('-').map(Number);
+    return `${String(d).padStart(2,'0')}/${String(m).padStart(2,'0')}/${y}`;
+  });
+  const inv = puntos.map(p=>Number(p.inventario||0));
+  // 3) SMA-30
+  const avg30 = sma30(labelsISO, inv);
+  const lastAvg = avg30.length ? avg30[avg30.length-1] : null;
 
-  // 3) Panel
+  // 4) Último punto
+  const lastIdx = inv.length ? (inv.length-1) : -1;
+  const lastInv = lastIdx>=0 ? inv[lastIdx] : null;
+  const lastDateDMY = lastIdx>=0 ? labelsDMY[lastIdx] : null;
+
+  // 5) Panel
   lblCodigo.textContent     = data.codigo || '—';
   lblSuministro.textContent = data.suministro || '—';
-  lblKBmin.textContent      = (data.kb_min != null ? nf.format(+data.kb_min) : '—');
-  lblCritico.textContent    = (data.critico != null ? nf.format(+data.critico) : '—');
-  lblUltInv.textContent     = nf.format(Number(last.inventario||0));
-  lblUltFec.textContent     = fmtDMY(last.fecha);
-  lblProm30.textContent     = (avg30[avg30.length-1] != null ? nf.format(avg30[avg30.length-1]) : '—');
+  lblKBmin.textContent      = (data.kb_min!=null ? nf.format(+data.kb_min) : '—');
+  lblCritico.textContent    = (data.critico!=null ? nf.format(+data.critico) : '—');
+  lblUltInv.textContent     = (lastInv!=null ? nf.format(lastInv) : '—');
+  lblUltFec.textContent     = (lastDateDMY || '—');
+  lblProm30.textContent     = (lastAvg!=null ? nf.format(lastAvg) : '—');
   lblAct.textContent        = (fromCache?'(caché) ':'') + new Date().toLocaleString();
   ttlChartEl.textContent    = `${data.codigo || '—'} — ${data.suministro || '—'}`;
 
-  // 4) Datasets
+  // Si no hay datos válidos, limpia canvas y sale
+  if (!labelsISO.length) { if(chart) chart.destroy(); return; }
+
+  // Datasets
   const datasets = [
     {
       label:'Inventario',
@@ -380,72 +367,57 @@ function renderItem(data, fromCache=false){
   if (Number.isFinite(+data.kb_min)) {
     datasets.push({
       label:'KB_min',
-      data: labels.map(()=> +data.kb_min),
+      data: labelsISO.map(()=> +data.kb_min),
       borderColor: 'rgba(234,179,8,1)',
       backgroundColor: 'rgba(234,179,8,0.10)',
-      pointRadius:0,
-      borderWidth:1,
-      fill: false,
-      clip: false
+      pointRadius:0, borderWidth:1, fill:false, clip:false
     });
   }
   if (Number.isFinite(+data.critico)) {
     datasets.push({
       label:'Crítico',
-      data: labels.map(()=> +data.critico),
+      data: labelsISO.map(()=> +data.critico),
       borderColor: 'rgba(239,68,68,1)',
       backgroundColor: 'rgba(239,68,68,0.10)',
-      pointRadius:0,
-      borderWidth:1,
-      fill: false,
-      clip: false
+      pointRadius:0, borderWidth:1, fill:false, clip:false
     });
   }
 
-  // Plugin: rotula último valor a la derecha
+  // Plugin: etiqueta del último valor
   const lastValuePlugin = {
     id: 'lastValuePlugin',
-    afterDatasetsDraw(chart, args) {
-      const {ctx} = chart;
-      ctx.save();
-      ctx.font = '12px sans-serif';
-      ctx.textBaseline = 'middle';
-      chart.data.datasets.forEach((ds, i) => {
-        const meta = chart.getDatasetMeta(i);
-        if (!meta?.data?.length) return;
+    afterDatasetsDraw(c) {
+      const {ctx, data} = c;
+      ctx.save(); ctx.font = '12px sans-serif'; ctx.textBaseline='middle';
+      data.datasets.forEach((ds,i)=>{
+        const meta = c.getDatasetMeta(i); if(!meta?.data?.length) return;
         let idx = ds.data.length-1;
         while (idx>=0 && (ds.data[idx]==null || !isFinite(ds.data[idx]))) idx--;
         if (idx<0) return;
-        const pt = meta.data[idx];
-        const val = +ds.data[idx];
-        if (!pt || !isFinite(val)) return;
-        const x = pt.x + 6;
-        const y = pt.y;
-        ctx.fillStyle = Array.isArray(ds.borderColor) ? ds.borderColor[0] : (ds.borderColor || '#334155');
+        const pt = meta.data[idx]; const val = +ds.data[idx];
+        const x = pt.x + 6, y = pt.y;
+        ctx.fillStyle = Array.isArray(ds.borderColor)?ds.borderColor[0]:(ds.borderColor||'#334155');
         ctx.fillText(nf.format(val), x, y);
       });
       ctx.restore();
     }
   };
 
-  // 5) X ticks: 1ro de mes, cada 14 días y último dato
-  function xTickCallback(value, index, ticks){
+  // Ticks eje X: cada 14 días + último
+  function xTickCallback(val, index, ticks){
     const isLast = index === (ticks.length-1);
-    if (isLast) return labels[index];
-    const dt = puntos[index].fecha;
-    if (dt.getDate()===1) return labels[index]; // inicio de mes
-    // cada 14 días respecto al inicio
-    const d0 = puntos[0].fecha;
-    const diffDays = Math.round((dt - d0)/(1000*60*60*24));
-    return (diffDays % 14 === 0) ? labels[index] : '';
+    if (isLast) return labelsDMY[index];
+    const iDate = new Date(labelsISO[index]+'T00:00:00Z');
+    const first = new Date(labelsISO[0]+'T00:00:00Z');
+    const diff = Math.round((iDate-first)/(1000*60*60*24));
+    return (diff % 14 === 0) ? labelsDMY[index] : '';
   }
 
-  // Render chart
   if (chart) chart.destroy();
   const ctx = document.getElementById('chart').getContext('2d');
   chart = new Chart(ctx, {
     type:'line',
-    data:{ labels, datasets },
+    data:{ labels: labelsDMY, datasets },
     options:{
       responsive:true,
       maintainAspectRatio:false,
@@ -456,10 +428,7 @@ function renderItem(data, fromCache=false){
         tooltip:{ callbacks:{ label(c){ return `${c.dataset.label}: ${nf.format(c.parsed.y)}`; } } }
       },
       scales: {
-        x: {
-          ticks: { autoSkip:false, maxRotation:0, minRotation:0, callback: xTickCallback },
-          grid: { drawOnChartArea: true }
-        },
+        x: { ticks:{ autoSkip:false, maxRotation:0, minRotation:0, callback:xTickCallback } },
         y: { beginAtZero:false }
       }
     },
@@ -467,21 +436,21 @@ function renderItem(data, fromCache=false){
   });
 }
 
-/* ========= PWA / Service Worker ========= */
+/* ========= PWA ========= */
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js').catch(console.error);
   });
 }
-let installEvt=null;
+let deferPrompt = null;
 window.addEventListener('beforeinstallprompt', (e) => {
-  e.preventDefault(); installEvt = e;
+  e.preventDefault(); deferPrompt = e;
   el('#btnInstall')?.classList.remove('hidden');
 });
 el('#btnInstall')?.addEventListener('click', async () => {
-  if (!installEvt) return;
-  installEvt.prompt(); await installEvt.userChoice;
-  installEvt = null; el('#btnInstall')?.classList.add('hidden');
+  if (!deferPrompt) return;
+  deferPrompt.prompt(); await deferPrompt.userChoice;
+  deferPrompt = null; el('#btnInstall')?.classList.add('hidden');
 });
 </script>
 </body>
