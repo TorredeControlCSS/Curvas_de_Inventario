@@ -1,15 +1,13 @@
 {
-  "name": "Inventario CEDIS — Curvas",
+  "name": "CEDIS Panamá — Curvas de Inventario",
   "short_name": "Inventario CEDIS",
-  "description": "Consulta en tiempo real las curvas de inventario (KB_min, crítico, serie histórica).",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#0ea5e9",
+  "background_color": "#ffffff",
   "theme_color": "#0ea5e9",
   "icons": [
-    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" }
+    { "src": "./icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "./icons/icon-512.png", "sizes": "512x512", "type": "image/png" }
   ]
 }
-
