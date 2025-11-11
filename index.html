@@ -388,8 +388,7 @@ function renderItem(data, fromCache=false){
   lblCritico.textContent    = (data.critico != null ? nf.format(+data.critico) : '—');
   lblUltInv.textContent     = last ? nf.format(Number(last.inventario||0)) : '—';
   lblUltFec.textContent     = last ? last.fecha : '—';
-  lblProm30.textContent     = (lastAvg != null ? nf.format(lastAvg) : '—';
-  )
+  lblProm30.textContent     = (lastAvg != null ? nf.format(lastAvg) : '—');
   lblAct.textContent        = (fromCache?'(caché) ':'') + new Date().toLocaleString();
   ttlChartEl.textContent    = `${data.codigo || '—'} — ${data.suministro || '—'}`;
 
@@ -524,3 +523,4 @@ el('#btnInstall')?.addEventListener('click', async () => {
 </script>
 </body>
 </html>
+
