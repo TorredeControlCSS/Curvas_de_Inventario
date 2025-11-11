@@ -403,7 +403,7 @@ function renderItem(data, fromCache=false){
   function xTickCallback(value, index, ticks){
     const isLast = index === (ticks.length-1);
     if (isLast) return labels[index];
-    // cada 7 días (aprox) comparando contra el primer label
+    // cada 14 días (aprox) comparando contra el primer label
     const d0 = new Date(labels[0]);
     const di = new Date(labels[index]);
     const diffDays = Math.round((di - d0)/(1000*60*60*24));
@@ -457,4 +457,5 @@ el('#btnInstall')?.addEventListener('click', async () => {
   deferPrompt = null; el('#btnInstall')?.classList.add('hidden');
 });
 </script>
+
 
