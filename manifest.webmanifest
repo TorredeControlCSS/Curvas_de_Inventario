@@ -1,13 +1,13 @@
 {
-  "name": "CEDIS Panamá — Curvas de Inventario",
-  "short_name": "Inventario CEDIS",
-  "start_url": "./",
-  "scope": "./",
+  "name": "Inventario CEDIS — Curvas en tiempo real",
+  "short_name": "CEDIS Curvas",
+  "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#0ea5e9",
+  "description": "Curvas de inventario en tiempo real para CEDIS Panamá.",
   "icons": [
-    { "src": "./icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "./icons/icon-512.png", "sizes": "512x512", "type": "image/png" }
+    { "src": "./icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "./icon-512.png", "sizes": "512x512", "type": "image/png" }
   ]
 }
