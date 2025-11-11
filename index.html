@@ -425,18 +425,31 @@ function renderItem(data, fromCache=false){
         legend:{ position:'top' },
         tooltip:{ callbacks:{ label(c){ return `${c.dataset.label}: ${nf.format(c.parsed.y)}`; } } }
       },
-      scales: {
-        x: {
-          ticks: {
-            autoSkip: false,
-            maxRotation: 0,
-            minRotation: 0,
-            callback: xTickCallback
-          }
-        },
-        y: { beginAtZero: false }
+     scales: {
+  x: {
+    ticks: {
+      autoSkip: true,          // omite etiquetas automáticamente
+      maxTicksLimit: 8,        // muestra ~8 etiquetas máximo
+      maxRotation: 0,
+      minRotation: 0,
+      padding: 8,
+      callback: function(value, index, ticks) {
+        const step = Math.ceil(ticks.length / 8);
+        return index % step === 0 ? this.getLabelForValue(value) : '';
       }
     },
+    grid: {
+      color: 'rgba(200,200,200,0.2)',
+      drawTicks: false
+    }
+  },
+  y: {
+    beginAtZero: false,
+    grid: {
+      color: 'rgba(200,200,200,0.2)'
+    }
+  }
+},
     plugins:[lastValuePlugin]
   });
 }
@@ -457,5 +470,6 @@ el('#btnInstall')?.addEventListener('click', async () => {
   deferPrompt = null; el('#btnInstall')?.classList.add('hidden');
 });
 </script>
+
 
 
