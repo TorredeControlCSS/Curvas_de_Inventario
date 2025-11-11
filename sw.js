@@ -1,52 +1,56 @@
-// sw.js
-const CACHE = 'cedis-cache-v1';
-const APP_SHELL = [
+const CACHE_NAME = 'cedis-cache-v7';
+const CORE_ASSETS = [
   './',
   './index.html',
   './manifest.webmanifest',
   './icons/icon-192.png',
-  './icons/icon-512.png',
-  // CDNs quedan fuera: el navegador los cachea bien, pero si quieres, añádelos también
+  './icons/icon-512.png'
 ];
 
-self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE).then(c => c.addAll(APP_SHELL))
-  );
+self.addEventListener('install', (e) => {
+  e.waitUntil(caches.open(CACHE_NAME).then(c => c.addAll(CORE_ASSETS)));
   self.skipWaiting();
 });
 
-self.addEventListener('activate', (event) => {
-  event.waitUntil(
+self.addEventListener('activate', (e) => {
+  e.waitUntil(
     caches.keys().then(keys =>
-      Promise.all(keys.map(k => (k===CACHE?null:caches.delete(k))))
+      Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
     )
   );
   self.clients.claim();
 });
 
-self.addEventListener('fetch', (event) => {
-  const req = event.request;
+self.addEventListener('fetch', (e) => {
+  const { request } = e;
+  const url = new URL(request.url);
 
-  // Estrategia "Stale-While-Revalidate" para GET (incluye API)
-  if (req.method === 'GET') {
-    event.respondWith((async () => {
-      const cache = await caches.open(CACHE);
-      const cached = await cache.match(req);
-      const fetchPromise = fetch(req).then(res => {
-        // sólo cacheamos 200 OK
-        if (res && res.status === 200) cache.put(req, res.clone());
-        return res;
-      }).catch(() => null);
-
-      // Devuelve rápido caché, y en paralelo actualiza
-      return cached || fetchPromise || new Response('{"offline":true}', {
-        headers:{'Content-Type':'application/json'}
-      });
-    })());
+  // Nunca cachear la API (siempre fresco)
+  if (url.hostname === 'script.google.com') {
+    e.respondWith(fetch(request));
     return;
   }
 
-  // Fallback directo
-  event.respondWith(fetch(req));
+  // HTML: network-first con fallback a caché
+  if (request.mode === 'navigate') {
+    e.respondWith(
+      fetch(request).then(r => {
+        const copy = r.clone();
+        caches.open(CACHE_NAME).then(c => c.put(request, copy));
+        return r;
+      }).catch(() => caches.match(request))
+    );
+    return;
+  }
+
+  // Otros: cache-first
+  e.respondWith(
+    caches.match(request).then(cached => cached ||
+      fetch(request).then(r => {
+        const copy = r.clone();
+        caches.open(CACHE_NAME).then(c => c.put(request, copy));
+        return r;
+      })
+    )
+  );
 });
