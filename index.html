@@ -9,16 +9,15 @@
   <link rel="manifest" href="manifest.webmanifest">
   <meta name="theme-color" content="#0ea5e9">
 
-  <!-- Ícono / logo del header (usa tus archivos del repo) -->
+  <!-- Iconos locales del repo -->
   <link rel="icon" href="icons/icon-192.png">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
 
-  <!-- Preconexión a la API (mejora TTFB) -->
+  <!-- Preconexión a la API -->
   <link rel="preconnect" href="https://script.google.com" crossorigin>
 
-  <!-- UI -->
+  <!-- UI y Chart.js -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1" defer></script>
 
   <style>
@@ -89,6 +88,7 @@
         <div class="h-[360px]">
           <canvas id="chart"></canvas>
         </div>
+        <div id="msg" class="text-xs text-slate-400 mt-2"></div>
       </div>
     </section>
   </main>
@@ -99,199 +99,153 @@
 
   <!-- ======== APP SCRIPT ======== -->
   <script defer>
-/* ========= CONFIG ========= */
 const API_BASE = 'https://script.google.com/macros/s/AKfycbxQsD4XJICmZg-5eiZIAEjJ3GZz-GmqvhvMWtiznEOu7SafIKxWopo5iIVy7ufrq_qq/exec';
 
-/* ========= helpers ========= */
-const el  = s => document.querySelector(s);
-const els = s => Array.from(document.querySelectorAll(s));
-const nf = new Intl.NumberFormat('en-US');
+const el=s=>document.querySelector(s), els=s=>Array.from(document.querySelectorAll(s));
+const nf=new Intl.NumberFormat('en-US');
 
-const q = el('#q'), btnClearInput = el('#btnClearInput'), suggestions = el('#suggestions');
-const btnBuscar = el('#btnBuscar'), btnLimpiar = el('#btnLimpiar');
+const q=el('#q'), btnClearInput=el('#btnClearInput'), suggestions=el('#suggestions');
+const btnBuscar=el('#btnBuscar'), btnLimpiar=el('#btnLimpiar');
 const lblCodigo=el('#lblCodigo'), lblSuministro=el('#lblSuministro'), lblKBmin=el('#lblKBmin');
 const lblCritico=el('#lblCritico'), lblUltInv=el('#lblUltInv'), lblUltFec=el('#lblUltFec');
-const lblAct=el('#lblActualizado'), lblProm30=el('#lblProm30'), ttlChartEl=el('#ttlChart');
+const lblAct=el('#lblActualizado'), lblProm30=el('#lblProm30'), ttlChartEl=el('#ttlChart'), msg=el('#msg');
 
 let chart, searchCtrl=null, itemCtrl=null, deferPrompt=null;
 
-/* ========= INPUT UX ========= */
-q.addEventListener('input', () => {
-  btnClearInput.classList.toggle('hidden', q.value.trim()==='');
-});
-btnClearInput.addEventListener('click', () => { q.value=''; btnClearInput.classList.add('hidden'); hideSuggestions(); });
-
+/* ===== UX ===== */
+q.addEventListener('input',()=>{ btnClearInput.classList.toggle('hidden', q.value.trim()===''); });
+btnClearInput.addEventListener('click',()=>{ q.value=''; btnClearInput.classList.add('hidden'); hideSuggestions(); });
 let tDeb=null;
-q.addEventListener('input', () => {
-  clearTimeout(tDeb);
-  const term=q.value.trim();
-  if (term.length<2){ hideSuggestions(); return; }
-  tDeb=setTimeout(()=>doSearch(term), 250);
-});
-q.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ hideSuggestions(); launchSearch(); }});
+q.addEventListener('input',()=>{ clearTimeout(tDeb); const t=q.value.trim(); if(t.length<2){hideSuggestions();return;} tDeb=setTimeout(()=>doSearch(t),250); });
+q.addEventListener('keydown',(e)=>{ if(e.key==='Enter'){ hideSuggestions(); launchSearch(); }});
 btnBuscar.addEventListener('click', launchSearch);
-btnLimpiar.addEventListener('click', () => { q.value=''; btnClearInput.classList.add('hidden'); hideSuggestions(); renderItem(null); });
+btnLimpiar.addEventListener('click',()=>{ q.value=''; btnClearInput.classList.add('hidden'); hideSuggestions(); renderItem(null); });
 
-/* ========= SUGERENCIAS ========= */
+/* ===== Sugerencias ===== */
 function showSuggestions(items){
-  if(!items || !items.length){ hideSuggestions(); return; }
-  items=items.slice(0,10);
-  suggestions.innerHTML=items.map(it=>`
-    <li class="px-3 py-2 hover:bg-slate-100 border-b border-slate-100" data-cod="${it.codigo||''}">
-      <div class="font-medium">${it.suministro||''}</div>
-      <div class="text-xs text-slate-500">${it.codigo||''}</div>
+  if(!items||!items.length){ hideSuggestions(); return; }
+  suggestions.innerHTML = items.slice(0,10).map(it=>`
+    <li class="px-3 py-2 hover:bg-slate-100 border-b border-slate-100" data-cod="${it.codigo||it.code||''}">
+      <div class="font-medium">${it.suministro||it.nombre||''}</div>
+      <div class="text-xs text-slate-500">${it.codigo||it.code||''}</div>
     </li>`).join('');
   suggestions.classList.remove('hidden');
   els('#suggestions li').forEach(li=>{
-    li.addEventListener('click',()=>{
-      const cod=li.getAttribute('data-cod');
-      q.value=cod; hideSuggestions(); fetchItem(cod);
-    });
+    li.addEventListener('click',()=>{ const cod=li.getAttribute('data-cod'); q.value=cod; hideSuggestions(); fetchItem(cod); });
   });
 }
 function hideSuggestions(){ suggestions.classList.add('hidden'); suggestions.innerHTML=''; }
 
-/* ========= BUSCAR ========= */
+/* ===== Fetch util con timeout ===== */
+async function fetchWithTimeout(input, opts={}, ms=12000){
+  const ac = new AbortController(); const t=setTimeout(()=>ac.abort(), ms);
+  try{ return await fetch(input, {...opts, signal:ac.signal}); }
+  finally{ clearTimeout(t); }
+}
+
+/* ===== Buscar ===== */
 async function doSearch(term){
   try{
-    if (searchCtrl) searchCtrl.abort();
-    searchCtrl = new AbortController();
-
-    const url = new URL(API_BASE);
-    url.searchParams.set('action','search');
-    url.searchParams.set('q', term);
-
-    const res = await fetch(url, { cache:'no-store', signal:searchCtrl.signal });
-    const data = await res.json();
-    showSuggestions(data.items||[]);
-  }catch(e){ if(e.name!=='AbortError') console.error(e); }
+    if(searchCtrl) searchCtrl.abort(); searchCtrl=new AbortController();
+    const url=new URL(API_BASE); url.searchParams.set('action','search'); url.searchParams.set('q', term);
+    const res=await fetchWithTimeout(url,{cache:'no-store',signal:searchCtrl.signal});
+    const data=await res.json();
+    showSuggestions((data.items||data.result||data.payload||[]));
+  }catch(e){ if(e.name!=='AbortError') console.error('search',e); }
 }
 function setLoading(x){ btnBuscar.disabled=x; btnBuscar.textContent=x?'Buscando…':'Buscar'; }
-function launchSearch(){
-  const term=q.value.trim();
-  if(!term) return;
-  if(/^\d{6,}$/.test(term)) fetchItem(term);
-  else doSearch(term);
-}
 
-/* ========= DETALLE ========= */
+/* ===== Detalle ===== */
+function pickItemShape(obj){
+  if(!obj) return null;
+  if (obj.item) return obj.item;
+  if (obj.data) return obj.data;
+  if (obj.result) return obj.result;
+  if (obj.payload) return obj.payload;
+  return obj;
+}
+function launchSearch(){
+  const term=q.value.trim(); if(!term) return;
+  if(/^\d{6,}$/.test(term)) fetchItem(term); else doSearch(term);
+}
 async function fetchItem(code){
   try{
-    setLoading(true);
+    setLoading(true); msg.textContent='';
 
-    // Cache inmediato
+    // cache inmediato
     const cacheKey='item:'+code;
     const cached=localStorage.getItem(cacheKey);
     if(cached) renderItem(JSON.parse(cached), true);
 
-    if(itemCtrl) itemCtrl.abort();
-    itemCtrl = new AbortController();
+    if(itemCtrl) itemCtrl.abort(); itemCtrl=new AbortController();
+    const url=new URL(API_BASE); url.searchParams.set('action','item'); url.searchParams.set('code', code);
 
-    const url=new URL(API_BASE);
-    url.searchParams.set('action','item');
-    url.searchParams.set('code', code);
-
-    const res=await fetch(url,{ cache:'no-store', signal:itemCtrl.signal });
-    const data=await res.json();
-
-    // Resuelve nombre si faltase
-    if(!data.suministro){
-      try{
-        if(searchCtrl) searchCtrl.abort();
-        searchCtrl=new AbortController();
-        const s=new URL(API_BASE);
-        s.searchParams.set('action','search'); s.searchParams.set('q', code);
-        const r=await fetch(s,{cache:'no-store', signal:searchCtrl.signal});
-        const sd=await r.json();
-        const hit=(sd.items||[]).find(it=>(it.codigo||'')===String(code));
-        if(hit?.suministro) data.suministro=hit.suministro;
-      }catch(_){}
-    }
-
+    const res=await fetchWithTimeout(url,{cache:'no-store',signal:itemCtrl.signal});
+    const raw=await res.json();
+    const data = pickItemShape(raw) || {};
     localStorage.setItem(cacheKey, JSON.stringify(data));
     renderItem(data);
   }catch(e){
-    if(e.name!=='AbortError'){ console.error(e); alert('No se pudo obtener el detalle.'); }
+    if(e.name!=='AbortError'){ console.error('item',e); alert('No se pudo obtener el detalle.'); }
   }finally{ setLoading(false); }
 }
 
-/* ========= FECHAS & SERIES ========= */
-// Parse robusto: DD/MM/YY(YY) [opcional hora] o ISO
+/* ===== Fechas & series ===== */
 function parseToYMD(str){
-  if(!str) return null;
-  str=String(str).trim();
-  // ISO
-  const iso = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if(!str) return null; str=String(str).trim();
+  const iso=str.match(/^(\d{4})-(\d{2})-(\d{2})/);
   if(iso) return {y:+iso[1], m:+iso[2], d:+iso[3]};
-  // DD/MM/YY[YY] con o sin hora
-  const dm = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
-  if(dm){
-    let d=+dm[1], m=+dm[2], y=+dm[3];
-    if(y<100) y+=2000; // 24 => 2024
-    return {y, m, d};
-  }
+  const dm=str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+  if(dm){ let d=+dm[1], m=+dm[2], y=+dm[3]; if(y<100) y+=2000; return {y,m,d}; }
   return null;
 }
-const ymdToKey = o => o ? `${o.y.toString().padStart(4,'0')}-${String(o.m).padStart(2,'0')}-${String(o.d).padStart(2,'0')}` : '';
-
+const ymdToKey=o=>o?`${o.y.toString().padStart(4,'0')}-${String(o.m).padStart(2,'0')}-${String(o.d).padStart(2,'0')}`:'';
 function groupByDateSum(points){
   const bucket={};
-  for(const p of (points||[])){
-    const o=parseToYMD(p.fecha);
-    if(!o) continue;
-    const key=ymdToKey(o);
-    const inv=Number(p.inventario||0);
+  for(const p of (points||[])){ const o=parseToYMD(p.fecha||p.date); if(!o) continue;
+    const key=ymdToKey(o); const inv=Number(p.inventario ?? p.stock ?? 0);
     bucket[key]=(bucket[key]||0)+inv;
   }
-  const arr=Object.keys(bucket).sort().map(k=>({ key:k, inventario:bucket[k] }));
-  return arr;
+  return Object.keys(bucket).sort().map(k=>({key:k, inventario:bucket[k]}));
 }
 function sma30(keys, serie){
-  // keys son 'YYYY-MM-DD'
-  const toDate = k => new Date(k+'T00:00:00Z');
-  const dts = keys.map(toDate);
-  return keys.map((_,i)=>{
-    const to=dts[i], from=new Date(to); from.setUTCDate(from.getUTCDate()-29);
-    let sum=0, cnt=0;
-    for(let k=i;k>=0 && dts[k]>=from;k--){ sum+=Number(serie[k]||0); cnt++; }
-    return cnt? sum/cnt : null;
-  });
+  const toDate=k=>new Date(k+'T00:00:00Z'); const dts=keys.map(toDate);
+  return keys.map((_,i)=>{ const to=dts[i], from=new Date(to); from.setUTCDate(from.getUTCDate()-29);
+    let sum=0,cnt=0; for(let k=i;k>=0 && dts[k]>=from;k--){ sum+=Number(serie[k]||0); cnt++; } return cnt?sum/cnt:null; });
 }
-const prettyDMY = key => { const [y,m,d]=key.split('-'); return `${d}/${m}/${y}`; };
+const prettyDMY=k=>{ const [y,m,d]=String(k).split('-'); return `${d}/${m}/${y}`; };
 
-/* ========= RENDER ========= */
+/* ===== Render ===== */
 function renderItem(data, fromCache=false){
-  // Reset
-  if(!data){
-    [lblCodigo,lblSuministro,lblKBmin,lblCritico,lblUltInv,lblUltFec,lblProm30,lblAct]
-      .forEach(l=>l.textContent='—');
-    ttlChartEl.textContent='Curva de Inventario';
-    if(chart) chart.destroy();
-    return;
-  }
+  // Panel base
+  const codigo = data.codigo ?? data.code ?? '—';
+  const nombre = data.suministro ?? data.nombre ?? data.name ?? '—';
+  const kbmin  = data.kb_min ?? data.kbmin ?? null;
+  const crit   = data.critico ?? data.critical ?? null;
 
-  // 1) Consolidar
-  const puntosRaw = Array.isArray(data.puntos)? data.puntos : [];
+  // Series
+  const puntosRaw = Array.isArray(data.puntos)||Array.isArray(data.series) ? (data.puntos||data.series) : [];
   const puntos = groupByDateSum(puntosRaw);
-
-  // 2) Series
-  const labels = puntos.map(p=>p.key); // YYYY-MM-DD
+  const labels = puntos.map(p=>p.key);
   const inv    = puntos.map(p=>Number(p.inventario||0));
   const avg30  = sma30(labels, inv);
   const lastIx = labels.length? labels.length-1 : -1;
 
-  // 3) Panel
-  lblCodigo.textContent     = data.codigo || '—';
-  lblSuministro.textContent = data.suministro || '—';
-  lblKBmin.textContent      = (data.kb_min != null ? nf.format(+data.kb_min) : '—');
-  lblCritico.textContent    = (data.critico != null ? nf.format(+data.critico) : '—');
-  lblUltInv.textContent     = (lastIx>=0 ? nf.format(inv[lastIx]||0) : '—');
-  lblUltFec.textContent     = (lastIx>=0 ? prettyDMY(labels[lastIx]) : '—');
-  lblProm30.textContent     = (lastIx>=0 && avg30[lastIx]!=null ? nf.format(avg30[lastIx]) : '—');
+  // Panel UI
+  lblCodigo.textContent     = codigo || '—';
+  lblSuministro.textContent = nombre || '—';
+  lblKBmin.textContent      = (kbmin!=null? nf.format(+kbmin):'—');
+  lblCritico.textContent    = (crit!=null? nf.format(+crit):'—');
+  lblUltInv.textContent     = (lastIx>=0? nf.format(inv[lastIx]||0):'—');
+  lblUltFec.textContent     = (lastIx>=0? prettyDMY(labels[lastIx]):'—');
+  lblProm30.textContent     = (lastIx>=0 && avg30[lastIx]!=null? nf.format(avg30[lastIx]):'—');
   lblAct.textContent        = (fromCache?'(caché) ':'') + new Date().toLocaleString();
-  ttlChartEl.textContent    = `${data.codigo || '—'} — ${data.suministro || '—'}`;
+  ttlChartEl.textContent    = `${codigo || '—'} — ${nombre || '—'}`;
 
-  // 4) Datasets
+  // Mensaje cuando no hay puntos
+  msg.textContent = labels.length ? '' : 'Sin datos de inventario para graficar.';
+
+  // Datasets
   const datasets = [
     { label:'Inventario', data: inv,
       borderColor:'rgba(59,130,246,1)', backgroundColor:'rgba(59,130,246,.15)',
@@ -300,18 +254,18 @@ function renderItem(data, fromCache=false){
       borderColor:'rgba(100,116,139,1)', backgroundColor:'rgba(100,116,139,.08)',
       pointRadius:0, borderWidth:2, borderDash:[6,4], tension:.2, fill:false, clip:false }
   ];
-  if(Number.isFinite(+data.kb_min)){
-    datasets.push({ label:'KB_min', data: labels.map(()=>+data.kb_min),
+  if(Number.isFinite(+kbmin)){
+    datasets.push({ label:'KB_min', data: labels.map(()=>+kbmin),
       borderColor:'rgba(234,179,8,1)', backgroundColor:'rgba(234,179,8,.10)',
       pointRadius:0, borderWidth:1, fill:false, clip:false });
   }
-  if(Number.isFinite(+data.critico)){
-    datasets.push({ label:'Crítico', data: labels.map(()=>+data.critico),
+  if(Number.isFinite(+crit)){
+    datasets.push({ label:'Crítico', data: labels.map(()=>+crit),
       borderColor:'rgba(239,68,68,1)', backgroundColor:'rgba(239,68,68,.10)',
       pointRadius:0, borderWidth:1, fill:false, clip:false });
   }
 
-  // Plugin: rotula último valor
+  // Plugin: etiqueta último valor
   const lastValuePlugin = {
     id:'lastValuePlugin',
     afterDatasetsDraw(c){
@@ -322,22 +276,21 @@ function renderItem(data, fromCache=false){
         if(idx<0) return; const pt=meta.data[idx]; const val=+ds.data[idx];
         ctx.fillStyle = Array.isArray(ds.borderColor)? ds.borderColor[0] : (ds.borderColor||'#334155');
         ctx.fillText(nf.format(val), pt.x+6, pt.y);
-      });
-      ctx.restore();
+      }); ctx.restore();
     }
   };
 
-  // Ticks del eje X: último siempre + 1ro de cada mes
+  // Ticks: último y primer día de cada mes
   function xTickCallback(value, index, ticks){
     const isLast = index === ticks.length-1;
     if(isLast) return prettyDMY(labels[index]);
-    const [y,m,] = String(labels[index]||'').split('-');
+    const [y,m] = String(labels[index]||'').split('-');
     const prev = index>0 ? String(labels[index-1]).split('-') : null;
     const changedMonth = !prev || (prev[0]!==y || prev[1]!==m);
     return changedMonth ? prettyDMY(labels[index]) : '';
   }
 
-  // Render
+  // Render chart
   if(chart) chart.destroy();
   const ctx = document.getElementById('chart').getContext('2d');
   chart = new Chart(ctx, {
@@ -358,7 +311,7 @@ function renderItem(data, fromCache=false){
   });
 }
 
-/* ========= PWA ========= */
+/* ===== PWA ===== */
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{ navigator.serviceWorker.register('./sw.js').catch(console.error); });
 }

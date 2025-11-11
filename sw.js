@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cedis-cache-v7';
+const CACHE_NAME = 'cedis-cache-v8';
 const CORE_ASSETS = [
   './',
   './index.html',
@@ -11,7 +11,6 @@ self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE_NAME).then(c => c.addAll(CORE_ASSETS)));
   self.skipWaiting();
 });
-
 self.addEventListener('activate', (e) => {
   e.waitUntil(
     caches.keys().then(keys =>
@@ -20,37 +19,28 @@ self.addEventListener('activate', (e) => {
   );
   self.clients.claim();
 });
-
 self.addEventListener('fetch', (e) => {
   const { request } = e;
   const url = new URL(request.url);
 
-  // Nunca cachear la API (siempre fresco)
+  // API: siempre red (no cachear)
   if (url.hostname === 'script.google.com') {
     e.respondWith(fetch(request));
     return;
   }
 
-  // HTML: network-first con fallback a caché
   if (request.mode === 'navigate') {
     e.respondWith(
       fetch(request).then(r => {
-        const copy = r.clone();
-        caches.open(CACHE_NAME).then(c => c.put(request, copy));
-        return r;
-      }).catch(() => caches.match(request))
+        const copy=r.clone(); caches.open(CACHE_NAME).then(c=>c.put(request, copy)); return r;
+      }).catch(()=>caches.match(request))
     );
     return;
   }
 
-  // Otros: cache-first
   e.respondWith(
     caches.match(request).then(cached => cached ||
-      fetch(request).then(r => {
-        const copy = r.clone();
-        caches.open(CACHE_NAME).then(c => c.put(request, copy));
-        return r;
-      })
+      fetch(request).then(r => { const copy=r.clone(); caches.open(CACHE_NAME).then(c=>c.put(request, copy)); return r; })
     )
   );
 });
