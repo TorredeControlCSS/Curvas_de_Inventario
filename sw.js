@@ -1,68 +1,52 @@
-/* CEDIS SW — v1.2 */
-const CACHE_NAME = 'cedis-cache-v6';
-const CORE = [
+// sw.js
+const CACHE = 'cedis-cache-v1';
+const APP_SHELL = [
   './',
   './index.html',
   './manifest.webmanifest',
-  './icon-192.png',
-  './icon-512.png',
-  './sw.js'
+  './icons/icon-192.png',
+  './icons/icon-512.png',
+  // CDNs quedan fuera: el navegador los cachea bien, pero si quieres, añádelos también
 ];
 
-self.addEventListener('install', (e) => {
-  self.skipWaiting();
-  e.waitUntil(
-    caches.open(CACHE_NAME).then(c => c.addAll(CORE)).catch(()=>{})
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches.open(CACHE).then(c => c.addAll(APP_SHELL))
   );
+  self.skipWaiting();
 });
 
-self.addEventListener('activate', (e) => {
-  e.waitUntil((async () => {
-    const keys = await caches.keys();
-    await Promise.all(keys.map(k => k !== CACHE_NAME && caches.delete(k)));
-    await self.clients.claim();
-  })());
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches.keys().then(keys =>
+      Promise.all(keys.map(k => (k===CACHE?null:caches.delete(k))))
+    )
+  );
+  self.clients.claim();
 });
 
-// Estrategias:
-// 1) API de Apps Script: Network-First con fallback a cache
-// 2) Estáticos: Stale-While-Revalidate
-self.addEventListener('fetch', (e) => {
-  const req = e.request;
-  const url = new URL(req.url);
+self.addEventListener('fetch', (event) => {
+  const req = event.request;
 
-  // Solo GET
-  if (req.method !== 'GET') return;
+  // Estrategia "Stale-While-Revalidate" para GET (incluye API)
+  if (req.method === 'GET') {
+    event.respondWith((async () => {
+      const cache = await caches.open(CACHE);
+      const cached = await cache.match(req);
+      const fetchPromise = fetch(req).then(res => {
+        // sólo cacheamos 200 OK
+        if (res && res.status === 200) cache.put(req, res.clone());
+        return res;
+      }).catch(() => null);
 
-  // API de inventario
-  const isAPI = url.hostname.includes('script.google.com');
-
-  if (isAPI) {
-    e.respondWith(networkFirst(req));
-  } else {
-    e.respondWith(staleWhileRevalidate(req));
+      // Devuelve rápido caché, y en paralelo actualiza
+      return cached || fetchPromise || new Response('{"offline":true}', {
+        headers:{'Content-Type':'application/json'}
+      });
+    })());
+    return;
   }
+
+  // Fallback directo
+  event.respondWith(fetch(req));
 });
-
-async function networkFirst(req){
-  const cache = await caches.open(CACHE_NAME);
-  try {
-    const fresh = await fetch(req, { cache: 'no-store' });
-    cache.put(req, fresh.clone());
-    return fresh;
-  } catch {
-    const cached = await cache.match(req);
-    if (cached) return cached;
-    throw new Error('offline');
-  }
-}
-
-async function staleWhileRevalidate(req){
-  const cache = await caches.open(CACHE_NAME);
-  const cached = await cache.match(req);
-  const network = fetch(req).then(res => {
-    cache.put(req, res.clone());
-    return res;
-  }).catch(()=>{});
-  return cached || network;
-}

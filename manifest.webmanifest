@@ -1,13 +1,15 @@
 {
-  "name": "Inventario CEDIS — Curvas en tiempo real",
-  "short_name": "CEDIS Curvas",
-  "start_url": "./index.html",
+  "name": "Inventario CEDIS — Curvas",
+  "short_name": "Inventario CEDIS",
+  "description": "Consulta en tiempo real las curvas de inventario (KB_min, crítico, serie histórica).",
+  "start_url": "./",
+  "scope": "./",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#ffffff",
+  "background_color": "#0ea5e9",
+  "theme_color": "#0ea5e9",
   "icons": [
-    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" }
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" }
   ]
 }
 
