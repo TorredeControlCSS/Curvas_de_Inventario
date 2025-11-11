@@ -10,11 +10,11 @@
   <meta name="theme-color" content="#ffffff">
   <link rel="apple-touch-icon" href="icon-192.png">
 
-  <!-- Hints de red (pequeño boost) - NUEVO -->
-  <link rel="preconnect" href="https://cdn.tailwindcss.com">
+  <!-- Hints de red para acelerar -->
+  <link rel="preconnect" href="https://script.google.com">
+  <link rel="dns-prefetch" href="https://script.google.com">
   <link rel="preconnect" href="https://cdn.jsdelivr.net">
-  <link rel="dns-prefetch" href="//cdn.tailwindcss.com">
-  <link rel="dns-prefetch" href="//cdn.jsdelivr.net">
+  <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
 
   <!-- UI (Tailwind CDN) -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -128,23 +128,32 @@ let deferPrompt; // PWA install event
 let chart;
 const nf = new Intl.NumberFormat('en-US'); // formato unificado
 
-/* ========= NUEVO: parser/formatter de fechas dd/mm ========= */
-function parseDM(str){
-  // Acepta 'dd/mm' o 'dd/mm/yyyy'
-  if (!str) return null;
-  const parts = String(str).trim().split(/[\/\-]/).map(s=>s.trim());
-  if (parts.length < 2) return null;
-  const dd = +parts[0], mm = +parts[1];
-  const yyyy = parts[2] ? +parts[2] : (new Date()).getFullYear();
-  if (!dd || !mm || !yyyy) return null;
-  // normaliza a Date en local (00:00)
-  return new Date(yyyy, mm-1, dd, 0, 0, 0, 0);
+/* ========= CACHÉ con TTL ========= */
+const TTL_MS = 5 * 60 * 1000; // 5 minutos
+function cacheGet(key){
+  const raw = localStorage.getItem(key);
+  if(!raw) return null;
+  try{
+    const {t,v} = JSON.parse(raw);
+    if(Date.now()-t > TTL_MS) { localStorage.removeItem(key); return null; }
+    return v;
+  }catch{ localStorage.removeItem(key); return null; }
 }
-function formatDM(d){
-  const dd = String(d.getDate()).padStart(2,'0');
-  const mm = String(d.getMonth()+1).padStart(2,'0');
-  const yyyy = d.getFullYear();
-  return `${dd}/${mm}/${yyyy}`;
+function cacheSet(key, value){
+  localStorage.setItem(key, JSON.stringify({t:Date.now(), v:value}));
+}
+
+/* ========= fetch con timeout ========= */
+async function fetchWithTimeout(url, {signal, timeout=10000, ...opts}={}){
+  const ctrl = new AbortController();
+  const id = setTimeout(()=>ctrl.abort(), timeout);
+  try{
+    const anySignal = signal ? AbortSignal.any([ctrl.signal, signal]) : ctrl.signal;
+    const res = await fetch(url, {...opts, signal:anySignal});
+    return res;
+  } finally {
+    clearTimeout(id);
+  }
 }
 
 /* ========= INPUT UX ========= */
@@ -156,14 +165,11 @@ btnClearInput?.addEventListener('click', () => {
 });
 
 let tDeb = null;
-/* NUEVO: cache de sugerencias en memoria */
-const searchCache = new Map();
-
 q.addEventListener('input', () => {
   clearTimeout(tDeb);
   const term = q.value.trim();
   if (term.length < 2) { hideSuggestions(); return; }
-  tDeb = setTimeout(() => doSearch(term), 250);
+  tDeb = setTimeout(() => doSearch(term), 300);
 });
 
 q.addEventListener('keydown', (ev) => {
@@ -205,23 +211,21 @@ let searchCtrl = null, itemCtrl = null;
 
 async function doSearch(term){
   try{
-    // cache hit
-    if (searchCache.has(term)) {
-      showSuggestions(searchCache.get(term));
-      return;
-    }
     if (searchCtrl) searchCtrl.abort();
     searchCtrl = new AbortController();
+
+    const ck = 'search:'+term.toLowerCase();
+    const cached = cacheGet(ck);
+    if (cached) showSuggestions(cached.items || []);
 
     const url = new URL(API_BASE);
     url.searchParams.set('action','search');
     url.searchParams.set('q', term);
 
-    const res = await fetch(url, {cache:'no-store', signal: searchCtrl.signal});
+    const res = await fetchWithTimeout(url, {cache:'no-store', signal: searchCtrl.signal, timeout:10000});
     const data = await res.json();
-    const items = data.items || [];
-    searchCache.set(term, items);
-    showSuggestions(items);
+    cacheSet(ck, data);
+    showSuggestions(data.items || []);
   }catch(e){
     if (e.name !== 'AbortError') console.error('search error', e);
   }
@@ -239,47 +243,81 @@ function launchSearch(){
   else doSearch(term);
 }
 
+/* ========= Fechas D/M/Y seguras ========= */
+function parseDMY(str){
+  const [d,m,y] = String(str).split(/[\/\-\.]/).map(x=>x.trim());
+  if(!d || !m || !y) return null;
+  const day = +d, mon = +m, yr = y.length===2 ? (2000 + +y) : +y;
+  const dt = new Date(Date.UTC(yr, mon-1, day));
+  return isFinite(dt) ? dt : null;
+}
+function dmyKey(dt){
+  const y = dt.getUTCFullYear();
+  const m = String(dt.getUTCMonth()+1).padStart(2,'0');
+  const d = String(dt.getUTCDate()).padStart(2,'0');
+  return `${y}-${m}-${d}`;
+}
+function formatDMY(dt){
+  const d = String(dt.getUTCDate()).padStart(2,'0');
+  const m = String(dt.getUTCMonth()+1).padStart(2,'0');
+  const y = dt.getUTCFullYear();
+  return `${d}/${m}/${y}`;
+}
+
 /* ========= Item con cache + cancelación ========= */
 async function fetchItem(code){
+  let cached = null;
   try{
     setLoading(true);
 
-    // 1) Render inmediato si hay caché
-    const cacheKey = 'item:' + code;
-    const cached = localStorage.getItem(cacheKey);
-    if (cached) renderItem(JSON.parse(cached), true);
+    const ck = 'item:'+code;
 
-    // 2) Cancela llamada anterior y pide el item
+    // 1) Render inmediato si hay caché válido
+    cached = cacheGet(ck);
+    if (cached) renderItem(cached, true);
+
+    // 2) Cancela llamada anterior y pide el item (con timeout)
     if (itemCtrl) itemCtrl.abort();
     itemCtrl = new AbortController();
 
     const url = new URL(API_BASE);
     url.searchParams.set('action','item');
     url.searchParams.set('code', code);
-    const res = await fetch(url, {cache:'no-store', signal: itemCtrl.signal});
+
+    const res = await fetchWithTimeout(url, {cache:'no-store', signal:itemCtrl.signal, timeout:10000});
     const data = await res.json();
 
-    // 3) Si falta el nombre, intenta obtenerlo por 'search'
+    // 3) Completa el nombre en paralelo si falta (no bloquea render)
     if (!data.suministro) {
-      try {
-        if (searchCtrl) searchCtrl.abort();
-        searchCtrl = new AbortController();
-        const sUrl = new URL(API_BASE);
-        sUrl.searchParams.set('action','search');
-        sUrl.searchParams.set('q', code);
-        const sRes = await fetch(sUrl, {cache:'no-store', signal: searchCtrl.signal});
-        const sData = await sRes.json();
-        const hit = (sData.items||[]).find(it => (it.codigo||'') == String(code));
-        if (hit?.suministro) data.suministro = hit.suministro;
-      } catch(_) {}
+      (async()=>{
+        try{
+          if (searchCtrl) searchCtrl.abort();
+          searchCtrl = new AbortController();
+          const sUrl = new URL(API_BASE);
+          sUrl.searchParams.set('action','search');
+          sUrl.searchParams.set('q', code);
+          const sRes = await fetchWithTimeout(sUrl, {cache:'no-store', signal:searchCtrl.signal, timeout:8000});
+          const sData = await sRes.json();
+          const hit = (sData.items||[]).find(it => (it.codigo||'') == String(code));
+          if (hit?.suministro) {
+            data.suministro = hit.suministro;
+            cacheSet(ck, data);
+            renderItem(data); // refresca título
+          }
+        }catch(_){}
+      })();
     }
 
-    localStorage.setItem(cacheKey, JSON.stringify(data));
+    cacheSet(ck, data);
     renderItem(data);
   }catch(e){
     if (e.name !== 'AbortError') {
       console.error('item error', e);
-      alert('No se pudo obtener el detalle. Revisa la conexión o el código.');
+      if (cached) {
+        lblAct.textContent = '(caché) ' + new Date().toLocaleString();
+      } else {
+        alert('No se pudo obtener el detalle. Revisa la conexión o el código.');
+      }
     }
   } finally {
     setLoading(false);
@@ -287,30 +325,27 @@ async function fetchItem(code){
 }
 
 /* ========= Utilitarios de datos ========= */
-// Agrupa por fecha sumando inventario (fecha dd/mm segura)
+// Agrupa por fecha (dd/mm/yyyy) sumando inventario y ordena cronológico
 function groupByDateSum(points){
-  const bucket = {};
+  const bucket = new Map(); // key ISO -> {dt, sum}
   for (const p of (points||[])) {
-    const fStr = String(p.fecha || '').trim();
-    const d = parseDM(fStr);       /* NUEVO: parser dd/mm */
-    if (!d) continue;
-    const key = formatDM(d);       // normalizamos con año
-    const inv = Number(p.inventario || 0);
-    bucket[key] = (bucket[key] || 0) + inv;
+    const dt = parseDMY(p.fecha);
+    if(!dt) continue;
+    const key = dmyKey(dt);
+    bucket.set(key, {dt, sum:(bucket.get(key)?.sum || 0) + Number(p.inventario||0)});
   }
-  const keys = Object.keys(bucket).sort((a,b)=> parseDM(a) - parseDM(b));
-  return keys.map(fecha => ({ fecha, inventario: bucket[fecha] }));
+  return Array.from(bucket.values())
+    .sort((a,b)=> a.dt - b.dt)
+    .map(o => ({ fecha: formatDMY(o.dt), ts: o.dt.getTime(), inventario: o.sum }));
 }
 
-// SMA 30 días hasta cada fecha (usa parser dd/mm)
-function sma30(labels, serie){
-  const dts = labels.map(d=> parseDM(d));
-  return labels.map((_, i) => {
-    const to = dts[i];
-    if (!to) return null;
-    const from = new Date(to); from.setDate(from.getDate()-29);
+// SMA 30 días reales
+function sma30(tsArray, serie){
+  return tsArray.map((_, i) => {
+    const to = tsArray[i];
+    const from = to - (29*24*60*60*1000);
     let sum=0, cnt=0;
-    for (let k=i; k>=0 && dts[k] && dts[k]>=from; k--) { sum += Number(serie[k]||0); cnt++; }
+    for (let k=i; k>=0 && tsArray[k]>=from; k--) { sum += Number(serie[k]||0); cnt++; }
     return cnt ? sum/cnt : null;
   });
 }
@@ -332,17 +367,18 @@ function renderItem(data, fromCache=false){
     return;
   }
 
-  // 1) Consolidar por día y ordenar
+  // 1) Consolidar por día y ordenar (fechas seguras)
   const puntosRaw = Array.isArray(data.puntos) ? data.puntos : [];
   const puntos = groupByDateSum(puntosRaw);
 
-  // 2) Último punto + serie básica
-  const labels = puntos.map(p=>p.fecha);                     // dd/mm/yyyy
-  const inv    = puntos.map(p=>Number(p.inventario||0));
-  const last   = puntos[puntos.length-1];
+  // 2) Series
+  const labels = puntos.map(p=>p.fecha);           // "dd/mm/yyyy"
+  const ts      = puntos.map(p=>p.ts);             // timestamps UTC
+  const inv     = puntos.map(p=>Number(p.inventario||0));
+  const last    = puntos[puntos.length-1];
 
-  // 3) SMA-30
-  const avg30 = sma30(labels, inv);
+  // 3) SMA-30 real
+  const avg30 = sma30(ts, inv);
   const lastAvg = avg30[avg30.length-1];
 
   // 4) Panel
@@ -352,19 +388,19 @@ function renderItem(data, fromCache=false){
   lblCritico.textContent    = (data.critico != null ? nf.format(+data.critico) : '—');
   lblUltInv.textContent     = last ? nf.format(Number(last.inventario||0)) : '—';
   lblUltFec.textContent     = last ? last.fecha : '—';
-  lblProm30.textContent     = (lastAvg != null ? nf.format(lastAvg) : '—');
+  lblProm30.textContent     = (lastAvg != null ? nf.format(lastAvg) : '—';
+  )
   lblAct.textContent        = (fromCache?'(caché) ':'') + new Date().toLocaleString();
   ttlChartEl.textContent    = `${data.codigo || '—'} — ${data.suministro || '—'}`;
 
-  // 5) Datasets (con punto dinámico) - NUEVO
-  const many = labels.length > 500;
+  // 5) Datasets
   const datasets = [
     {
       label:'Inventario',
       data: inv,
       borderColor: 'rgba(59,130,246,1)',
       backgroundColor: 'rgba(59,130,246,0.15)',
-      pointRadius: ctx => (ctx.chart.data.labels.length>400 ? 0 : 2),
+      pointRadius: 2,
       borderWidth: 2,
       tension: .2,
       fill: 'origin',
@@ -434,55 +470,39 @@ function renderItem(data, fromCache=false){
     }
   };
 
-  // 6) Eje X quincenal y seguro en dd/mm - NUEVO
+  // 6) Ticks X: cada 14 días, última fecha garantizada
   function xTickCallback(value, index, ticks){
     const isLast = index === (ticks.length-1);
     if (isLast) return labels[index];
-    const d0 = parseDM(labels[0]);
-    const di = parseDM(labels[index]);
-    if (!d0 || !di) return '';
+    const d0 = ts[0], di = ts[index];
+    if (d0==null || di==null) return '';
     const diffDays = Math.round((di - d0)/(1000*60*60*24));
     return (diffDays % 14 === 0) ? labels[index] : '';
   }
 
-  // Render (defer) - NUEVO: sin animación en 1er paint y con decimation
+  // Render
   if (chart) chart.destroy();
   const ctx = document.getElementById('chart').getContext('2d');
-
-  requestAnimationFrame(() => {
-    chart = new Chart(ctx, {
-      type:'line',
-      data:{ labels, datasets },
-      options:{
-        responsive:true,
-        maintainAspectRatio:false,
-        interaction:{ intersect:false, mode:'index' },
-        animation: false,                          /* speed up primer render */
-        layout:{ padding: { right: 60 } },         // espacio para etiquetas finales
-        plugins:{
-          legend:{ position:'top' },
-          tooltip:{ callbacks:{ label(c){ return `${c.dataset.label}: ${nf.format(c.parsed.y)}`; } } },
-          /* NUEVO: downsampling nativo */
-          decimation: {
-            enabled: true,
-            algorithm: 'lttb',
-            samples: 600                             // ajusta si quieres más/menos detalle
-          }
-        },
-        scales: {
-          x: {
-            ticks: {
-              autoSkip: false,
-              maxRotation: 0,
-              minRotation: 0,
-              callback: xTickCallback
-            }
-          },
-          y: { beginAtZero: false }
-        }
+  chart = new Chart(ctx, {
+    type:'line',
+    data:{ labels, datasets },
+    options:{
+      responsive:true,
+      maintainAspectRatio:false,
+      interaction:{ intersect:false, mode:'index' },
+      layout:{ padding: { right: 60 } }, // espacio para etiquetas finales
+      plugins:{
+        legend:{ position:'top' },
+        tooltip:{ callbacks:{ label(c){ return `${c.dataset.label}: ${nf.format(c.parsed.y)}`; } } }
       },
-      plugins:[lastValuePlugin]
-    });
+      scales: {
+        x: {
+          ticks: { autoSkip: false, maxRotation: 0, minRotation: 0, callback: xTickCallback }
+        },
+        y: { beginAtZero: false }
+      }
+    },
+    plugins:[lastValuePlugin]
   });
 }
 
