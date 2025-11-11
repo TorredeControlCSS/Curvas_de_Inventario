@@ -10,7 +10,7 @@
   <meta name="theme-color" content="#0ea5e9">
   <link rel="apple-touch-icon" href="./icons/icon-192.png">
 
-  <!-- UI (Tailwind CDN) -->
+  <!-- UI -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1"></script>
@@ -18,7 +18,8 @@
   <style>
     .card{ box-shadow:0 6px 24px rgba(0,0,0,.08), 0 2px 6px rgba(0,0,0,.04); }
     #suggestions li{ cursor:pointer }
-    .disabled{ opacity:.5; pointer-events:none }
+    .pulse{ animation:pulse 1.2s ease-in-out infinite }
+    @keyframes pulse{ 0%{opacity:.4} 50%{opacity:1} 100%{opacity:.4} }
   </style>
 </head>
 <body class="bg-white text-slate-800 min-h-screen">
@@ -26,11 +27,8 @@
   <header class="bg-sky-600 text-white">
     <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
       <div class="flex items-center gap-3">
-        <!-- LOGO (archivo del repo, ruta relativa) -->
-        <img src="./icons/icon-192.png"
-             alt="DINALOG - CSS Panamá"
-             class="h-10 sm:h-12 md:h-16 w-auto mr-3 select-none"
-             loading="eager" decoding="async"/>
+        <img src="./icons/icon-192.png" alt="DINALOG - CSS Panamá"
+             class="h-10 sm:h-12 md:h-16 w-auto mr-3 select-none" loading="eager" decoding="async"/>
         <h1 class="text-lg sm:text-2xl font-semibold">CEDIS Panama – Curvas de Inventario</h1>
       </div>
       <button id="btnInstall" class="hidden bg-white/10 hover:bg-white/20 px-3 py-1 rounded">Instalar</button>
@@ -41,9 +39,7 @@
     <!-- BUSCADOR -->
     <section class="card bg-white rounded-2xl p-4">
       <div class="flex flex-col gap-3">
-        <label class="text-sm text-slate-500">
-          Busca por <b>código</b> o <b>nombre de suministro</b>
-        </label>
+        <label class="text-sm text-slate-500">Busca por <b>código</b> o <b>nombre de suministro</b></label>
 
         <div class="relative">
           <input id="q" type="search" placeholder="Ej.: 101098001 o amlodipina"
@@ -52,9 +48,10 @@
           <ul id="suggestions" class="absolute z-10 mt-1 w-full bg-white border border-slate-200 rounded-xl max-h-64 overflow-auto hidden"></ul>
         </div>
 
-        <div class="flex gap-2">
+        <div class="flex gap-2 items-center">
           <button id="btnBuscar" class="bg-sky-600 hover:bg-sky-700 text-white px-4 py-2 rounded-xl">Buscar</button>
           <button id="btnLimpiar" class="bg-slate-100 hover:bg-slate-200 px-4 py-2 rounded-xl">Limpiar</button>
+          <span id="netBadge" class="hidden text-xs text-slate-500">Conectando…</span>
         </div>
       </div>
     </section>
@@ -74,6 +71,7 @@
           <div><span class="text-slate-500">Fecha último:</span> <span id="lblUltFec" class="font-mono">—</span></div>
           <div class="text-xs text-slate-500 pt-2">Fuente: API Inventario CEDIS (Apps Script)</div>
         </div>
+        <div id="alert" class="hidden text-xs text-red-600 bg-red-50 border border-red-200 rounded p-2"></div>
       </div>
 
       <!-- GRÁFICO -->
@@ -89,105 +87,122 @@
     </section>
   </main>
 
-  <footer class="py-8 text-center text-xs text-slate-400">
-    v1.2 • PWA • Actualiza en tiempo real
-  </footer>
+  <footer class="py-8 text-center text-xs text-slate-400">v1.2 • PWA • Actualiza en tiempo real</footer>
 
-  <!-- ======== APP SCRIPT (igual que tu versión estable) ======== -->
+  <!-- ======== APP SCRIPT ======== -->
   <script>
   /* ========= CONFIG ========= */
   const API_BASE = 'https://script.google.com/macros/s/AKfycbxQsD4XJICmZg-5eiZIAEjJ3GZz-GmqvhvMWtiznEOu7SafIKxWopo5iIVy7ufrq_qq/exec';
 
-  /* ========= util de selección ========= */
-  const el = s => document.querySelector(s);
-  const els = s => Array.from(document.querySelectorAll(s));
+  /* ========= helpers ========= */
+  const el=s=>document.querySelector(s), els=s=>Array.from(document.querySelectorAll(s));
+  const nf = new Intl.NumberFormat('en-US');
+  const show = (n)=>n.classList.remove('hidden'), hide=(n)=>n.classList.add('hidden');
+  const badge = el('#netBadge'), alertEl = el('#alert');
+
+  function toast(msg){ alertEl.textContent=msg; show(alertEl); setTimeout(()=>hide(alertEl), 6000); }
+
+  // Fetch con timeout y CORS explícito
+  async function fetchJSON(url, {signal, timeoutMs=12000} = {}){
+    const ctl = new AbortController();
+    const t = setTimeout(()=>ctl.abort('timeout'), timeoutMs);
+    const composite = signal
+      ? new AbortController()
+      : null;
+    if (signal && composite) {
+      const onAbort = ()=>composite.abort('outer');
+      signal.addEventListener('abort', onAbort, {once:true});
+      composite.signal.addEventListener('abort', ()=>signal.removeEventListener('abort', onAbort));
+    }
+    try{
+      show(badge); badge.classList.add('pulse');
+      const res = await fetch(url, {
+        mode:'cors',
+        credentials:'omit',
+        cache:'no-store',
+        signal: composite ? composite.signal : ctl.signal,
+        headers:{ 'Accept':'application/json' }
+      });
+      if(!res.ok) throw new Error('HTTP '+res.status);
+      const data = await res.json();
+      return data;
+    } finally {
+      clearTimeout(t);
+      hide(badge); badge.classList.remove('pulse');
+    }
+  }
 
   /* ========= refs ========= */
-  const q = el('#q');
-  const btnBuscar = el('#btnBuscar');
-  const btnLimpiar = el('#btnLimpiar');
-  const btnClearInput = el('#btnClearInput');
-  const suggestions = el('#suggestions');
-
-  const lblCodigo = el('#lblCodigo');
-  const lblSuministro = el('#lblSuministro');
-  const lblKBmin = el('#lblKBmin');
-  const lblCritico = el('#lblCritico');
-  const lblUltInv = el('#lblUltInv');
-  const lblUltFec = el('#lblUltFec');
-  const lblProm30 = el('#lblProm30');
-  const lblAct = el('#lblActualizado');
-  const ttlChartEl = el('#ttlChart');
-
+  const q = el('#q'), btnBuscar = el('#btnBuscar'), btnLimpiar = el('#btnLimpiar');
+  const btnClearInput = el('#btnClearInput'), suggestions = el('#suggestions');
+  const lblCodigo=el('#lblCodigo'), lblSuministro=el('#lblSuministro'),
+        lblKBmin=el('#lblKBmin'), lblCritico=el('#lblCritico'),
+        lblUltInv=el('#lblUltInv'), lblUltFec=el('#lblUltFec'),
+        lblProm30=el('#lblProm30'), lblAct=el('#lblActualizado'), ttlChartEl=el('#ttlChart');
   let chart, searchCtrl=null, itemCtrl=null, deferPrompt=null;
-  const nf = new Intl.NumberFormat('en-US');
+
+  function setLoading(b){ btnBuscar.disabled=b; btnBuscar.textContent = b? 'Buscando…':'Buscar'; }
 
   /* ========= INPUT UX ========= */
-  q.addEventListener('input', () => {
-    btnClearInput.classList.toggle('hidden', q.value.trim()==='');
-  });
-  btnClearInput.addEventListener('click', () => {
-    q.value=''; btnClearInput.classList.add('hidden'); hideSuggestions();
-  });
-  q.addEventListener('keydown', e => {
-    if (e.key==='Enter') { hideSuggestions(); launchSearch(); }
-  });
+  q.addEventListener('input', ()=>btnClearInput.classList.toggle('hidden', q.value.trim()===''));
+  btnClearInput.addEventListener('click', ()=>{ q.value=''; btnClearInput.classList.add('hidden'); hideSuggestions(); });
+  q.addEventListener('keydown', e=>{ if(e.key==='Enter'){ hideSuggestions(); launchSearch(); } });
   btnBuscar.addEventListener('click', launchSearch);
-  btnLimpiar.addEventListener('click', () => { q.value=''; btnClearInput.classList.add('hidden'); hideSuggestions(); renderItem(null); });
+  btnLimpiar.addEventListener('click', ()=>{ q.value=''; btnClearInput.classList.add('hidden'); hideSuggestions(); renderItem(null); });
 
   /* ========= Sugerencias ========= */
-  let deb;
-  q.addEventListener('input', () => {
+  let deb=null;
+  q.addEventListener('input', ()=>{
     clearTimeout(deb);
-    const term = q.value.trim();
-    if (term.length<2) { hideSuggestions(); return; }
-    deb = setTimeout(()=>doSearch(term), 250);
+    const term=q.value.trim(); if(term.length<2){ hideSuggestions(); return; }
+    deb=setTimeout(()=>doSearch(term), 250);
   });
+
   function hideSuggestions(){ suggestions.classList.add('hidden'); suggestions.innerHTML=''; }
   function showSuggestions(items){
-    if (!items?.length){ hideSuggestions(); return; }
+    if(!items?.length){ hideSuggestions(); return; }
     items = items.slice(0,10);
-    suggestions.innerHTML = items.map(it => `
+    suggestions.innerHTML = items.map(it=>`
       <li class="px-3 py-2 hover:bg-slate-100 border-b border-slate-100" data-cod="${it.codigo}">
         <div class="font-medium">${it.suministro||''}</div>
         <div class="text-xs text-slate-500">${it.codigo||''}</div>
       </li>`).join('');
     suggestions.classList.remove('hidden');
     els('#suggestions li').forEach(li=>{
-      li.addEventListener('click', ()=>{
-        const cod = li.getAttribute('data-cod');
-        q.value = cod; hideSuggestions(); fetchItem(cod);
-      });
+      li.addEventListener('click', ()=>{ const cod=li.getAttribute('data-cod'); q.value=cod; hideSuggestions(); fetchItem(cod); });
     });
   }
+
   async function doSearch(term){
     try{
       if (searchCtrl) searchCtrl.abort();
       searchCtrl = new AbortController();
       const url = new URL(API_BASE); url.searchParams.set('action','search'); url.searchParams.set('q', term);
-      const res = await fetch(url, {cache:'no-store', signal:searchCtrl.signal});
-      const data = await res.json();
+      const data = await fetchJSON(url, {signal:searchCtrl.signal});
       showSuggestions(data.items||[]);
-    }catch(e){ if (e.name!=='AbortError') console.error(e); }
+    }catch(e){
+      if (e.name!=='AbortError'){ console.error('search', e); toast('No se pudo buscar. Revisa conexión o la API.'); }
+    }
   }
+
   function launchSearch(){
-    const term = q.value.trim(); if (!term) return;
+    const term=q.value.trim(); if(!term) return;
     if (/^\d{6,}$/.test(term)) fetchItem(term); else doSearch(term);
   }
 
-  /* ========= Item ========= */
-  function setLoading(b){ btnBuscar.disabled=b; btnBuscar.textContent = b? 'Buscando…':'Buscar'; }
-
+  /* ========= Datos ========= */
   function groupByDateSum(points){
-    const b={}; for (const p of (points||[])){ const f=String(p.fecha||'').trim(); const inv=Number(p.inventario||0); if(!f) continue; b[f]=(b[f]||0)+inv; }
-    // Normaliza formato dd/mm/yyyy -> yyyy-mm-dd para ordenar seguro
-    const norm = s => {
-      const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
-      if (m){ const d=m[1].padStart(2,'0'), M=m[2].padStart(2,'0'), Y=(m[3].length===2?'20'+m[3]:m[3]); return `${Y}-${M}-${d}`; }
-      return s; // ya viene ISO
+    const bucket={};
+    for(const p of (points||[])){
+      const f = String(p.fecha||'').trim(); const inv = Number(p.inventario||0);
+      if(!f) continue; bucket[f]=(bucket[f]||0)+inv;
+    }
+    const norm = s=>{
+      const m=s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+      if(m){ const d=m[1].padStart(2,'0'), M=m[2].padStart(2,'0'), Y=(m[3].length===2?'20'+m[3]:m[3]); return `${Y}-${M}-${d}`; }
+      return s;
     };
-    return Object.keys(b).sort((a,b2)=> new Date(norm(a)) - new Date(norm(b2)))
-      .map(f=>({fecha:f, inventario:b[f]}));
+    return Object.keys(bucket).sort((a,b)=> new Date(norm(a)) - new Date(norm(b))).map(f=>({fecha:f, inventario:bucket[f]}));
   }
 
   function sma30(labels, serie){
@@ -198,7 +213,7 @@
     const dts = labels.map(toDate);
     return labels.map((_,i)=>{
       const to=dts[i], from=new Date(to); from.setDate(from.getDate()-29);
-      let sum=0,cnt=0; for(let k=i;k>=0 && dts[k]>=from;k--){ sum += Number(serie[k]||0); cnt++; }
+      let sum=0,cnt=0; for(let k=i;k>=0 && dts[k]>=from;k--){ sum+=Number(serie[k]||0); cnt++; }
       return cnt? sum/cnt : null;
     });
   }
@@ -206,23 +221,21 @@
   async function fetchItem(code){
     try{
       setLoading(true);
-      const cacheKey = 'item:'+code;
+      const cacheKey='item:'+code;
       const cached = localStorage.getItem(cacheKey);
       if (cached) renderItem(JSON.parse(cached), true);
 
       if (itemCtrl) itemCtrl.abort();
       itemCtrl = new AbortController();
       const url = new URL(API_BASE); url.searchParams.set('action','item'); url.searchParams.set('code', code);
-      const res = await fetch(url, {cache:'no-store', signal:itemCtrl.signal});
-      const data = await res.json();
+      const data = await fetchJSON(url, {signal:itemCtrl.signal});
 
       if (!data.suministro){
         try{
           if (searchCtrl) searchCtrl.abort();
           searchCtrl = new AbortController();
           const sUrl = new URL(API_BASE); sUrl.searchParams.set('action','search'); sUrl.searchParams.set('q', code);
-          const sRes = await fetch(sUrl, {cache:'no-store', signal:searchCtrl.signal});
-          const sData = await sRes.json();
+          const sData = await fetchJSON(sUrl, {signal:searchCtrl.signal});
           const hit = (sData.items||[]).find(it => (it.codigo||'') == String(code));
           if (hit?.suministro) data.suministro = hit.suministro;
         }catch(_){}
@@ -231,8 +244,8 @@
       localStorage.setItem(cacheKey, JSON.stringify(data));
       renderItem(data);
     }catch(e){
-      if (e.name!=='AbortError'){ console.error(e); alert('No se pudo obtener el detalle.'); }
-    }finally{ setLoading(false); }
+      if (e.name!=='AbortError'){ console.error('item', e); toast('No se pudo obtener el detalle.'); }
+    } finally { setLoading(false); }
   }
 
   function renderItem(data, fromCache=false){
@@ -282,7 +295,6 @@
 
     function xTickCallback(value, index, ticks){
       const lbl = labels[index];
-      // Muestra cada 14 días aprox y SIEMPRE el último
       const toKey = s=>{
         const m=s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
         if (m){ const d=+m[1], M=+m[2], Y=+(m[3].length===2?'20'+m[3]:m[3]); return new Date(Y,M-1,d); }
@@ -299,8 +311,7 @@
       type:'line',
       data:{labels, datasets},
       options:{
-        responsive:true,
-        maintainAspectRatio:false,
+        responsive:true, maintainAspectRatio:false,
         interaction:{intersect:false, mode:'index'},
         layout:{padding:{right:60}},
         plugins:{ legend:{position:'top'}, tooltip:{callbacks:{label(c){return `${c.dataset.label}: ${nf.format(c.parsed.y)}`;}}}},
@@ -313,17 +324,14 @@
   /* ========= PWA ========= */
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      // Ruta relativa para GitHub Pages (mismo directorio que index)
       navigator.serviceWorker.register('sw.js').catch(console.error);
     });
   }
   window.addEventListener('beforeinstallprompt', (e)=>{
-    e.preventDefault(); deferPrompt=e;
-    document.getElementById('btnInstall')?.classList.remove('hidden');
+    e.preventDefault(); deferPrompt=e; document.getElementById('btnInstall')?.classList.remove('hidden');
   });
   document.getElementById('btnInstall')?.addEventListener('click', async ()=>{
-    if (!deferPrompt) return;
-    deferPrompt.prompt(); await deferPrompt.userChoice;
+    if (!deferPrompt) return; deferPrompt.prompt(); await deferPrompt.userChoice;
     deferPrompt=null; document.getElementById('btnInstall')?.classList.add('hidden');
   });
   </script>
