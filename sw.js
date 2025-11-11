@@ -1,52 +1,57 @@
-// sw.js
-const CACHE = 'cedis-cache-v1';
-const APP_SHELL = [
+// SW: Stale-while-revalidate para estáticos + caché ligero de últimos items
+const STATIC_CACHE = 'static-v3';
+const DYNAMIC_CACHE = 'dyn-v2';
+const STATIC_ASSETS = [
   './',
   './index.html',
   './manifest.webmanifest',
-  './icons/icon-192.png',
-  './icons/icon-512.png',
-  // CDNs quedan fuera: el navegador los cachea bien, pero si quieres, añádelos también
+  './sw.js',
+  'https://cdn.tailwindcss.com',
+  'https://cdn.jsdelivr.net/npm/chart.js@4.4.1'
 ];
 
-self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE).then(c => c.addAll(APP_SHELL))
-  );
+self.addEventListener('install', (e)=>{
+  e.waitUntil(caches.open(STATIC_CACHE).then(c=>c.addAll(STATIC_ASSETS)));
   self.skipWaiting();
 });
-
-self.addEventListener('activate', (event) => {
-  event.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(keys.map(k => (k===CACHE?null:caches.delete(k))))
-    )
+self.addEventListener('activate', (e)=>{
+  e.waitUntil(
+    caches.keys().then(keys=>Promise.all(
+      keys.filter(k=>![STATIC_CACHE,DYNAMIC_CACHE].includes(k)).map(k=>caches.delete(k))
+    ))
   );
   self.clients.claim();
 });
 
-self.addEventListener('fetch', (event) => {
-  const req = event.request;
+self.addEventListener('fetch', (e)=>{
+  const url = new URL(e.request.url);
 
-  // Estrategia "Stale-While-Revalidate" para GET (incluye API)
-  if (req.method === 'GET') {
-    event.respondWith((async () => {
-      const cache = await caches.open(CACHE);
-      const cached = await cache.match(req);
-      const fetchPromise = fetch(req).then(res => {
-        // sólo cacheamos 200 OK
-        if (res && res.status === 200) cache.put(req, res.clone());
-        return res;
-      }).catch(() => null);
-
-      // Devuelve rápido caché, y en paralelo actualiza
-      return cached || fetchPromise || new Response('{"offline":true}', {
-        headers:{'Content-Type':'application/json'}
-      });
-    })());
+  // API: cache solo GET del item/search por poco tiempo
+  if (url.pathname.includes('/macros/') && e.request.method==='GET'){
+    e.respondWith(staleWhileRevalidate(e.request, DYNAMIC_CACHE, 5*60)); // 5 min
     return;
   }
 
-  // Fallback directo
-  event.respondWith(fetch(req));
+  // Estáticos
+  if (STATIC_ASSETS.some(a => url.href.startsWith(a) || url.pathname.endsWith(a))){
+    e.respondWith(staleWhileRevalidate(e.request, STATIC_CACHE, 24*60*60));
+    return;
+  }
 });
+
+async function staleWhileRevalidate(req, cacheName, maxAgeSec){
+  const cache = await caches.open(cacheName);
+  const cached = await cache.match(req, {ignoreSearch:false});
+  const fetchPromise = fetch(req).then(res=>{
+    cache.put(req, res.clone());
+    return res;
+  }).catch(()=> cached); // si offline
+
+  if (!cached) return fetchPromise;
+  // validar edad
+  if (maxAgeSec){
+    const date = new Date(cached.headers.get('date') || 0);
+    if (Date.now() - date.getTime() > maxAgeSec*1000) return fetchPromise;
+  }
+  return cached;
+}
