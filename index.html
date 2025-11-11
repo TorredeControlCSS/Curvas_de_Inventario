@@ -70,6 +70,7 @@
           <div><span class="text-slate-500">Suministro:</span> <span id="lblSuministro">—</span></div>
           <div><span class="text-slate-500">KB_min:</span> <span id="lblKBmin" class="font-mono">—</span></div>
           <div><span class="text-slate-500">Crítico:</span> <span id="lblCritico" class="font-mono">—</span></div>
+          <div><span class="text-slate-500">Promedio 30 días:</span> <span id="lblProm30" class="font-mono">—</span></div>
           <div><span class="text-slate-500">Último inventario:</span> <span id="lblUltInv" class="font-mono">—</span></div>
           <div><span class="text-slate-500">Fecha último:</span> <span id="lblUltFec" class="font-mono">—</span></div>
           <div class="text-xs text-slate-500 pt-2">Fuente: API Inventario CEDIS (Apps Script)</div>
@@ -94,224 +95,246 @@
   </footer>
 
   <!-- ======== APP SCRIPT ======== -->
-  <script>
-  // ========= CONFIG =========
-  const API_BASE = 'https://script.google.com/macros/s/AKfycbxQsD4XJICmZg-5eiZIAEjJ3GZz-GmqvhvMWtiznEOu7SafIKxWopo5iIVy7ufrq_qq/exec';
+ <script>
+/* ========= CONFIG ========= */
+const API_BASE = 'https://script.google.com/macros/s/AKfycbxQsD4XJICmZg-5eiZIAEjJ3GZz-GmqvhvMWtiznEOu7SafIKxWopo5iIVy7ufrq_qq/exec';
 
-  // ========= Estado & helpers =========
-  const el  = s => document.querySelector(s);
-  const els = s => Array.from(document.querySelectorAll(s));
+/* ========= Estado & helpers ========= */
+const el  = s => document.querySelector(s);
+const els = s => Array.from(document.querySelectorAll(s));
 
-  const q              = el('#q');
-  const btnClearInput  = el('#btnClearInput');
-  const suggestions    = el('#suggestions');
-  const btnBuscar      = el('#btnBuscar');
-  const btnLimpiar     = el('#btnLimpiar');
+const q              = el('#q');
+const btnClearInput  = el('#btnClearInput');
+const suggestions    = el('#suggestions');
+const btnBuscar      = el('#btnBuscar');
+const btnLimpiar     = el('#btnLimpiar');
 
-  const lblCodigo   = el('#lblCodigo');
-  const lblSuministro = el('#lblSuministro');
-  const lblKBmin    = el('#lblKBmin');
-  const lblCritico  = el('#lblCritico');
-  const lblUltInv   = el('#lblUltInv');
-  const lblUltFec   = el('#lblUltFec');
-  const lblAct      = el('#lblActualizado');
-  const ttlChartEl  = el('#ttlChart');
+const lblCodigo   = el('#lblCodigo');
+const lblSuministro = el('#lblSuministro');
+const lblKBmin    = el('#lblKBmin');
+const lblCritico  = el('#lblCritico');
+const lblUltInv   = el('#lblUltInv');
+const lblUltFec   = el('#lblUltFec');
+const lblAct      = el('#lblActualizado');
+const lblProm30   = el('#lblProm30');
+const ttlChartEl  = el('#ttlChart');
 
-  let deferPrompt; // PWA install event
-  let chart;
+let deferPrompt; // PWA install event
+let chart;
+const nf = new Intl.NumberFormat('en-US'); // formato unificado
 
-  // ==== INPUT UX ====
-  q.addEventListener('input', () => {
-    btnClearInput?.classList.toggle('hidden', q.value.trim()==='');
-  });
-  btnClearInput?.addEventListener('click', () => {
-    q.value='';
-    btnClearInput.classList.add('hidden');
-    hideSuggestions();
-  });
+/* ========= INPUT UX ========= */
+q.addEventListener('input', () => {
+  btnClearInput?.classList.toggle('hidden', q.value.trim()==='');
+});
+btnClearInput?.addEventListener('click', () => {
+  q.value=''; btnClearInput.classList.add('hidden'); hideSuggestions();
+});
 
-  // ==== Debounce búsqueda (350 ms) ====
-  let tDeb = null;
-  q.addEventListener('input', () => {
-    clearTimeout(tDeb);
-    const term = q.value.trim();
-    if (!term) { hideSuggestions(); return; }
-    tDeb = setTimeout(() => doSearch(term), 350);
-  });
+let tDeb = null;
+q.addEventListener('input', () => {
+  clearTimeout(tDeb);
+  const term = q.value.trim();
+  if (term.length < 2) { hideSuggestions(); return; }
+  tDeb = setTimeout(() => doSearch(term), 300);
+});
 
-  q.addEventListener('keydown', (ev) => {
-    if (ev.key === 'Enter') {
+q.addEventListener('keydown', (ev) => {
+  if (ev.key === 'Enter') { hideSuggestions(); launchSearch(); }
+});
+
+btnBuscar.addEventListener('click', launchSearch);
+btnLimpiar.addEventListener('click', () => {
+  q.value = '';
+  btnClearInput?.classList.add('hidden');
+  hideSuggestions();
+  renderItem(null);
+});
+
+/* ========= Sugerencias ========= */
+function showSuggestions(items){
+  if (!items || !items.length) { hideSuggestions(); return; }
+  // Solo top-10
+  items = items.slice(0, 10);
+  suggestions.innerHTML = items.map(it => (
+    `<li class="px-3 py-2 hover:bg-slate-100 border-b border-slate-100" data-cod="${it.codigo}">
+       <div class="font-medium">${it.suministro || ''}</div>
+       <div class="text-xs text-slate-500">${it.codigo || ''}</div>
+     </li>`
+  )).join('');
+  suggestions.classList.remove('hidden');
+  els('#suggestions li').forEach(li => {
+    li.addEventListener('click', () => {
+      const cod = li.getAttribute('data-cod');
+      q.value = cod;
       hideSuggestions();
-      launchSearch();
-    }
-  });
-
-  btnBuscar.addEventListener('click', launchSearch);
-  btnLimpiar.addEventListener('click', () => {
-    q.value = '';
-    btnClearInput?.classList.add('hidden');
-    hideSuggestions();
-    renderItem(null);
-  });
-
-  function showSuggestions(items){
-    if (!items || !items.length) { hideSuggestions(); return; }
-    suggestions.innerHTML = items.map(it => (
-      `<li class="px-3 py-2 hover:bg-slate-100 border-b border-slate-100" data-cod="${it.codigo}">
-         <div class="font-medium">${it.suministro}</div>
-         <div class="text-xs text-slate-500">${it.codigo}</div>
-       </li>`
-    )).join('');
-    suggestions.classList.remove('hidden');
-    els('#suggestions li').forEach(li => {
-      li.addEventListener('click', () => {
-        const cod = li.getAttribute('data-cod');
-        q.value = cod; // pasar a búsqueda por código
-        hideSuggestions();
-        fetchItem(cod);
-      });
+      fetchItem(cod);
     });
-  }
-  function hideSuggestions(){ suggestions.classList.add('hidden'); suggestions.innerHTML=''; }
+  });
+}
+function hideSuggestions(){ suggestions.classList.add('hidden'); suggestions.innerHTML=''; }
 
-  async function doSearch(term){
-    try{
-      const url = new URL(API_BASE);
-      url.searchParams.set('action','search');
-      url.searchParams.set('q', term);
-      const res = await fetch(url.toString(), {cache:'no-store'});
-      const data = await res.json();
-      showSuggestions(data.items || []);
-    }catch(e){ console.error('search error', e); }
-  }
+/* ========= Buscador con cancelación ========= */
+let searchCtrl = null, itemCtrl = null;
 
-  function launchSearch(){
-    const term = q.value.trim();
-    if (!term) return;
-    if (/^\d{6,}$/.test(term)) {
-      fetchItem(term);
-    } else {
-      doSearch(term);
+async function doSearch(term){
+  try{
+    if (searchCtrl) searchCtrl.abort();
+    searchCtrl = new AbortController();
+
+    const url = new URL(API_BASE);
+    url.searchParams.set('action','search');
+    url.searchParams.set('q', term);
+
+    const res = await fetch(url, {cache:'no-store', signal: searchCtrl.signal});
+    const data = await res.json();
+    showSuggestions(data.items || []);
+  }catch(e){
+    if (e.name !== 'AbortError') console.error('search error', e);
+  }
+}
+
+function setLoading(isLoading){
+  btnBuscar.disabled = isLoading;
+  btnBuscar.textContent = isLoading ? 'Buscando…' : 'Buscar';
+}
+
+function launchSearch(){
+  const term = q.value.trim();
+  if (!term) return;
+  if (/^\d{6,}$/.test(term)) fetchItem(term);
+  else doSearch(term);
+}
+
+/* ========= Item con cache + cancelación ========= */
+async function fetchItem(code){
+  try{
+    setLoading(true);
+
+    // 1) Render inmediato si hay caché
+    const cacheKey = 'item:' + code;
+    const cached = localStorage.getItem(cacheKey);
+    if (cached) renderItem(JSON.parse(cached), true);
+
+    // 2) Cancela llamada anterior y pide el item
+    if (itemCtrl) itemCtrl.abort();
+    itemCtrl = new AbortController();
+
+    const url = new URL(API_BASE);
+    url.searchParams.set('action','item');
+    url.searchParams.set('code', code);
+    const res = await fetch(url, {cache:'no-store', signal: itemCtrl.signal});
+    const data = await res.json();
+
+    // 3) Si falta el nombre, intenta obtenerlo por 'search'
+    if (!data.suministro) {
+      try {
+        if (searchCtrl) searchCtrl.abort();
+        searchCtrl = new AbortController();
+        const sUrl = new URL(API_BASE);
+        sUrl.searchParams.set('action','search');
+        sUrl.searchParams.set('q', code);
+        const sRes = await fetch(sUrl, {cache:'no-store', signal: searchCtrl.signal});
+        const sData = await sRes.json();
+        const hit = (sData.items||[]).find(it => (it.codigo||'') == String(code));
+        if (hit?.suministro) data.suministro = hit.suministro;
+      } catch(_) {}
     }
-  }
 
-  async function fetchItem(code){
-    try{
-      // 1) Render inmediato si hay caché
-      const cacheKey = 'item:' + code;
-      const cached = localStorage.getItem(cacheKey);
-      if (cached) renderItem(JSON.parse(cached), true);
-
-      // 2) Pide el item
-      const url = new URL(API_BASE);
-      url.searchParams.set('action','item');
-      url.searchParams.set('code', code);
-      const res = await fetch(url.toString(), {cache:'no-store'});
-      const data = await res.json();
-
-      // 3) Si el nombre de suministro vino vacío, intenta obtenerlo con 'search'
-      if (!data.suministro) {
-        try {
-          const sUrl = new URL(API_BASE);
-          sUrl.searchParams.set('action','search');
-          sUrl.searchParams.set('q', code);
-          const sRes = await fetch(sUrl.toString(), {cache:'no-store'});
-          const sData = await sRes.json();
-          const hit = (sData.items||[]).find(it => (it.codigo||'') == String(code));
-          if (hit && hit.suministro) data.suministro = hit.suministro;
-        } catch(_) {}
-      }
-
-      localStorage.setItem(cacheKey, JSON.stringify(data));
-      renderItem(data);
-    }catch(e){
+    localStorage.setItem(cacheKey, JSON.stringify(data));
+    renderItem(data);
+  }catch(e){
+    if (e.name !== 'AbortError') {
       console.error('item error', e);
       alert('No se pudo obtener el detalle. Revisa la conexión o el código.');
     }
+  } finally {
+    setLoading(false);
+  }
+}
+
+/* ========= Utilitarios de datos ========= */
+// Agrupa por fecha sumando inventario
+function groupByDateSum(points){
+  const bucket = {};
+  for (const p of (points||[])) {
+    const f = String(p.fecha || '').trim();
+    const inv = Number(p.inventario || 0);
+    if (!f) continue;
+    bucket[f] = (bucket[f] || 0) + inv;
+  }
+  return Object.keys(bucket)
+    .sort((a,b)=> new Date(a) - new Date(b))
+    .map(fecha => ({ fecha, inventario: bucket[fecha] }));
+}
+
+// SMA 30 días hasta cada fecha
+function sma30(labels, serie){
+  const dts = labels.map(d=> new Date(d));
+  return labels.map((_, i) => {
+    const to = dts[i];
+    const from = new Date(to); from.setDate(from.getDate()-29);
+    let sum=0, cnt=0;
+    for (let k=i; k>=0 && dts[k]>=from; k--) { sum += Number(serie[k]||0); cnt++; }
+    return cnt ? sum/cnt : null;
+  });
+}
+
+/* ========= Render ========= */
+function renderItem(data, fromCache=false){
+  // Reset
+  if (!data) {
+    lblCodigo.textContent = '—';
+    lblSuministro.textContent = '—';
+    lblKBmin.textContent = '—';
+    lblCritico.textContent = '—';
+    lblUltInv.textContent = '—';
+    lblUltFec.textContent = '—';
+    lblProm30.textContent = '—';
+    lblAct.textContent = '—';
+    ttlChartEl.textContent = 'Curva de Inventario';
+    if (chart) chart.destroy();
+    return;
   }
 
-  // Agrupa por fecha sumando inventario (para consolidar lotes del mismo día)
-  function groupByDateSum(points){
-    const bucket = {};
-    for (const p of (points||[])) {
-      const f = String(p.fecha || '').trim();
-      const inv = Number(p.inventario || 0);
-      if (!f) continue;
-      bucket[f] = (bucket[f] || 0) + inv;
-    }
-    return Object.keys(bucket)
-      .sort((a,b)=> new Date(a) - new Date(b))
-      .map(fecha => ({ fecha, inventario: bucket[fecha] }));
-  }
+  // 1) Consolidar por día y ordenar
+  const puntosRaw = Array.isArray(data.puntos) ? data.puntos : [];
+  const puntos = groupByDateSum(puntosRaw);
 
-  function renderItem(data, fromCache=false){
-    // Reset
-    if (!data) {
-      lblCodigo.textContent = '—';
-      lblSuministro.textContent = '—';
-      lblKBmin.textContent = '—';
-      lblCritico.textContent = '—';
-      lblUltInv.textContent = '—';
-      lblUltFec.textContent = '—';
-      lblAct.textContent = '—';
-      ttlChartEl.textContent = 'Curva de Inventario';
-      if (chart) chart.destroy();
-      return;
-    }
+  // 2) Último punto + serie básica
+  const labels = puntos.map(p=>p.fecha);
+  const inv    = puntos.map(p=>Number(p.inventario||0));
+  const last   = puntos[puntos.length-1];
 
-    const nf = new Intl.NumberFormat();
+  // 3) SMA-30
+  const avg30 = sma30(labels, inv);
+  const lastAvg = avg30[avg30.length-1];
 
-    // 1) Consolidar por día y ordenar
-    const puntosRaw = Array.isArray(data.puntos) ? data.puntos : [];
-    const puntos = groupByDateSum(puntosRaw);
+  // 4) Panel
+  lblCodigo.textContent     = data.codigo || '—';
+  lblSuministro.textContent = data.suministro || '—';
+  lblKBmin.textContent      = (data.kb_min != null ? nf.format(+data.kb_min) : '—');
+  lblCritico.textContent    = (data.critico != null ? nf.format(+data.critico) : '—');
+  lblUltInv.textContent     = last ? nf.format(Number(last.inventario||0)) : '—';
+  lblUltFec.textContent     = last ? last.fecha : '—';
+  lblProm30.textContent     = (lastAvg != null ? nf.format(lastAvg) : '—');
+  lblAct.textContent        = (fromCache?'(caché) ':'') + new Date().toLocaleString();
+  ttlChartEl.textContent    = `${data.codigo || '—'} — ${data.suministro || '—'}`;
 
-    // 2) Último punto
-    const last = puntos[puntos.length-1];
-
-    // 3) Pintar panel
-    lblCodigo.textContent     = data.codigo || '—';
-    lblSuministro.textContent = data.suministro || '—';
-    lblKBmin.textContent      = (data.kb_min ?? '—');
-    lblCritico.textContent    = (data.critico ?? '—');
-    lblUltInv.textContent     = last ? nf.format(Number(last.inventario||0)) : '—';
-    lblUltFec.textContent     = last ? last.fecha : '—';
-    lblAct.textContent        = (fromCache?'(caché) ':'') + new Date().toLocaleString();
-
-    // 4) Título
-    ttlChartEl.textContent = `${data.codigo || '—'} — ${data.suministro || '—'}`;
-
-    // 5) Datos para Chart
-    const labels = puntos.map(p=>p.fecha);
-    const inv    = puntos.map(p=>Number(p.inventario||0));
-
-    const datasets = [
-      {
-        label:'Inventario',
-        data: inv,
-        borderColor: 'rgba(59,130,246,1)',
-        backgroundColor: 'rgba(59,130,246,0.15)',
-        pointRadius: 2,
-        borderWidth: 2,
-        tension: .2,
-        fill: 'origin'
-      }
-    ];
-
-    // --- Promedio móvil de 30 días (ventana por fecha) ---
-    const dateObjs = labels.map(d => new Date(d));
-    const avg30 = labels.map((_, i) => {
-      const to = dateObjs[i];
-      const from = new Date(to);
-      from.setDate(from.getDate() - 29); // 30 días
-      let sum = 0, cnt = 0;
-      for (let k = i; k >= 0 && dateObjs[k] >= from; k--) {
-        const v = Number(inv[k] || 0);
-        sum += v; cnt++;
-      }
-      return cnt ? (sum / cnt) : null;
-    });
-
-    datasets.push({
+  // 5) Datasets
+  const datasets = [
+    {
+      label:'Inventario',
+      data: inv,
+      borderColor: 'rgba(59,130,246,1)',
+      backgroundColor: 'rgba(59,130,246,0.15)',
+      pointRadius: 2,
+      borderWidth: 2,
+      tension: .2,
+      fill: 'origin',
+      clip: false
+    },
+    {
       label: 'Promedio 30 días',
       data: avg30,
       borderColor: 'rgba(100,116,139,1)',
@@ -320,111 +343,117 @@
       borderWidth: 2,
       borderDash: [6,4],
       tension: .2,
-      fill: false
-    });
-
-    if (Number.isFinite(+data.kb_min)) {
-      datasets.push({
-        label:'KB_min',
-        data: labels.map(()=> +data.kb_min),
-        borderColor: 'rgba(234,179,8,1)',
-        backgroundColor: 'rgba(234,179,8,0.10)',
-        pointRadius:0,
-        borderWidth:1,
-        fill: false
-      });
+      fill: false,
+      clip: false
     }
-    if (Number.isFinite(+data.critico)) {
-      datasets.push({
-        label:'Crítico',
-        data: labels.map(()=> +data.critico),
-        borderColor: 'rgba(239,68,68,1)',
-        backgroundColor: 'rgba(239,68,68,0.10)',
-        pointRadius:0,
-        borderWidth:1,
-        fill: false
-      });
-    }
-
-    // Plugin: último valor al final de cada serie
-    const lastValuePlugin = {
-      id: 'lastValuePlugin',
-      afterDatasetsDraw(chart, args) {
-        const {ctx} = chart;
-        const nfLoc = new Intl.NumberFormat();
-        ctx.save();
-        ctx.font = '12px sans-serif';
-        ctx.textBaseline = 'middle';
-        chart.data.datasets.forEach((ds, i) => {
-          const meta = chart.getDatasetMeta(i);
-          if (!meta?.data?.length) return;
-          const lastPoint = meta.data[meta.data.length-1];
-          const val = ds.data[ds.data.length-1];
-          if (lastPoint && val != null && isFinite(val)) {
-            const x = lastPoint.x + 6;
-            const y = lastPoint.y;
-            ctx.fillStyle = (ds.borderColor || '#334155');
-            ctx.fillText(nfLoc.format(+val), x, y);
-          }
-        });
-        ctx.restore();
-      }
-    };
-
-    // Render
-    if (chart) chart.destroy();
-    const ctx = document.getElementById('chart').getContext('2d');
-    chart = new Chart(ctx, {
-      type:'line',
-      data:{ labels, datasets },
-      options:{
-        responsive:true,
-        maintainAspectRatio:false,
-        interaction:{ intersect:false, mode:'index' },
-        plugins:{
-          legend:{ position:'top' },
-          tooltip:{ callbacks:{
-            label(c){ return `${c.dataset.label}: ${nf.format(c.parsed.y)}`; }
-          }}
-        },
-        scales: {
-          x: {
-            ticks: {
-              autoSkip: true,
-              maxRotation: 0,
-              minRotation: 0,
-              autoSkipPadding: 8,
-              callback: (value, index, ticks) => {
-                const step = Math.ceil(ticks.length / 6); // 6–8 etiquetas
-                return index % step === 0 ? labels[index] : '';
-              }
-            }
-          },
-          y: { beginAtZero: false }
-        }
-      },
-      plugins:[lastValuePlugin]
-    });
-  } // <-- cierre correcto de renderItem
-
-  // ========= PWA / Service Worker =========
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js').catch(console.error);
+  ];
+  if (Number.isFinite(+data.kb_min)) {
+    datasets.push({
+      label:'KB_min',
+      data: labels.map(()=> +data.kb_min),
+      borderColor: 'rgba(234,179,8,1)',
+      backgroundColor: 'rgba(234,179,8,0.10)',
+      pointRadius:0,
+      borderWidth:1,
+      fill: false,
+      clip: false
     });
   }
-  window.addEventListener('beforeinstallprompt', (e) => {
-    e.preventDefault();
-    deferPrompt = e;
-    el('#btnInstall')?.classList.remove('hidden');
+  if (Number.isFinite(+data.critico)) {
+    datasets.push({
+      label:'Crítico',
+      data: labels.map(()=> +data.critico),
+      borderColor: 'rgba(239,68,68,1)',
+      backgroundColor: 'rgba(239,68,68,0.10)',
+      pointRadius:0,
+      borderWidth:1,
+      fill: false,
+      clip: false
+    });
+  }
+
+  // Plugin: rotula último valor a la derecha
+  const lastValuePlugin = {
+    id: 'lastValuePlugin',
+    afterDatasetsDraw(chart, args) {
+      const {ctx} = chart;
+      ctx.save();
+      ctx.font = '12px sans-serif';
+      ctx.textBaseline = 'middle';
+      chart.data.datasets.forEach((ds, i) => {
+        const meta = chart.getDatasetMeta(i);
+        if (!meta?.data?.length) return;
+        // busca último valor no-nulo
+        let idx = ds.data.length-1;
+        while (idx>=0 && (ds.data[idx]==null || !isFinite(ds.data[idx]))) idx--;
+        if (idx<0) return;
+        const pt = meta.data[idx];
+        const val = +ds.data[idx];
+        if (!pt || !isFinite(val)) return;
+        const x = pt.x + 6;
+        const y = pt.y;
+        ctx.fillStyle = Array.isArray(ds.borderColor) ? ds.borderColor[0] : (ds.borderColor || '#334155');
+        ctx.fillText(nf.format(val), x, y);
+      });
+      ctx.restore();
+    }
+  };
+
+  // 6) Eje X semanal + última fecha garantizada
+  function xTickCallback(value, index, ticks){
+    const isLast = index === (ticks.length-1);
+    if (isLast) return labels[index];
+    // cada 7 días (aprox) comparando contra el primer label
+    const d0 = new Date(labels[0]);
+    const di = new Date(labels[index]);
+    const diffDays = Math.round((di - d0)/(1000*60*60*24));
+    return (diffDays % 7 === 0) ? labels[index] : '';
+  }
+
+  // Render
+  if (chart) chart.destroy();
+  const ctx = document.getElementById('chart').getContext('2d');
+  chart = new Chart(ctx, {
+    type:'line',
+    data:{ labels, datasets },
+    options:{
+      responsive:true,
+      maintainAspectRatio:false,
+      interaction:{ intersect:false, mode:'index' },
+      layout:{ padding: { right: 60 } }, // espacio para etiquetas finales
+      plugins:{
+        legend:{ position:'top' },
+        tooltip:{ callbacks:{ label(c){ return `${c.dataset.label}: ${nf.format(c.parsed.y)}`; } } }
+      },
+      scales: {
+        x: {
+          ticks: {
+            autoSkip: false,
+            maxRotation: 0,
+            minRotation: 0,
+            callback: xTickCallback
+          }
+        },
+        y: { beginAtZero: false }
+      }
+    },
+    plugins:[lastValuePlugin]
   });
-  el('#btnInstall')?.addEventListener('click', async () => {
-    if (!deferPrompt) return;
-    deferPrompt.prompt();
-    await deferPrompt.userChoice;
-    deferPrompt = null;
-    el('#btnInstall')?.classList.add('hidden');
+}
+
+/* ========= PWA / Service Worker ========= */
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(console.error);
   });
-  </script>
-</body>
-</html>
+}
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault(); deferPrompt = e;
+  el('#btnInstall')?.classList.remove('hidden');
+});
+el('#btnInstall')?.addEventListener('click', async () => {
+  if (!deferPrompt) return;
+  deferPrompt.prompt(); await deferPrompt.userChoice;
+  deferPrompt = null; el('#btnInstall')?.classList.add('hidden');
+});
+</script>
