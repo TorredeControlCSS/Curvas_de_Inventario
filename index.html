@@ -3,27 +3,25 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>CEDIS Panama – Curvas de Inventario</title>
+  <title>Inventario CEDIS — Curvas en tiempo real</title>
 
   <!-- PWA -->
   <link rel="manifest" href="manifest.webmanifest">
   <meta name="theme-color" content="#0ea5e9">
 
-  <!-- Iconos locales del repo -->
-  <link rel="icon" href="icons/icon-192.png">
+  <!-- Ícono (más rápido que base64) -->
   <link rel="apple-touch-icon" href="icons/icon-192.png">
 
-  <!-- Preconexión a la API -->
-  <link rel="preconnect" href="https://script.google.com" crossorigin>
-
-  <!-- UI y Chart.js -->
+  <!-- UI (Tailwind CDN) -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1" defer></script>
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1"></script>
 
   <style>
     .card{ box-shadow:0 6px 24px rgba(0,0,0,.08), 0 2px 6px rgba(0,0,0,.04); }
     #suggestions li{ cursor:pointer }
     .disabled{ opacity:.5; pointer-events:none }
+    .empty-msg{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#94a3b8; font-size:.9rem }
   </style>
 </head>
 <body class="bg-white text-slate-800 min-h-screen">
@@ -32,8 +30,7 @@
     <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
       <div class="flex items-center gap-3">
         <img src="icons/icon-192.png" alt="DINALOG - CSS Panamá"
-             class="h-10 sm:h-12 md:h-16 w-auto mr-2 select-none"
-             loading="eager" decoding="async">
+             class="h-10 sm:h-12 md:h-14 w-auto mr-1 select-none" loading="eager" decoding="async"/>
         <h1 class="text-lg sm:text-2xl font-semibold">CEDIS Panama – Curvas de Inventario</h1>
       </div>
       <button id="btnInstall" class="hidden bg-white/10 hover:bg-white/20 px-3 py-1 rounded">Instalar</button>
@@ -85,10 +82,10 @@
           <h2 id="ttlChart" class="font-semibold text-slate-700">Curva de Inventario</h2>
           <div class="text-xs text-slate-500" id="lblActualizado">—</div>
         </div>
-        <div class="h-[360px]">
+        <div class="h-[360px] relative">
+          <div id="empty" class="empty-msg hidden">Sin datos para graficar</div>
           <canvas id="chart"></canvas>
         </div>
-        <div id="msg" class="text-xs text-slate-400 mt-2"></div>
       </div>
     </section>
   </main>
@@ -98,230 +95,427 @@
   </footer>
 
   <!-- ======== APP SCRIPT ======== -->
-  <script defer>
+<script>
+/* ========= CONFIG ========= */
 const API_BASE = 'https://script.google.com/macros/s/AKfycbxQsD4XJICmZg-5eiZIAEjJ3GZz-GmqvhvMWtiznEOu7SafIKxWopo5iIVy7ufrq_qq/exec';
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutos
 
-const el=s=>document.querySelector(s), els=s=>Array.from(document.querySelectorAll(s));
-const nf=new Intl.NumberFormat('en-US');
+/* ========= Estado & helpers ========= */
+const el  = s => document.querySelector(s);
+const els = s => Array.from(document.querySelectorAll(s));
 
-const q=el('#q'), btnClearInput=el('#btnClearInput'), suggestions=el('#suggestions');
-const btnBuscar=el('#btnBuscar'), btnLimpiar=el('#btnLimpiar');
-const lblCodigo=el('#lblCodigo'), lblSuministro=el('#lblSuministro'), lblKBmin=el('#lblKBmin');
-const lblCritico=el('#lblCritico'), lblUltInv=el('#lblUltInv'), lblUltFec=el('#lblUltFec');
-const lblAct=el('#lblActualizado'), lblProm30=el('#lblProm30'), ttlChartEl=el('#ttlChart'), msg=el('#msg');
+const q              = el('#q');
+const btnClearInput  = el('#btnClearInput');
+const suggestions    = el('#suggestions');
+const btnBuscar      = el('#btnBuscar');
+const btnLimpiar     = el('#btnLimpiar');
 
-let chart, searchCtrl=null, itemCtrl=null, deferPrompt=null;
+const lblCodigo   = el('#lblCodigo');
+const lblSuministro = el('#lblSuministro');
+const lblKBmin    = el('#lblKBmin');
+const lblCritico  = el('#lblCritico');
+const lblUltInv   = el('#lblUltInv');
+const lblUltFec   = el('#lblUltFec');
+const lblAct      = el('#lblActualizado');
+const lblProm30   = el('#lblProm30');
+const ttlChartEl  = el('#ttlChart');
+const emptyMsg    = el('#empty');
 
-/* ===== UX ===== */
-q.addEventListener('input',()=>{ btnClearInput.classList.toggle('hidden', q.value.trim()===''); });
-btnClearInput.addEventListener('click',()=>{ q.value=''; btnClearInput.classList.add('hidden'); hideSuggestions(); });
-let tDeb=null;
-q.addEventListener('input',()=>{ clearTimeout(tDeb); const t=q.value.trim(); if(t.length<2){hideSuggestions();return;} tDeb=setTimeout(()=>doSearch(t),250); });
-q.addEventListener('keydown',(e)=>{ if(e.key==='Enter'){ hideSuggestions(); launchSearch(); }});
+let deferPrompt; // PWA install event
+let chart;
+const nf = new Intl.NumberFormat('es-PA');
+const df = new Intl.DateTimeFormat('es-PA', {day:'2-digit', month:'2-digit', year:'numeric'});
+
+/* ========= Caché con TTL ========= */
+function cacheSet(key, value){
+  const payload = {t: Date.now(), v: value};
+  localStorage.setItem(key, JSON.stringify(payload));
+}
+function cacheGet(key){
+  const raw = localStorage.getItem(key);
+  if (!raw) return null;
+  try{
+    const {t, v} = JSON.parse(raw);
+    if (Date.now() - t > CACHE_TTL_MS) return null;
+    return v;
+  }catch{ return null; }
+}
+
+/* ========= INPUT UX ========= */
+q.addEventListener('input', () => {
+  btnClearInput?.classList.toggle('hidden', q.value.trim()==='');
+});
+btnClearInput?.addEventListener('click', () => {
+  q.value=''; btnClearInput.classList.add('hidden'); hideSuggestions();
+});
+
+let tDeb = null;
+q.addEventListener('input', () => {
+  clearTimeout(tDeb);
+  const term = q.value.trim();
+  if (term.length < 2) { hideSuggestions(); return; }
+  tDeb = setTimeout(() => doSearch(term), 250);
+});
+
+q.addEventListener('keydown', (ev) => {
+  if (ev.key === 'Enter') { hideSuggestions(); launchSearch(); }
+});
+
 btnBuscar.addEventListener('click', launchSearch);
-btnLimpiar.addEventListener('click',()=>{ q.value=''; btnClearInput.classList.add('hidden'); hideSuggestions(); renderItem(null); });
+btnLimpiar.addEventListener('click', () => {
+  q.value = '';
+  btnClearInput?.classList.add('hidden');
+  hideSuggestions();
+  renderItem(null);
+});
 
-/* ===== Sugerencias ===== */
+/* ========= Sugerencias ========= */
 function showSuggestions(items){
-  if(!items||!items.length){ hideSuggestions(); return; }
-  suggestions.innerHTML = items.slice(0,10).map(it=>`
-    <li class="px-3 py-2 hover:bg-slate-100 border-b border-slate-100" data-cod="${it.codigo||it.code||''}">
-      <div class="font-medium">${it.suministro||it.nombre||''}</div>
-      <div class="text-xs text-slate-500">${it.codigo||it.code||''}</div>
-    </li>`).join('');
+  if (!items || !items.length) { hideSuggestions(); return; }
+  items = items.slice(0, 10);
+  suggestions.innerHTML = items.map(it => (
+    `<li class="px-3 py-2 hover:bg-slate-100 border-b border-slate-100" data-cod="${it.codigo}">
+       <div class="font-medium">${it.suministro || ''}</div>
+       <div class="text-xs text-slate-500">${it.codigo || ''}</div>
+     </li>`
+  )).join('');
   suggestions.classList.remove('hidden');
-  els('#suggestions li').forEach(li=>{
-    li.addEventListener('click',()=>{ const cod=li.getAttribute('data-cod'); q.value=cod; hideSuggestions(); fetchItem(cod); });
+  els('#suggestions li').forEach(li => {
+    li.addEventListener('click', () => {
+      const cod = li.getAttribute('data-cod');
+      q.value = cod;
+      hideSuggestions();
+      fetchItem(cod);
+    });
   });
 }
 function hideSuggestions(){ suggestions.classList.add('hidden'); suggestions.innerHTML=''; }
 
-/* ===== Fetch util con timeout ===== */
-async function fetchWithTimeout(input, opts={}, ms=12000){
-  const ac = new AbortController(); const t=setTimeout(()=>ac.abort(), ms);
-  try{ return await fetch(input, {...opts, signal:ac.signal}); }
-  finally{ clearTimeout(t); }
-}
+/* ========= Buscador con cancelación ========= */
+let searchCtrl = null, itemCtrl = null;
 
-/* ===== Buscar ===== */
 async function doSearch(term){
   try{
-    if(searchCtrl) searchCtrl.abort(); searchCtrl=new AbortController();
-    const url=new URL(API_BASE); url.searchParams.set('action','search'); url.searchParams.set('q', term);
-    const res=await fetchWithTimeout(url,{cache:'no-store',signal:searchCtrl.signal});
-    const data=await res.json();
-    showSuggestions((data.items||data.result||data.payload||[]));
-  }catch(e){ if(e.name!=='AbortError') console.error('search',e); }
-}
-function setLoading(x){ btnBuscar.disabled=x; btnBuscar.textContent=x?'Buscando…':'Buscar'; }
+    // caché
+    const cKey = 'search:' + term.toLowerCase();
+    const cVal = cacheGet(cKey);
+    if (cVal) { showSuggestions(cVal.items || []); return; }
 
-/* ===== Detalle ===== */
-function pickItemShape(obj){
-  if(!obj) return null;
-  if (obj.item) return obj.item;
-  if (obj.data) return obj.data;
-  if (obj.result) return obj.result;
-  if (obj.payload) return obj.payload;
-  return obj;
+    if (searchCtrl) searchCtrl.abort();
+    searchCtrl = new AbortController();
+
+    const url = new URL(API_BASE);
+    url.searchParams.set('action','search');
+    url.searchParams.set('q', term);
+
+    const res = await fetch(url, {cache:'no-store', signal: searchCtrl.signal});
+    const data = await res.json();
+    cacheSet(cKey, data);
+    showSuggestions(data.items || []);
+  }catch(e){
+    if (e.name !== 'AbortError') console.error('search error', e);
+  }
 }
+
+function setLoading(isLoading){
+  btnBuscar.disabled = isLoading;
+  btnBuscar.textContent = isLoading ? 'Buscando…' : 'Buscar';
+}
+
 function launchSearch(){
-  const term=q.value.trim(); if(!term) return;
-  if(/^\d{6,}$/.test(term)) fetchItem(term); else doSearch(term);
+  const term = q.value.trim();
+  if (!term) return;
+  if (/^\d{6,}$/.test(term)) fetchItem(term);
+  else doSearch(term);
 }
+
+/* ========= Adaptador de payloads ========= */
+function pickItemShape(raw){
+  // Acepta {codigo, suministro, kb_min, critico, puntos:[{fecha, inventario}]}
+  // o estructuras anidadas comunes: {item:{...}}, {data:{...}}
+  const v = raw?.item || raw?.data || raw || {};
+  return {
+    codigo:    v.codigo ?? v.code ?? '',
+    suministro:v.suministro ?? v.name ?? v.descripcion ?? '',
+    kb_min:    v.kb_min ?? v.kbmin ?? v.kb ?? null,
+    critico:   v.critico ?? v.critical ?? null,
+    puntos:    Array.isArray(v.puntos) ? v.puntos
+              : Array.isArray(v.series) ? v.series
+              : []
+  };
+}
+
+/* ========= Item con cache + cancelación ========= */
 async function fetchItem(code){
   try{
-    setLoading(true); msg.textContent='';
+    setLoading(true);
 
-    // cache inmediato
-    const cacheKey='item:'+code;
-    const cached=localStorage.getItem(cacheKey);
-    if(cached) renderItem(JSON.parse(cached), true);
+    const cKey = 'item:' + code;
+    const cVal = cacheGet(cKey);
+    if (cVal) renderItem(pickItemShape(cVal), true);
 
-    if(itemCtrl) itemCtrl.abort(); itemCtrl=new AbortController();
-    const url=new URL(API_BASE); url.searchParams.set('action','item'); url.searchParams.set('code', code);
+    if (itemCtrl) itemCtrl.abort();
+    itemCtrl = new AbortController();
 
-    const res=await fetchWithTimeout(url,{cache:'no-store',signal:itemCtrl.signal});
-    const raw=await res.json();
-    const data = pickItemShape(raw) || {};
-    localStorage.setItem(cacheKey, JSON.stringify(data));
-    renderItem(data);
+    const url = new URL(API_BASE);
+    url.searchParams.set('action','item');
+    url.searchParams.set('code', code);
+    const res = await fetch(url, {cache:'no-store', signal: itemCtrl.signal});
+    const data = await res.json();
+
+    cacheSet(cKey, data);
+    renderItem(pickItemShape(data));
   }catch(e){
-    if(e.name!=='AbortError'){ console.error('item',e); alert('No se pudo obtener el detalle.'); }
-  }finally{ setLoading(false); }
-}
-
-/* ===== Fechas & series ===== */
-function parseToYMD(str){
-  if(!str) return null; str=String(str).trim();
-  const iso=str.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if(iso) return {y:+iso[1], m:+iso[2], d:+iso[3]};
-  const dm=str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
-  if(dm){ let d=+dm[1], m=+dm[2], y=+dm[3]; if(y<100) y+=2000; return {y,m,d}; }
-  return null;
-}
-const ymdToKey=o=>o?`${o.y.toString().padStart(4,'0')}-${String(o.m).padStart(2,'0')}-${String(o.d).padStart(2,'0')}`:'';
-function groupByDateSum(points){
-  const bucket={};
-  for(const p of (points||[])){ const o=parseToYMD(p.fecha||p.date); if(!o) continue;
-    const key=ymdToKey(o); const inv=Number(p.inventario ?? p.stock ?? 0);
-    bucket[key]=(bucket[key]||0)+inv;
+    if (e.name !== 'AbortError') {
+      console.error('item error', e);
+      alert('No se pudo obtener el detalle. Revisa la conexión o el código.');
+    }
+  } finally {
+    setLoading(false);
   }
-  return Object.keys(bucket).sort().map(k=>({key:k, inventario:bucket[k]}));
 }
-function sma30(keys, serie){
-  const toDate=k=>new Date(k+'T00:00:00Z'); const dts=keys.map(toDate);
-  return keys.map((_,i)=>{ const to=dts[i], from=new Date(to); from.setUTCDate(from.getUTCDate()-29);
-    let sum=0,cnt=0; for(let k=i;k>=0 && dts[k]>=from;k--){ sum+=Number(serie[k]||0); cnt++; } return cnt?sum/cnt:null; });
-}
-const prettyDMY=k=>{ const [y,m,d]=String(k).split('-'); return `${d}/${m}/${y}`; };
 
-/* ===== Render ===== */
+/* ========= Utilitarios de FECHA ========= */
+// Convierte "DD/MM/AAAA" (o "D/M/AA") a Date sin ambigüedad
+function parseDMY(s){
+  if (!s) return null;
+  if (s instanceof Date) return s;
+  const str = String(s).trim();
+  const m = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+  if (m){
+    let d = +m[1], mo = +m[2]-1, y = +m[3];
+    if (y < 100) y += 2000; // por si vienen '24'
+    const dt = new Date(Date.UTC(y, mo, d));
+    return dt;
+  }
+  // intento final: ISO
+  const iso = new Date(str);
+  return isNaN(+iso) ? null : iso;
+}
+
+function fmtDate(d){
+  try { return df.format(d); } catch { return String(d); }
+}
+
+/* ========= Curado de datos ========= */
+// Agrupa por fecha (día) sumando inventario y limpia outliers de año raro (<2019)
+function groupByDateSum(points){
+  const bucket = {};
+  for (const p of (points||[])) {
+    const dt = parseDMY(p.fecha);
+    if (!dt) continue;
+    const y = dt.getUTCFullYear();
+    if (y < 2019) continue; // evita 1907/1937 causados por parseos malos de origen
+    const key = fmtDate(dt); // etiqueta final dd/mm/aaaa
+    const inv = Number(p.inventario || 0);
+    bucket[key] = (bucket[key] || 0) + inv;
+  }
+  const entries = Object.entries(bucket)
+    .map(([fecha, inventario]) => ({fecha, inventario}))
+    .sort((a,b)=>{
+      const [ad,am,ay] = a.fecha.split('/').map(Number);
+      const [bd,bm,by] = b.fecha.split('/').map(Number);
+      return new Date(by,bm-1,bd) - new Date(ay,am-1,ad) < 0 ? -1 : 1;
+    });
+  return entries;
+}
+
+// SMA 30 días hasta cada fecha (promedio móvil simple)
+function sma30(labels, serie){
+  // labels ya están como "dd/mm/aaaa"
+  const toDate = s => {
+    const [d,m,y] = s.split('/').map(Number);
+    return new Date(Date.UTC(y, m-1, d));
+  };
+  const dts = labels.map(toDate);
+  return labels.map((_, i) => {
+    const to = dts[i];
+    const from = new Date(to); from.setUTCDate(from.getUTCDate()-29);
+    let sum=0, cnt=0;
+    for (let k=i; k>=0 && dts[k]>=from; k--) { sum += Number(serie[k]||0); cnt++; }
+    return cnt ? sum/cnt : null;
+  });
+}
+
+/* ========= Render ========= */
 function renderItem(data, fromCache=false){
-  // Panel base
-  const codigo = data.codigo ?? data.code ?? '—';
-  const nombre = data.suministro ?? data.nombre ?? data.name ?? '—';
-  const kbmin  = data.kb_min ?? data.kbmin ?? null;
-  const crit   = data.critico ?? data.critical ?? null;
+  // Reset
+  if (!data) {
+    lblCodigo.textContent = '—';
+    lblSuministro.textContent = '—';
+    lblKBmin.textContent = '—';
+    lblCritico.textContent = '—';
+    lblUltInv.textContent = '—';
+    lblUltFec.textContent = '—';
+    lblProm30.textContent = '—';
+    lblAct.textContent = '—';
+    ttlChartEl.textContent = 'Curva de Inventario';
+    emptyMsg.classList.add('hidden');
+    if (chart) chart.destroy();
+    return;
+  }
 
-  // Series
-  const puntosRaw = Array.isArray(data.puntos)||Array.isArray(data.series) ? (data.puntos||data.series) : [];
-  const puntos = groupByDateSum(puntosRaw);
-  const labels = puntos.map(p=>p.key);
+  // 1) Consolidar por día y ordenar
+  const puntos = groupByDateSum(data.puntos);
+
+  // 2) Series
+  const labels = puntos.map(p=>p.fecha);
   const inv    = puntos.map(p=>Number(p.inventario||0));
   const avg30  = sma30(labels, inv);
-  const lastIx = labels.length? labels.length-1 : -1;
 
-  // Panel UI
-  lblCodigo.textContent     = codigo || '—';
-  lblSuministro.textContent = nombre || '—';
-  lblKBmin.textContent      = (kbmin!=null? nf.format(+kbmin):'—');
-  lblCritico.textContent    = (crit!=null? nf.format(+crit):'—');
-  lblUltInv.textContent     = (lastIx>=0? nf.format(inv[lastIx]||0):'—');
-  lblUltFec.textContent     = (lastIx>=0? prettyDMY(labels[lastIx]):'—');
-  lblProm30.textContent     = (lastIx>=0 && avg30[lastIx]!=null? nf.format(avg30[lastIx]):'—');
+  // Últimos
+  const lastInv = inv.length ? inv[inv.length-1] : null;
+  const lastLbl = labels.length ? labels[labels.length-1] : null;
+  const lastAvg = avg30.length ? avg30[avg30.length-1] : null;
+
+  // 3) Panel
+  lblCodigo.textContent     = data.codigo || '—';
+  lblSuministro.textContent = data.suministro || '—';
+  lblKBmin.textContent      = (data.kb_min != null ? nf.format(+data.kb_min) : '—');
+  lblCritico.textContent    = (data.critico != null ? nf.format(+data.critico) : '—');
+  lblUltInv.textContent     = (lastInv != null ? nf.format(lastInv) : '—');
+  lblUltFec.textContent     = (lastLbl || '—');
+  lblProm30.textContent     = (lastAvg != null ? nf.format(lastAvg) : '—');
   lblAct.textContent        = (fromCache?'(caché) ':'') + new Date().toLocaleString();
-  ttlChartEl.textContent    = `${codigo || '—'} — ${nombre || '—'}`;
+  ttlChartEl.textContent    = `${data.codigo || '—'} — ${data.suministro || '—'}`;
 
-  // Mensaje cuando no hay puntos
-  msg.textContent = labels.length ? '' : 'Sin datos de inventario para graficar.';
+  // 4) Si no hay puntos válidos, mensaje y gráfico vacío
+  if (!labels.length){
+    if (chart) chart.destroy();
+    emptyMsg.classList.remove('hidden');
+    return;
+  } else {
+    emptyMsg.classList.add('hidden');
+  }
 
   // Datasets
   const datasets = [
-    { label:'Inventario', data: inv,
-      borderColor:'rgba(59,130,246,1)', backgroundColor:'rgba(59,130,246,.15)',
-      pointRadius:2, borderWidth:2, tension:.2, fill:'origin', clip:false },
-    { label:'Promedio 30 días', data: avg30,
-      borderColor:'rgba(100,116,139,1)', backgroundColor:'rgba(100,116,139,.08)',
-      pointRadius:0, borderWidth:2, borderDash:[6,4], tension:.2, fill:false, clip:false }
+    {
+      label:'Inventario',
+      data: inv,
+      borderColor: 'rgba(59,130,246,1)',
+      backgroundColor: 'rgba(59,130,246,0.15)',
+      pointRadius: 2,
+      borderWidth: 2,
+      tension: .2,
+      fill: 'origin',
+      clip: false
+    },
+    {
+      label: 'Promedio 30 días',
+      data: avg30,
+      borderColor: 'rgba(100,116,139,1)',
+      backgroundColor: 'rgba(100,116,139,0.08)',
+      pointRadius: 0,
+      borderWidth: 2,
+      borderDash: [6,4],
+      tension: .2,
+      fill: false,
+      clip: false
+    }
   ];
-  if(Number.isFinite(+kbmin)){
-    datasets.push({ label:'KB_min', data: labels.map(()=>+kbmin),
-      borderColor:'rgba(234,179,8,1)', backgroundColor:'rgba(234,179,8,.10)',
-      pointRadius:0, borderWidth:1, fill:false, clip:false });
+  if (Number.isFinite(+data.kb_min)) {
+    datasets.push({
+      label:'KB_min',
+      data: labels.map(()=> +data.kb_min),
+      borderColor: 'rgba(234,179,8,1)',
+      backgroundColor: 'rgba(234,179,8,0.10)',
+      pointRadius:0,
+      borderWidth:1,
+      fill: false,
+      clip: false
+    });
   }
-  if(Number.isFinite(+crit)){
-    datasets.push({ label:'Crítico', data: labels.map(()=>+crit),
-      borderColor:'rgba(239,68,68,1)', backgroundColor:'rgba(239,68,68,.10)',
-      pointRadius:0, borderWidth:1, fill:false, clip:false });
+  if (Number.isFinite(+data.critico)) {
+    datasets.push({
+      label:'Crítico',
+      data: labels.map(()=> +data.critico),
+      borderColor: 'rgba(239,68,68,1)',
+      backgroundColor: 'rgba(239,68,68,0.10)',
+      pointRadius:0,
+      borderWidth:1,
+      fill: false,
+      clip: false
+    });
   }
 
-  // Plugin: etiqueta último valor
+  // Plugin: rotula último valor a la derecha
   const lastValuePlugin = {
-    id:'lastValuePlugin',
-    afterDatasetsDraw(c){
-      const {ctx}=c; ctx.save(); ctx.font='12px sans-serif'; ctx.textBaseline='middle';
-      c.data.datasets.forEach((ds,i)=>{
-        const meta=c.getDatasetMeta(i); if(!meta?.data?.length) return;
-        let idx=ds.data.length-1; while(idx>=0 && (ds.data[idx]==null || !isFinite(ds.data[idx]))) idx--;
-        if(idx<0) return; const pt=meta.data[idx]; const val=+ds.data[idx];
-        ctx.fillStyle = Array.isArray(ds.borderColor)? ds.borderColor[0] : (ds.borderColor||'#334155');
-        ctx.fillText(nf.format(val), pt.x+6, pt.y);
-      }); ctx.restore();
+    id: 'lastValuePlugin',
+    afterDatasetsDraw(chart, args) {
+      const {ctx} = chart;
+      ctx.save(); ctx.font = '12px sans-serif'; ctx.textBaseline = 'middle';
+      chart.data.datasets.forEach((ds, i) => {
+        const meta = chart.getDatasetMeta(i);
+        if (!meta?.data?.length) return;
+        let idx = ds.data.length-1;
+        while (idx>=0 && (ds.data[idx]==null || !isFinite(ds.data[idx]))) idx--;
+        if (idx<0) return;
+        const pt = meta.data[idx];
+        const val = +ds.data[idx];
+        if (!pt || !isFinite(val)) return;
+        const x = pt.x + 6, y = pt.y;
+        ctx.fillStyle = Array.isArray(ds.borderColor) ? ds.borderColor[0] : (ds.borderColor || '#334155');
+        ctx.fillText(nf.format(val), x, y);
+      });
+      ctx.restore();
     }
   };
 
-  // Ticks: último y primer día de cada mes
+  // Eje X: quincenal + último
   function xTickCallback(value, index, ticks){
-    const isLast = index === ticks.length-1;
-    if(isLast) return prettyDMY(labels[index]);
-    const [y,m] = String(labels[index]||'').split('-');
-    const prev = index>0 ? String(labels[index-1]).split('-') : null;
-    const changedMonth = !prev || (prev[0]!==y || prev[1]!==m);
-    return changedMonth ? prettyDMY(labels[index]) : '';
+    const isLast = index === (ticks.length-1);
+    if (isLast) return labels[index];
+    // mostrar cada 14 días aproximados respecto al primero
+    const [d0,m0,y0] = labels[0].split('/').map(Number);
+    const [di,mi,yi] = labels[index].split('/').map(Number);
+    const t0 = Date.UTC(y0,m0-1,d0);
+    const ti = Date.UTC(yi,mi-1,di);
+    const diffDays = Math.round((ti - t0)/(1000*60*60*24));
+    return (diffDays % 14 === 0) ? labels[index] : '';
   }
 
-  // Render chart
-  if(chart) chart.destroy();
+  if (chart) chart.destroy();
   const ctx = document.getElementById('chart').getContext('2d');
   chart = new Chart(ctx, {
     type:'line',
-    data:{ labels: labels.map(prettyDMY), datasets },
+    data:{ labels, datasets },
     options:{
-      responsive:true, maintainAspectRatio:false,
+      responsive:true,
+      maintainAspectRatio:false,
       interaction:{ intersect:false, mode:'index' },
-      layout:{ padding:{ right:60 } },
-      plugins:{ legend:{ position:'top' },
-        tooltip:{ callbacks:{ label(c){ return `${c.dataset.label}: ${nf.format(c.parsed.y)}`; } } } },
-      scales:{
-        x:{ ticks:{ autoSkip:false, maxRotation:0, minRotation:0, callback:(v,i,t)=>xTickCallback(v,i,t) } },
-        y:{ beginAtZero:false }
+      layout:{ padding: { right: 60 } },
+      plugins:{
+        legend:{ position:'top' },
+        tooltip:{ callbacks:{ label(c){ return `${c.dataset.label}: ${nf.format(c.parsed.y)}`; } } }
+      },
+      scales: {
+        x: {
+          ticks: { autoSkip:false, maxRotation:0, minRotation:0, callback: xTickCallback },
+          grid: { display:true }
+        },
+        y: { beginAtZero:false }
       }
     },
     plugins:[lastValuePlugin]
   });
 }
 
-/* ===== PWA ===== */
-if('serviceWorker' in navigator){
-  window.addEventListener('load', ()=>{ navigator.serviceWorker.register('./sw.js').catch(console.error); });
+/* ========= PWA / Service Worker ========= */
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(console.error);
+  });
 }
-window.addEventListener('beforeinstallprompt', (e)=>{
-  e.preventDefault(); deferPrompt=e; el('#btnInstall')?.classList.remove('hidden');
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault(); deferPrompt = e;
+  el('#btnInstall')?.classList.remove('hidden');
 });
-el('#btnInstall')?.addEventListener('click', async ()=>{
-  if(!deferPrompt) return; deferPrompt.prompt(); await deferPrompt.userChoice;
-  deferPrompt=null; el('#btnInstall')?.classList.add('hidden');
+el('#btnInstall')?.addEventListener('click', async () => {
+  if (!deferPrompt) return;
+  deferPrompt.prompt(); await deferPrompt.userChoice;
+  deferPrompt = null; el('#btnInstall')?.classList.add('hidden');
 });
-  </script>
+</script>
 </body>
 </html>

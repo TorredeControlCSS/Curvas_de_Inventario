@@ -1,46 +1,49 @@
-const CACHE_NAME = 'cedis-cache-v8';
-const CORE_ASSETS = [
+const CACHE = 'cedis-cache-v6';
+const ASSETS = [
   './',
   './index.html',
   './manifest.webmanifest',
   './icons/icon-192.png',
-  './icons/icon-512.png'
+  './icons/icon-512.png',
+  'https://cdn.tailwindcss.com',
+  'https://cdn.jsdelivr.net/npm/chart.js@4.4.1'
 ];
 
-self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE_NAME).then(c => c.addAll(CORE_ASSETS)));
+// install
+self.addEventListener('install', e=>{
+  e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)));
   self.skipWaiting();
 });
-self.addEventListener('activate', (e) => {
+
+// activate (limpieza)
+self.addEventListener('activate', e=>{
   e.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
-    )
+    caches.keys().then(keys=>Promise.all(keys.map(k=> k!==CACHE && caches.delete(k))))
   );
   self.clients.claim();
 });
-self.addEventListener('fetch', (e) => {
-  const { request } = e;
-  const url = new URL(request.url);
 
-  // API: siempre red (no cachear)
-  if (url.hostname === 'script.google.com') {
-    e.respondWith(fetch(request));
-    return;
-  }
+// fetch: cache-first para estáticos, network-first para la API
+self.addEventListener('fetch', e=>{
+  const url = new URL(e.request.url);
+  const isAPI = url.href.includes('script.google.com/macros');
 
-  if (request.mode === 'navigate') {
+  if (isAPI) {
     e.respondWith(
-      fetch(request).then(r => {
-        const copy=r.clone(); caches.open(CACHE_NAME).then(c=>c.put(request, copy)); return r;
-      }).catch(()=>caches.match(request))
+      fetch(e.request).then(res=>{
+        return res;
+      }).catch(()=> caches.match(e.request))
     );
     return;
   }
 
   e.respondWith(
-    caches.match(request).then(cached => cached ||
-      fetch(request).then(r => { const copy=r.clone(); caches.open(CACHE_NAME).then(c=>c.put(request, copy)); return r; })
-    )
+    caches.match(e.request).then(cached=>{
+      return cached || fetch(e.request).then(res=>{
+        const copy = res.clone();
+        caches.open(CACHE).then(c=>c.put(e.request, copy));
+        return res;
+      });
+    })
   );
 });
