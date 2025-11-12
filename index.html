@@ -1,371 +1,385 @@
 <!doctype html>
 <html lang="es">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>CEDIS Panamá – Curvas de Inventario</title>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Inventario CEDIS — Curvas en tiempo real</title>
 
   <!-- PWA -->
   <link rel="manifest" href="manifest.webmanifest">
-  <meta name="theme-color" content="#0d6efd">
-  <link rel="icon" href="icons/icon-192.png">
+  <meta name="theme-color" content="#0ea5e9">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
 
-  <!-- UI básica (Bootstrap lite) -->
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-
-  <!-- Chart.js + adapter de fechas (date-fns) -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+  <!-- UI -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1"></script>
 
   <style>
-    body{ background:#f6f8fb; }
-    .card{ border:0; box-shadow:0 8px 22px rgba(0,0,0,.06); }
-    .brand{ height:42px; }
-    .muted{ color:#6c757d; }
-    .skeleton{ background:linear-gradient(90deg,#eee,#f5f5f5,#eee); background-size:200% 100%; animation:sh 1.2s infinite; }
-    @keyframes sh{ 0%{background-position:200% 0} 100%{background-position:-200% 0} }
-    .spinner{ width:18px; height:18px; border:3px solid #d8e2f0; border-top-color:#0d6efd; border-radius:50%; animation:sp .8s linear infinite; display:inline-block; }
-    @keyframes sp{ to{ transform:rotate(360deg) } }
-    .smallcaps{ font-variant-numeric: tabular-nums; }
+    .card{ box-shadow:0 6px 24px rgba(0,0,0,.08), 0 2px 6px rgba(0,0,0,.04); }
+    #suggestions li{ cursor:pointer }
   </style>
 </head>
-
-<body>
-  <nav class="navbar navbar-dark" style="background:#0d6efd;">
-    <div class="container">
-      <img class="brand me-2" src="icons/icon-192.png" alt="CSS">
-      <span class="navbar-brand mb-0 h1">CEDIS Panama – Curvas de Inventario</span>
-      <button id="installBtn" class="btn btn-light btn-sm ms-auto">Instalar</button>
-    </div>
-  </nav>
-
-  <main class="container py-4">
-    <!-- Buscador -->
-    <div class="card mb-3">
-      <div class="card-body">
-        <label class="form-label fw-semibold">Busca por <u>código</u> o <u>nombre de suministro</u></label>
-        <div class="input-group">
-          <input id="q" class="form-control" placeholder="Ej: 101098001 o amlodipina" autocomplete="off">
-          <button id="btnBuscar" class="btn btn-primary">Buscar</button>
-          <button id="btnLimpiar" class="btn btn-outline-secondary">Limpiar</button>
-        </div>
-        <div id="suggest" class="list-group mt-2" style="max-height:230px; overflow:auto; display:none;"></div>
+<body class="bg-white text-slate-800 min-h-screen">
+  <!-- HEADER -->
+  <header class="bg-sky-600 text-white">
+    <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <!-- Deja tu logo actual (base64 o archivo) -->
+        <img src="icons/icon-192.png" alt="DINALOG - CSS Panamá"
+             class="h-10 sm:h-12 md:h-16 w-auto mr-3 select-none" loading="eager" decoding="async"/>
+        <h1 class="text-lg sm:text-2xl font-semibold">CEDIS Panama – Curvas de Inventario</h1>
       </div>
+      <button id="btnInstall" class="hidden bg-white/10 hover:bg-white/20 px-3 py-1 rounded">Instalar</button>
     </div>
+  </header>
 
-    <div class="row g-3">
-      <!-- Detalle -->
-      <div class="col-lg-4">
-        <div class="card h-100">
-          <div class="card-body">
-            <h5 class="card-title">Detalle</h5>
-            <div id="detail">
-              <div class="muted">Código: <span id="d-codigo">—</span></div>
-              <div class="muted">Suministro: <span id="d-suministro">—</span></div>
-              <div class="muted">KB_min: <span id="d-kb">—</span></div>
-              <div class="muted">Crítico: <span id="d-crit">—</span></div>
-              <div class="muted">Promedio 30 días: <span id="d-prom">—</span></div>
-              <div class="muted">Último inventario: <span id="d-ult">—</span></div>
-              <div class="muted">Fecha último: <span id="d-fecha">—</span></div>
-              <div class="mt-2 small text-muted">Fuente: API Inventario CEDIS (Apps Script)</div>
-            </div>
-          </div>
+  <main class="max-w-6xl mx-auto px-4 py-6 space-y-6">
+    <!-- BUSCADOR -->
+    <section class="card bg-white rounded-2xl p-4">
+      <div class="flex flex-col gap-3">
+        <label class="text-sm text-slate-500">Busca por <b>código</b> o <b>nombre de suministro</b></label>
+
+        <div class="relative">
+          <input id="q" type="search" placeholder="Ej.: 101098001 o amlodipina"
+                 class="w-full rounded-xl border border-slate-300 px-4 py-3 pr-10 focus:outline-none focus:ring-2 focus:ring-sky-500">
+          <button id="btnClearInput" class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xl hidden" aria-label="Limpiar">×</button>
+          <ul id="suggestions" class="absolute z-10 mt-1 w-full bg-white border border-slate-200 rounded-xl max-h-64 overflow-auto hidden"></ul>
+        </div>
+
+        <div class="flex gap-2">
+          <button id="btnBuscar" class="bg-sky-600 hover:bg-sky-700 text-white px-4 py-2 rounded-xl">Buscar</button>
+          <button id="btnLimpiar" class="bg-slate-100 hover:bg-slate-200 px-4 py-2 rounded-xl">Limpiar</button>
         </div>
       </div>
+    </section>
 
-      <!-- Gráfico -->
-      <div class="col-lg-8">
-        <div class="card h-100">
-          <div class="card-body">
-            <div class="d-flex justify-content-between">
-              <h5 class="card-title mb-0"><span id="chartTitle">Curva de Inventario</span></h5>
-              <small id="now" class="text-muted"></small>
-            </div>
-            <div id="chartWrap" class="mt-2" style="height:420px; position:relative;">
-              <canvas id="chart" height="400"></canvas>
-              <div id="loading" style="position:absolute; inset:0; display:none; align-items:center; justify-content:center;">
-                <span class="spinner me-2"></span> Cargando…
-              </div>
-            </div>
-          </div>
+    <!-- PANEL DATOS + GRÁFICO -->
+    <section class="grid md:grid-cols-3 gap-4">
+      <!-- DETALLE -->
+      <div class="card bg-white rounded-2xl p-4 md:col-span-1 space-y-1">
+        <h2 class="font-semibold text-slate-700">Detalle</h2>
+        <div class="text-sm space-y-1">
+          <div><span class="text-slate-500">Código:</span> <span id="lblCodigo" class="font-mono">—</span></div>
+          <div><span class="text-slate-500">Suministro:</span> <span id="lblSuministro">—</span></div>
+          <div><span class="text-slate-500">KB_min:</span> <span id="lblKBmin" class="font-mono">—</span></div>
+          <div><span class="text-slate-500">Crítico:</span> <span id="lblCritico" class="font-mono">—</span></div>
+          <div><span class="text-slate-500">Promedio 30 días:</span> <span id="lblProm30" class="font-mono">—</span></div>
+          <div><span class="text-slate-500">Último inventario:</span> <span id="lblUltInv" class="font-mono">—</span></div>
+          <div><span class="text-slate-500">Fecha último:</span> <span id="lblUltFec" class="font-mono">—</span></div>
+          <div class="text-xs text-slate-500 pt-2">Fuente: API Inventario CEDIS (Apps Script)</div>
         </div>
       </div>
-    </div>
 
-    <p class="text-center text-muted mt-4 small">v1.2 • PWA • Actualiza en tiempo real</p>
+      <!-- GRÁFICO -->
+      <div class="card bg-white rounded-2xl p-4 md:col-span-2">
+        <div class="flex items-center justify-between mb-2">
+          <h2 id="ttlChart" class="font-semibold text-slate-700">Curva de Inventario</h2>
+          <div class="text-xs text-slate-500" id="lblActualizado">—</div>
+        </div>
+        <div class="h-[360px]">
+          <canvas id="chart"></canvas>
+        </div>
+      </div>
+    </section>
   </main>
 
+  <footer class="py-8 text-center text-xs text-slate-400">
+    v1.2 • PWA • Actualiza en tiempo real
+  </footer>
+
 <script>
-/* =================== CONFIG =================== */
-// 👇 Reemplaza por la URL de despliegue de TU WebApp de Apps Script (la que devuelve JSON)
-// Debe terminar sin “/” (ej: https://script.google.com/macros/s/AKfycb.../exec)
+/* ========= CONFIG ========= */
+// Usa tu URL de WebApp (termina en /exec)
 const API_BASE = 'https://script.google.com/macros/s/AKfycbxQsD4XJICmZg-5eiZIAEjJ3GZz-GmqvhvMWtiznEOu7SafIKxWopo5iIVy7ufrq_qq/exec';
 
-/* =================== UTILIDADES =================== */
-const fmtNum = new Intl.NumberFormat('es-PA', { maximumFractionDigits: 0 });
-const fmtNum1 = new Intl.NumberFormat('es-PA', { maximumFractionDigits: 1 });
-const fmtDate = (d) => {
-  try { return new Date(d).toLocaleDateString('es-PA'); } catch { return '—'; }
-};
-const byDateAsc = (a,b)=> (new Date(a.fecha)) - (new Date(b.fecha));
+/* ========= Helpers/estado ========= */
+const el  = s => document.querySelector(s);
+const els = s => Array.from(document.querySelectorAll(s));
+const nf  = new Intl.NumberFormat('en-US');
 
-function movingAvg(series, days=30){
-  // series: [{fecha:'yyyy-mm-dd', inventario:number}] ordenada por fecha asc
-  const out = [];
-  let win = [];
-  let sum = 0;
-  const DAY = 86400000;
-  for(const p of series){
-    const t = new Date(p.fecha).getTime();
-    // quitar puntos fuera de ventana (t - (days-1)d)
-    while (win.length && (t - win[0].t) >= days*DAY){
-      sum -= win[0].v; win.shift();
+const q = el('#q'), btnBuscar = el('#btnBuscar'), btnLimpiar = el('#btnLimpiar');
+const btnClearInput = el('#btnClearInput'), suggestions = el('#suggestions');
+
+const lblCodigo=el('#lblCodigo'), lblSuministro=el('#lblSuministro'), lblKBmin=el('#lblKBmin'),
+      lblCritico=el('#lblCritico'), lblUltInv=el('#lblUltInv'), lblUltFec=el('#lblUltFec'),
+      lblProm30=el('#lblProm30'), lblAct=el('#lblActualizado'), ttlChartEl=el('#ttlChart');
+
+let chart, searchCtrl=null, itemCtrl=null;
+const memoryCache = new Map(); // término -> resultados sugerencias
+
+/* ========= Parse/format fechas DD/MM/YYYY ========= */
+function parseDMY(s){
+  // admite '01/07/2025' o '1/7/2025'
+  if (!s) return null;
+  const [dd,mm,yy] = String(s).split('/').map(n=>parseInt(n,10));
+  if (!dd||!mm||!yy) return null;
+  return new Date(yy, mm-1, dd); // local
+}
+function fmtDMY(d){ const dd=String(d.getDate()).padStart(2,'0'), mm=String(d.getMonth()+1).padStart(2,'0'), yy=d.getFullYear(); return `${dd}/${mm}/${yy}`; }
+const num = v => Number(String(v).replace(/[^\d.-]/g,''))||0;
+
+/* ========= Entrada/sugerencias ========= */
+q.addEventListener('input', ()=>{
+  btnClearInput.classList.toggle('hidden', q.value.trim()==='');
+});
+btnClearInput.addEventListener('click', ()=>{ q.value=''; btnClearInput.classList.add('hidden'); hideSuggestions(); });
+
+let tDeb=null;
+q.addEventListener('input', ()=>{
+  clearTimeout(tDeb);
+  const term = q.value.trim();
+  if (term.length<2){ hideSuggestions(); return; }
+  tDeb = setTimeout(()=> doSearch(term), 300);
+});
+q.addEventListener('keydown', ev => {
+  if (ev.key==='Enter'){ hideSuggestions(); launchSearch(); }
+});
+btnBuscar.addEventListener('click', launchSearch);
+btnLimpiar.addEventListener('click', ()=>{
+  q.value=''; btnClearInput.classList.add('hidden'); hideSuggestions(); renderItem(null);
+});
+
+function showSuggestions(items){
+  if (!items||!items.length){ hideSuggestions(); return; }
+  const top = items.slice(0,10);
+  suggestions.innerHTML = top.map(it=>`
+    <li class="px-3 py-2 hover:bg-slate-100 border-b border-slate-100" data-cod="${it.codigo}">
+      <div class="font-medium">${it.suministro||''}</div>
+      <div class="text-xs text-slate-500">${it.codigo||''}</div>
+    </li>`).join('');
+  suggestions.classList.remove('hidden');
+  els('#suggestions li').forEach(li=>{
+    li.addEventListener('click', ()=>{
+      const cod = li.getAttribute('data-cod');
+      q.value = cod; hideSuggestions(); fetchItem(cod);
+    });
+  });
+}
+function hideSuggestions(){ suggestions.classList.add('hidden'); suggestions.innerHTML=''; }
+
+async function doSearch(term){
+  try{
+    // cache memoria para UX inmediato
+    if (memoryCache.has(term)) showSuggestions(memoryCache.get(term));
+    if (searchCtrl) searchCtrl.abort();
+    searchCtrl = new AbortController();
+    const url = new URL(API_BASE);
+    url.searchParams.set('action','search');
+    url.searchParams.set('q', term);
+    const res = await fetch(url, {cache:'no-store', signal: searchCtrl.signal});
+    const data = await res.json();
+    const items = data.items || [];
+    memoryCache.set(term, items);
+    showSuggestions(items);
+  }catch(e){ if (e.name!=='AbortError') console.error('search error', e); }
+}
+
+function launchSearch(){
+  const term = q.value.trim();
+  if (!term) return;
+  if (/^\d{6,}$/.test(term)) fetchItem(term);
+  else doSearch(term);
+}
+
+/* ========= Datos/agrupación ========= */
+function groupByDateSum(points){
+  // consolida inventario por fecha (DD/MM/YYYY)
+  const bucket = new Map();
+  (points||[]).forEach(p=>{
+    const f = String(p.fecha||'').trim();
+    if (!f) return;
+    const inv = num(p.inventario);
+    bucket.set(f, (bucket.get(f)||0) + inv);
+  });
+  // ordena por fecha real usando parseDMY
+  return Array.from(bucket.entries())
+    .map(([fecha, inventario]) => ({ fecha, inventario, _d: parseDMY(fecha)}))
+    .filter(r => r._d instanceof Date && !isNaN(r._d))
+    .sort((a,b)=> a._d - b._d);
+}
+
+// SMA de 30 días por ventana temporal real
+function sma30(rows){
+  const out = new Array(rows.length).fill(null);
+  for (let i=0;i<rows.length;i++){
+    const to = rows[i]._d;
+    const from = new Date(to); from.setDate(from.getDate()-29);
+    let sum=0, cnt=0;
+    for (let k=i;k>=0 && rows[k]._d>=from;k--){
+      sum += num(rows[k].inventario); cnt++;
     }
-    win.push({t, v:p.inventario});
-    sum += p.inventario;
-    out.push({x:new Date(t), y: sum / win.length});
+    out[i] = cnt ? (sum/cnt) : null;
   }
   return out;
 }
 
-/* =============== CACHÉ (memoria) =============== */
-const mem = new Map();  // LRU sencillo
-function cacheGet(k){ return mem.get(k); }
-function cacheSet(k,v){ mem.set(k,v); if(mem.size>40){ mem.delete(mem.keys().next().value); } }
+/* ========= Fetch item ========= */
+function setLoading(b){
+  btnBuscar.disabled=b; btnBuscar.textContent = b?'Buscando…':'Buscar';
+}
 
-/* =============== UI =============== */
-const els = {
-  q: document.getElementById('q'),
-  btnBuscar: document.getElementById('btnBuscar'),
-  btnLimpiar: document.getElementById('btnLimpiar'),
-  suggest: document.getElementById('suggest'),
-  dCodigo: document.getElementById('d-codigo'),
-  dSum: document.getElementById('d-suministro'),
-  dKB: document.getElementById('d-kb'),
-  dCR: document.getElementById('d-crit'),
-  dProm: document.getElementById('d-prom'),
-  dUlt: document.getElementById('d-ult'),
-  dFecha: document.getElementById('d-fecha'),
-  chartTitle: document.getElementById('chartTitle'),
-  loading: document.getElementById('loading'),
-  now: document.getElementById('now'),
-};
-els.now.textContent = new Date().toLocaleString('es-PA');
+async function fetchItem(code){
+  try{
+    setLoading(true);
 
-let chart;
-function ensureChart(){
-  if(chart) return chart;
+    // pinta caché localStorage si existiera (UX)
+    const cacheKey = 'item:'+code;
+    const cached = localStorage.getItem(cacheKey);
+    if (cached) renderItem(JSON.parse(cached), true);
+
+    if (itemCtrl) itemCtrl.abort();
+    itemCtrl = new AbortController();
+
+    const url = new URL(API_BASE);
+    url.searchParams.set('action','item');
+    url.searchParams.set('code', code);
+    const res  = await fetch(url, {cache:'no-store', signal:itemCtrl.signal});
+    const data = await res.json();
+
+    // Si viniera sin nombre, intenta recuperarlo por search
+    if (!data.suministro){
+      try{
+        if (searchCtrl) searchCtrl.abort();
+        searchCtrl = new AbortController();
+        const sUrl = new URL(API_BASE);
+        sUrl.searchParams.set('action','search');
+        sUrl.searchParams.set('q', code);
+        const sRes = await fetch(sUrl, {cache:'no-store', signal: searchCtrl.signal});
+        const sData = await sRes.json();
+        const hit = (sData.items||[]).find(it => String(it.codigo)===String(code));
+        if (hit?.suministro) data.suministro = hit.suministro;
+      }catch(_){}
+    }
+
+    localStorage.setItem(cacheKey, JSON.stringify(data));
+    renderItem(data);
+  }catch(e){
+    if (e.name!=='AbortError'){
+      console.error('item error', e);
+      alert('No se pudo obtener el detalle. Revisa conexión o permisos del endpoint.');
+    }
+  }finally{ setLoading(false); }
+}
+
+/* ========= Render ========= */
+function renderItem(data, fromCache=false){
+  if (!data){
+    lblCodigo.textContent = lblSuministro.textContent = lblKBmin.textContent =
+    lblCritico.textContent = lblUltInv.textContent = lblUltFec.textContent =
+    lblProm30.textContent = '—';
+    lblAct.textContent='—'; ttlChartEl.textContent='Curva de Inventario';
+    if (chart) chart.destroy();
+    return;
+  }
+
+  const rows = groupByDateSum(Array.isArray(data.puntos)?data.puntos:[]);
+  const labels = rows.map(r=>r.fecha);
+  const inv    = rows.map(r=>num(r.inventario));
+  const avg    = sma30(rows);
+  const last   = rows[rows.length-1];
+
+  // Panel
+  lblCodigo.textContent     = data.codigo || '—';
+  lblSuministro.textContent = data.suministro || '—';
+  lblKBmin.textContent      = (data.kb_min!=null ? nf.format(num(data.kb_min)) : '—');
+  lblCritico.textContent    = (data.critico!=null ? nf.format(num(data.critico)) : '—');
+  lblUltInv.textContent     = last ? nf.format(num(last.inventario)) : '—';
+  lblUltFec.textContent     = last ? last.fecha : '—';
+  lblProm30.textContent     = (avg.length && avg[avg.length-1]!=null ? nf.format(avg[avg.length-1]) : '—');
+  lblAct.textContent        = (fromCache?'(caché) ':'') + new Date().toLocaleString();
+  ttlChartEl.textContent    = `${data.codigo||'—'} — ${data.suministro||'—'}`;
+
+  // Datasets
+  const datasets = [
+    {
+      label:'Inventario',
+      data: inv,
+      borderColor: 'rgba(59,130,246,1)',
+      backgroundColor: 'rgba(59,130,246,0.15)',
+      pointRadius: 2, borderWidth: 2, tension:.2, fill:'origin', clip:false
+    },
+    {
+      label:'Promedio 30 días',
+      data: avg,
+      borderColor: 'rgba(100,116,139,1)',
+      backgroundColor: 'rgba(100,116,139,0.08)',
+      pointRadius: 0, borderWidth: 2, borderDash:[6,4], tension:.2, fill:false, clip:false
+    }
+  ];
+  if (Number.isFinite(num(data.kb_min))){
+    datasets.push({
+      label:'KB_min',
+      data: labels.map(()=> num(data.kb_min)),
+      borderColor:'rgba(234,179,8,1)', backgroundColor:'rgba(234,179,8,0.10)',
+      pointRadius:0, borderWidth:1, fill:false, clip:false
+    });
+  }
+  if (Number.isFinite(num(data.critico))){
+    datasets.push({
+      label:'Crítico',
+      data: labels.map(()=> num(data.critico)),
+      borderColor:'rgba(239,68,68,1)', backgroundColor:'rgba(239,68,68,0.10)',
+      pointRadius:0, borderWidth:1, fill:false, clip:false
+    });
+  }
+
+  // Etiqueta de último valor al final de cada dataset
+  const lastValuePlugin = {
+    id:'lastValuePlugin',
+    afterDatasetsDraw(chart){
+      const {ctx} = chart; ctx.save(); ctx.font='12px sans-serif'; ctx.textBaseline='middle';
+      chart.data.datasets.forEach((ds,i)=>{
+        const meta = chart.getDatasetMeta(i);
+        if (!meta?.data?.length) return;
+        let idx = ds.data.length-1;
+        while (idx>=0 && (ds.data[idx]==null || !isFinite(ds.data[idx]))) idx--;
+        if (idx<0) return;
+        const pt = meta.data[idx]; const val = +ds.data[idx];
+        if (!pt || !isFinite(val)) return;
+        ctx.fillStyle = Array.isArray(ds.borderColor)?ds.borderColor[0]:(ds.borderColor||'#334155');
+        ctx.fillText(nf.format(val), pt.x+6, pt.y);
+      });
+      ctx.restore();
+    }
+  };
+
+  // Ticks del eje X cada 14 días + primer y último
+  function xTickCallback(value, index, ticks){
+    const isFirst = index===0, isLast = index===ticks.length-1;
+    if (isFirst||isLast) return labels[index];
+    const d0 = parseDMY(labels[0]); const di = parseDMY(labels[index]);
+    const diff = Math.round((di - d0)/(1000*60*60*24));
+    return (diff%14===0) ? labels[index] : '';
+  }
+
+  if (chart) chart.destroy();
   const ctx = document.getElementById('chart').getContext('2d');
   chart = new Chart(ctx, {
     type:'line',
-    data:{ datasets:[] },
+    data:{ labels, datasets },
     options:{
-      animation:false,
-      responsive:true,
-      maintainAspectRatio:false,
-      parsing:false,
+      responsive:true, maintainAspectRatio:false,
+      interaction:{ intersect:false, mode:'index' },
+      layout:{ padding:{ right: 60 } },
+      plugins:{ legend:{ position:'top' } },
       scales:{
-        x: { type:'time', time:{ unit:'day' }, ticks:{ maxRotation:0, autoSkip:true } },
-        y: { beginAtZero:true }
-      },
-      plugins:{
-        legend:{ labels:{ usePointStyle:true } },
-        tooltip:{ mode:'index', intersect:false }
-      },
-      elements:{
-        line:{ borderWidth:2, tension:.25 },
-        point:{ radius:2 }
+        x:{ ticks:{ autoSkip:false, maxRotation:0, minRotation:0, callback:xTickCallback }},
+        y:{ beginAtZero:false }
       }
-    }
+    },
+    plugins:[lastValuePlugin]
   });
-  return chart;
 }
 
-function setDetailPlaceholders(){
-  els.dCodigo.textContent = '—';
-  els.dSum.textContent = '—';
-  els.dKB.textContent = '—';
-  els.dCR.textContent = '—';
-  els.dProm.textContent = '—';
-  els.dUlt.textContent = '—';
-  els.dFecha.textContent = '—';
+/* ========= SW/PWA ========= */
+if ('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{ navigator.serviceWorker.register('./sw.js').catch(console.error); });
 }
-
-function render(code, meta, puntos){
-  // puntos ordenados
-  puntos.sort(byDateAsc);
-
-  // dataset inventario
-  const inv = puntos.map(p => ({x:new Date(p.fecha), y:p.inventario}));
-
-  // MA 30 días
-  const ma30 = movingAvg(puntos, 30);
-
-  // último
-  const last = puntos[puntos.length-1] || null;
-  const prom30 = ma30.length ? ma30[ma30.length-1].y : null;
-
-  // Detalle
-  els.dCodigo.textContent = code || '—';
-  els.dSum.textContent = meta?.suministro || '—';
-  els.dKB.textContent = (meta?.kb_min!=null) ? fmtNum.format(meta.kb_min) : '—';
-  els.dCR.textContent = (meta?.critico!=null) ? fmtNum.format(meta.critico) : '—';
-  els.dProm.textContent = prom30!=null ? fmtNum.format(prom30) : '—';
-  els.dUlt.textContent = last ? fmtNum.format(last.inventario) : '—';
-  els.dFecha.textContent = last ? fmtDate(last.fecha) : '—';
-
-  // Título
-  document.title = `CEDIS – ${code}`; 
-  els.chartTitle.textContent = `${code} — ${meta?.suministro || ''}`.trim();
-
-  // Líneas horizontales (KB_min y Crítico) como datasets stepped
-  const x0 = inv.length ? inv[0].x : new Date();
-  const x1 = inv.length ? inv[inv.length-1].x : new Date();
-
-  const ds = [
-    {label:'Inventario', data:inv, borderColor:'#3b82f6', backgroundColor:'rgba(59,130,246,.15)', fill:true},
-    {label:'Promedio 30 días', data:ma30, borderDash:[6,6], borderColor:'#64748b', pointRadius:0},
-  ];
-
-  if (meta?.kb_min!=null){
-    ds.push({
-      label:'KB_min',
-      data:[{x:x0,y:meta.kb_min},{x:x1,y:meta.kb_min}],
-      borderColor:'#facc15', pointRadius:0, fill:false, stepped:true
-    });
-  }
-  if (meta?.critico!=null){
-    ds.push({
-      label:'Crítico',
-      data:[{x:x0,y:meta.critico},{x:x1,y:meta.critico}],
-      borderColor:'#ef4444', pointRadius:0, fill:false, stepped:true
-    });
-  }
-
-  const ch = ensureChart();
-  ch.data.datasets = ds;
-  ch.update('none');
-}
-
-/* =============== API =============== */
-let acSearch = null;
-let acItem = null;
-
-async function apiSearch(q){
-  const key = `search:${q}`;
-  const cached = cacheGet(key);
-  if (cached) return cached;
-
-  if (acSearch) acSearch.abort();
-  acSearch = new AbortController();
-
-  const url = `${API_BASE}?action=search&q=${encodeURIComponent(q)}`;
-  const r = await fetch(url, {signal:acSearch.signal});
-  const j = await r.json();
-  cacheSet(key, j?.items || []);
-  return j?.items || [];
-}
-
-async function apiItem(code){
-  const key = `item:${code}`;
-  const cached = cacheGet(key);
-  if (cached) return cached;
-
-  if (acItem) acItem.abort();
-  acItem = new AbortController();
-
-  const url = `${API_BASE}?action=item&code=${encodeURIComponent(code)}`;
-  const r = await fetch(url, {signal:acItem.signal});
-  const j = await r.json();
-  // Esperado por tu Apps Script: {codigo, kb_min, critico, puntos:[{fecha:'yyyy-mm-dd', inventario:n}]}
-  cacheSet(key, j);
-  return j;
-}
-
-/* =============== INTERACCIÓN =============== */
-function showSuggest(items){
-  const box = els.suggest;
-  box.innerHTML = '';
-  if (!items?.length){ box.style.display='none'; return; }
-  for(const it of items){
-    const a = document.createElement('button');
-    a.type = 'button';
-    a.className = 'list-group-item list-group-item-action';
-    a.textContent = `${it.codigo} — ${it.suministro}`;
-    a.addEventListener('click', ()=>{
-      els.q.value = it.codigo;
-      box.style.display='none';
-      buscar();
-    });
-    box.appendChild(a);
-  }
-  box.style.display = 'block';
-}
-
-let suggestTimer=null;
-els.q.addEventListener('input', ()=>{
-  const v = els.q.value.trim();
-  setDetailPlaceholders();
-  if (suggestTimer) clearTimeout(suggestTimer);
-  if (!v){ els.suggest.style.display='none'; return; }
-  suggestTimer = setTimeout(async ()=>{
-    try{
-      const items = await apiSearch(v.toLowerCase());
-      showSuggest(items);
-    }catch{ /*noop*/ }
-  }, 220);
-});
-
-async function buscar(){
-  els.suggest.style.display='none';
-  const v = els.q.value.trim();
-  if (!v) return;
-
-  els.loading.style.display='flex';
-  setDetailPlaceholders();
-  render('', {suministro:''}, []); // limpia gráfico rápido
-
-  try{
-    // Si el usuario escribió un nombre, toma el primer match para obtener el código
-    let code = v;
-    if (!/^\d{6,}$/.test(v)){
-      const items = await apiSearch(v.toLowerCase());
-      if (!items.length) { els.loading.style.display='none'; return; }
-      code = items[0].codigo;
-      els.q.value = code;
-    }
-
-    const data = await apiItem(code);
-    const meta = { suministro: (data?.suministro || data?.descripcion || ''), kb_min:data?.kb_min, critico:data?.critico };
-    render(data?.codigo || code, meta, data?.puntos || []);
-  }catch(e){
-    console.error(e);
-  }finally{
-    els.loading.style.display='none';
-  }
-}
-
-els.btnBuscar.addEventListener('click', buscar);
-els.btnLimpiar.addEventListener('click', ()=>{
-  els.q.value = '';
-  setDetailPlaceholders();
-  render('',{suministro:''},[]);
-});
-
-/* =============== PWA Register =============== */
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', ()=> navigator.serviceWorker.register('./sw.js').catch(()=>{}));
-}
-
-/* =============== Instalar (Add to Home) =============== */
-let deferredPrompt=null;
-window.addEventListener('beforeinstallprompt', (e)=>{
-  e.preventDefault(); deferredPrompt = e;
-  document.getElementById('installBtn').disabled = false;
-});
-document.getElementById('installBtn').addEventListener('click', async ()=>{
-  if (!deferredPrompt) return;
-  deferredPrompt.prompt(); await deferredPrompt.userChoice; deferredPrompt = null;
+let deferPrompt=null;
+window.addEventListener('beforeinstallprompt', (e)=>{ e.preventDefault(); deferPrompt=e; el('#btnInstall')?.classList.remove('hidden'); });
+el('#btnInstall')?.addEventListener('click', async ()=>{
+  if (!deferPrompt) return; deferPrompt.prompt(); await deferPrompt.userChoice; deferPrompt=null; el('#btnInstall')?.classList.add('hidden');
 });
 </script>
 </body>
