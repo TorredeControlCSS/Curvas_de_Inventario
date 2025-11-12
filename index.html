@@ -1,338 +1,428 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="es">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>CEDIS Panamá – Curvas de Inventario</title>
+  <title>Inventario CEDIS — Curvas en tiempo real</title>
 
-  <!-- Manifest + Icons existentes en tu repo -->
-  <link rel="manifest" href="./manifest.webmanifest">
-  <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
-  <link rel="apple-touch-icon" href="./icons/icon-192.png"/>
+  <!-- Tailwind (UI rápida) -->
+  <script src="https://cdn.tailwindcss.com"></script>
 
-  <!-- Chart.js (CDN oficial) -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <!-- Chart.js + adapter de fechas (escala X temporal REAL) -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1"></script>
+  <script src="https://cdn.jsdelivr.net/npm/date-fns@3.6.0"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0"></script>
 
   <style>
-    :root{
-      --bg:#f6f7fb; --card:#fff; --ink:#0f172a; --muted:#64748b; --brand:#0ea5e9;
-      --blue:#3b82f6; --blueA:rgba(59,130,246,.15);
-      --gray:#64748b; --grayA:rgba(100,116,139,.08);
-      --amber:#eab308; --amberA:rgba(234,179,8,.10);
-      --red:#ef4444; --redA:rgba(239,68,68,.10);
-      --shadow:0 10px 25px -15px rgba(2,6,23,.25);
-      --radius:14px;
-    }
-    *{box-sizing:border-box}
-    html,body{height:100%}
-    body{
-      margin:0;background:var(--bg);color:var(--ink);
-      font-family: system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,"Helvetica Neue",Arial,"Noto Sans",sans-serif;
-    }
-    header{
-      background:#0b74c1;color:#fff;box-shadow:var(--shadow);
-    }
-    .wrap{max-width:1200px;margin:0 auto;padding:18px}
-    .bar{
-      display:flex;align-items:center;gap:14px; padding:12px 0;
-    }
-    .brand{display:flex;align-items:center;gap:12px;font-weight:700;font-size:20px}
-    .brand img{height:38px;width:38px}
-    .install{margin-left:auto;background:#1e90ff;border:0;color:#fff;padding:9px 14px;border-radius:10px;cursor:pointer}
-    .box{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow)}
-    .search{padding:18px}
-    .row{display:grid;grid-template-columns:1fr 2fr;gap:18px;padding:0 18px 18px}
-    @media (max-width:900px){ .row{grid-template-columns:1fr} }
-    .inputbar{display:flex;gap:10px;align-items:center}
-    .inputbar input{
-      flex:1;padding:14px;border-radius:12px;border:1px solid #cbd5e1;outline:none;
-    }
-    .btn{padding:12px 16px;border-radius:12px;border:1px solid #cbd5e1;background:#fff;cursor:pointer}
-    .btn.primary{background:#0ea5e9;color:#fff;border:none}
-    .card{padding:18px}
-    .title{font-weight:700;margin:2px 0 14px 0}
-    .kv{line-height:1.85}
-    .kv b{color:#0b4d86}
-    .muted{color:var(--muted);font-size:12px}
-    .chartWrap{height:440px;padding:12px}
-    .chartHead{display:flex;justify-content:space-between;align-items:center;padding:12px 10px 0 10px}
-    .foot{padding:14px;text-align:center;color:var(--muted);font-size:12px}
-    .link{color:#0b74c1;text-decoration:none}
+    .card{ box-shadow:0 6px 24px rgba(0,0,0,.08), 0 2px 6px rgba(0,0,0,.04); }
+    #suggestions li{ cursor:pointer }
   </style>
 </head>
-<body>
-  <header>
-    <div class="wrap bar">
-      <div class="brand">
-        <img src="./icons/icon-192.png" alt="CSS Panamá">
-        <div>CEDIS Panama – Curvas de Inventario</div>
+<body class="bg-white text-slate-800 min-h-screen">
+  <!-- HEADER -->
+  <header class="bg-sky-600 text-white">
+    <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
+      <div class="flex items-center gap-3 select-none">
+        <!-- Logo seguro (SVG inline liviano, no rompe rutas) -->
+        <svg class="h-10 sm:h-12 md:h-16 w-auto" viewBox="0 0 64 64" aria-hidden="true">
+          <defs>
+            <linearGradient id="g" x1="0" x2="1" y1="0" y2="1">
+              <stop offset="0" stop-color="#38bdf8"/>
+              <stop offset="1" stop-color="#0ea5e9"/>
+            </linearGradient>
+          </defs>
+          <rect rx="12" ry="12" x="2" y="2" width="60" height="60" fill="url(#g)"/>
+          <path d="M18 40c8-10 20-10 28 0" stroke="#fff" stroke-width="4" fill="none" stroke-linecap="round"/>
+          <circle cx="32" cy="28" r="6" fill="#fff" opacity=".9"/>
+        </svg>
+        <h1 class="text-lg sm:text-2xl font-semibold">CEDIS Panamá – Curvas de Inventario</h1>
       </div>
-      <button id="btnInstall" class="install">Instalar</button>
     </div>
   </header>
 
-  <main class="wrap">
-    <!-- Buscador -->
-    <section class="box search">
-      <label class="muted">Busca por <b>código</b> o <b>nombre de suministro</b></label>
-      <div class="inputbar" style="margin-top:8px">
-        <input id="q" placeholder="Ej.: 101098001 o amlodipina" autocomplete="off">
-        <button class="btn primary" id="btnBuscar">Buscar</button>
-        <button class="btn" id="btnLimpiar">Limpiar</button>
-      </div>
-    </section>
+  <main class="max-w-6xl mx-auto px-4 py-6 space-y-6">
+    <!-- BUSCADOR -->
+    <section class="card bg-white rounded-2xl p-4">
+      <div class="flex flex-col gap-3">
+        <label class="text-sm text-slate-500">
+          Busca por <b>código</b> o <b>nombre de suministro</b>
+        </label>
 
-    <!-- Detalle + Chart -->
-    <section class="row">
-      <div class="box card">
-        <div class="title">Detalle</div>
-        <div class="kv"><b>Código:</b> <span id="lblCodigo">—</span></div>
-        <div class="kv"><b>Suministro:</b> <span id="lblSuministro">—</span></div>
-        <div class="kv"><b>KB_min:</b> <span id="lblKBmin">—</span></div>
-        <div class="kv"><b>Crítico:</b> <span id="lblCritico">—</span></div>
-        <div class="kv"><b>Promedio 30 días:</b> <span id="lblProm30">—</span></div>
-        <div class="kv"><b>Último inventario:</b> <span id="lblUltInv">—</span></div>
-        <div class="kv"><b>Fecha último:</b> <span id="lblUltFec">—</span></div>
-        <p class="muted" style="margin-top:10px">Fuente: API Inventario CEDIS (Apps Script)</p>
-      </div>
-
-      <div class="box">
-        <div class="chartHead">
-          <div class="title" id="ttlChart">Curva de Inventario</div>
-          <div class="muted" id="lblActualizado"></div>
+        <div class="relative">
+          <input id="q" type="search" placeholder="Ej.: 101098001 o amlodipina"
+            class="w-full rounded-xl border border-slate-300 px-4 py-3 pr-10 focus:outline-none focus:ring-2 focus:ring-sky-500">
+          <button id="btnClearInput"
+            class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xl hidden"
+            aria-label="Limpiar">×</button>
+          <ul id="suggestions"
+              class="absolute z-10 mt-1 w-full bg-white border border-slate-200 rounded-xl max-h-64 overflow-auto hidden">
+          </ul>
         </div>
-        <div class="chartWrap"><canvas id="chart"></canvas></div>
+
+        <div class="flex gap-2">
+          <button id="btnBuscar" class="bg-sky-600 hover:bg-sky-700 text-white px-4 py-2 rounded-xl">Buscar</button>
+          <button id="btnLimpiar" class="bg-slate-100 hover:bg-slate-200 px-4 py-2 rounded-xl">Limpiar</button>
+        </div>
       </div>
     </section>
 
-    <div class="foot">v1.2 • PWA • Actualiza en tiempo real</div>
+    <!-- PANEL DATOS + GRÁFICO -->
+    <section class="grid md:grid-cols-3 gap-4">
+      <!-- DETALLE -->
+      <div class="card bg-white rounded-2xl p-4 md:col-span-1 space-y-3">
+        <h2 class="font-semibold text-slate-700">Detalle</h2>
+        <div class="text-sm space-y-1">
+          <div><span class="text-slate-500">Código:</span> <span id="lblCodigo" class="font-mono">—</span></div>
+          <div><span class="text-slate-500">Suministro:</span> <span id="lblSuministro">—</span></div>
+          <div><span class="text-slate-500">KB_min:</span> <span id="lblKBmin" class="font-mono">—</span></div>
+          <div><span class="text-slate-500">Crítico:</span> <span id="lblCritico" class="font-mono">—</span></div>
+          <div><span class="text-slate-500">Promedio 30 días:</span> <span id="lblProm30" class="font-mono">—</span></div>
+          <div><span class="text-slate-500">Último inventario:</span> <span id="lblUltInv" class="font-mono">—</span></div>
+          <div><span class="text-slate-500">Fecha último:</span> <span id="lblUltFec" class="font-mono">—</span></div>
+          <div class="text-xs text-slate-500 pt-2">Fuente: API Inventario CEDIS (Apps Script)</div>
+        </div>
+      </div>
+
+      <!-- GRÁFICO -->
+      <div class="card bg-white rounded-2xl p-4 md:col-span-2">
+        <div class="flex items-center justify-between mb-2">
+          <h2 id="ttlChart" class="font-semibold text-slate-700">Curva de Inventario</h2>
+          <div class="text-xs text-slate-500" id="lblActualizado">—</div>
+        </div>
+        <div class="h-[360px]">
+          <canvas id="chart"></canvas>
+        </div>
+      </div>
+    </section>
   </main>
 
-  <!-- ======= LÓGICA ======= -->
+  <footer class="py-8 text-center text-xs text-slate-400">
+    v1.0 (sin PWA) • Rendimiento optimizado
+  </footer>
+
+  <!-- ======== APP SCRIPT ======== -->
   <script>
-    /* ===== Config ===== */
-    // Reemplaza por TU endpoint de Apps Script si usas otro:
-    const API_BASE = 'https://script.google.com/macros/s/AKfycbxQsD4XJICmZg-5eiZIAEjJ3GZz-GmqvhvMWtiznEOu7SafIKxWopo5iIVy7ufrq_qq/exec';
+  /* ========= CONFIG ========= */
+  // Usa el mismo endpoint que ya tenías funcionando (Apps Script)
+  const API_BASE = 'https://script.google.com/macros/s/AKfycbxQsD4XJICmZg-5eiZIAEjJ3GZz-GmqvhvMWtiznEOu7SafIKxWopo5iIVy7ufrq_qq/exec';
 
-    /* ===== Helpers ===== */
-    const $ = s => document.querySelector(s);
-    const nf = new Intl.NumberFormat('en-US');
-    function num(v){ return Number(String(v).replace(/[^\d.-]/g,'')) || 0 }
-    function onlyDMY(s){ return String(s).split(/\s+/)[0] }
-    function parseDMY(s){
-      const [dd,mm,yy] = onlyDMY(s).split('/').map(n=>parseInt(n,10));
-      if(!dd||!mm||!yy) return null;
-      return new Date(yy,mm-1,dd);
-    }
-    function pick(o, ...keys){
-      for (const k of keys){
-        if (o && Object.prototype.hasOwnProperty.call(o,k)) return o[k];
-      }
-      return undefined;
-    }
+  /* ========= Helpers/Refs ========= */
+  const $  = (s)=>document.querySelector(s);
+  const $$ = (s)=>Array.from(document.querySelectorAll(s));
+  const nf = new Intl.NumberFormat('es-PA');
 
-    /* ===== DOM ===== */
-    const q = $('#q'), btnBuscar=$('#btnBuscar'), btnLimpiar=$('#btnLimpiar');
-    const lblCodigo=$('#lblCodigo'), lblSuministro=$('#lblSuministro'), lblKBmin=$('#lblKBmin'),
-          lblCritico=$('#lblCritico'), lblUltInv=$('#lblUltInv'), lblUltFec=$('#lblUltFec'),
-          lblProm30=$('#lblProm30'), lblAct=$('#lblActualizado'), ttlChartEl=$('#ttlChart');
+  const q = $('#q'), btnBuscar = $('#btnBuscar'), btnLimpiar = $('#btnLimpiar');
+  const btnClearInput = $('#btnClearInput'), suggestions = $('#suggestions');
 
-    let chart, searchCtrl=null, itemCtrl=null;
-    const mem = new Map();
+  const lblCodigo = $('#lblCodigo'), lblSuministro = $('#lblSuministro'), lblKBmin = $('#lblKBmin');
+  const lblCritico = $('#lblCritico'), lblUltInv = $('#lblUltInv'), lblUltFec = $('#lblUltFec');
+  const lblProm30 = $('#lblProm30'), lblAct = $('#lblActualizado'), ttlChartEl = $('#ttlChart');
 
-    /* ===== Normalización ===== */
-    function normalizePoints(raw){
-      const rows = [];
-      (raw||[]).forEach(p=>{
-        if (Array.isArray(p)){
-          const f=p[0], inv=p[1];
-          if (f!=null && inv!=null) rows.push({fecha:onlyDMY(f), inventario:num(inv)});
-          return;
-        }
-        if (p && typeof p==='object'){
-          const f = pick(p,'Fecha','fecha','FECHA');
-          const v = pick(p,'Inventario','inventario','INVENTARIO');
-          if (f!=null && v!=null) rows.push({fecha:onlyDMY(f), inventario:num(v)});
-        }
+  let searchCtrl = null, itemCtrl = null, chart = null;
+
+  /* ========= UX input ========= */
+  q.addEventListener('input', ()=>{
+    btnClearInput.classList.toggle('hidden', q.value.trim()==='');
+  });
+  btnClearInput.addEventListener('click', ()=>{
+    q.value=''; btnClearInput.classList.add('hidden'); hideSuggestions();
+  });
+  q.addEventListener('keydown', (e)=>{
+    if(e.key==='Enter'){ hideSuggestions(); launchSearch(); }
+  });
+  btnBuscar.addEventListener('click', launchSearch);
+  btnLimpiar.addEventListener('click', ()=>{
+    q.value=''; btnClearInput.classList.add('hidden'); hideSuggestions(); renderItem(null);
+  });
+
+  /* ========= Sugerencias (rápidas) ========= */
+  let tDeb = null;
+  q.addEventListener('input', ()=>{
+    clearTimeout(tDeb);
+    const term = q.value.trim();
+    if(term.length<2){ hideSuggestions(); return; }
+    tDeb = setTimeout(()=>doSearch(term), 250);
+  });
+
+  function showSuggestions(items){
+    if(!items?.length){ hideSuggestions(); return; }
+    items = items.slice(0,10);
+    suggestions.innerHTML = items.map(it=>`
+      <li class="px-3 py-2 hover:bg-slate-100 border-b border-slate-100" data-cod="${it.codigo||''}">
+        <div class="font-medium truncate">${it.suministro||''}</div>
+        <div class="text-xs text-slate-500">${it.codigo||''}</div>
+      </li>`).join('');
+    suggestions.classList.remove('hidden');
+    $$('#suggestions li').forEach(li=>{
+      li.addEventListener('click', ()=>{
+        const code = li.getAttribute('data-cod');
+        q.value = code || ''; hideSuggestions(); if(code) fetchItem(code);
       });
-      // agrupa por fecha
-      const agg = new Map();
-      rows.forEach(r=> agg.set(r.fecha,(agg.get(r.fecha)||0)+r.inventario));
-      const out = Array.from(agg.entries())
-        .map(([fecha,inventario])=>({fecha,inventario,_d:parseDMY(fecha)}))
-        .filter(r=>r._d && !isNaN(r._d))
-        .sort((a,b)=>a._d-b._d);
-      return out;
-    }
-    function sma30(rows){
-      const out = new Array(rows.length).fill(null);
-      for(let i=0;i<rows.length;i++){
-        const to=rows[i]._d, from=new Date(to); from.setDate(from.getDate()-29);
-        let s=0,c=0;
-        for(let k=i;k>=0 && rows[k]._d>=from;k--){ s+=rows[k].inventario; c++; }
-        out[i]=c? s/c : null;
-      }
-      return out;
-    }
+    });
+  }
+  function hideSuggestions(){ suggestions.classList.add('hidden'); suggestions.innerHTML=''; }
 
-    /* ===== Buscar ===== */
-    let tDeb=null;
-    q.addEventListener('keydown', e=>{ if(e.key==='Enter') launchSearch(); });
-    btnBuscar.addEventListener('click', launchSearch);
-    btnLimpiar.addEventListener('click', ()=>{ q.value=''; renderItem(null); });
+  async function doSearch(term){
+    try{
+      if(searchCtrl) searchCtrl.abort();
+      searchCtrl = new AbortController();
+      const url = new URL(API_BASE);
+      url.searchParams.set('action','search');
+      url.searchParams.set('q', term);
+      const res = await fetch(url, {signal:searchCtrl.signal, cache:'no-store'});
+      const data = await res.json();
+      showSuggestions(data.items||[]);
+    }catch(e){ if(e.name!=='AbortError') console.error('search',e); }
+  }
 
-    function launchSearch(){
-      const term = q.value.trim();
-      if(!term) return;
-      if (/^\d{5,}$/.test(term)) fetchItem(term);
-      else doSearch(term);
-    }
-    async function doSearch(term){
-      try{
-        if (mem.has(term)) return; // ya cacheado
-        if (searchCtrl) searchCtrl.abort();
-        searchCtrl = new AbortController();
-        const url = new URL(API_BASE);
-        url.searchParams.set('action','search'); url.searchParams.set('q', term);
-        const res = await fetch(url,{cache:'no-store', signal:searchCtrl.signal});
-        const data = await res.json();
-        mem.set(term, data.items||[]);
-        // si hay coincidencia única por nombre, pedirla
-        if ((data.items||[]).length===1 && data.items[0].code){
-          fetchItem(String(data.items[0].code));
-        }
-      }catch(e){ if(e.name!=='AbortError') console.error(e); }
-    }
+  function launchSearch(){
+    const term = q.value.trim();
+    if(!term) return;
+    if(/^\d{6,}$/.test(term)) fetchItem(term);
+    else doSearch(term);
+  }
 
-    function setLoading(b){ btnBuscar.disabled=b; btnBuscar.textContent=b?'Buscando…':'Buscar'; }
+  /* ========= Cache + carga optimista ========= */
+  async function fetchItem(code){
+    try{
+      setLoading(true);
 
-    async function fetchItem(code){
-      try{
-        setLoading(true);
-        const k='item:'+code, cached = localStorage.getItem(k);
-        if (cached) renderItem(JSON.parse(cached), true);
-
-        if (itemCtrl) itemCtrl.abort();
-        itemCtrl = new AbortController();
-        const url = new URL(API_BASE);
-        url.searchParams.set('action','item'); url.searchParams.set('code', code);
-        const res = await fetch(url,{cache:'no-store', signal:itemCtrl.signal});
-        const data = await res.json();
-
-        const meta = {
-          codigo    : pick(data,'codigo','Código','CODIGO','code') || code,
-          suministro: pick(data,'suministro','Suministro','SUMINISTRO') || '',
-          kb_min    : num(pick(data,'kb_min','KB_min','KB_MIN')),
-          critico   : num(pick(data,'critico','Critico','CRITICO'))
-        };
-        const puntos = pick(data,'puntos','data','rows','Items','ITEMS') || [];
-        const rows   = normalizePoints(puntos);
-
-        data.__meta = meta; data.__rows = rows;
-        localStorage.setItem(k, JSON.stringify(data));
-        renderItem(data);
-      }catch(e){
-        if (e.name!=='AbortError'){ console.error(e); alert('No se pudo obtener el detalle.'); }
-      }finally{ setLoading(false); }
-    }
-
-    /* ===== Render ===== */
-    function renderItem(payload, fromCache=false){
-      if (!payload){
-        lblCodigo.textContent = lblSuministro.textContent = lblKBmin.textContent =
-        lblCritico.textContent = lblUltInv.textContent = lblUltFec.textContent =
-        lblProm30.textContent = '—';
-        ttlChartEl.textContent='Curva de Inventario';
-        if(chart) chart.destroy();
-        lblAct.textContent='';
-        return;
+      const cacheKey = 'item:'+code;
+      const cached = localStorage.getItem(cacheKey);
+      if(cached){
+        // Render optimista inmediato
+        renderItem(JSON.parse(cached), true);
       }
 
-      const meta = payload.__meta || {};
-      const rows = payload.__rows || [];
+      if(itemCtrl) itemCtrl.abort();
+      itemCtrl = new AbortController();
+      const url = new URL(API_BASE);
+      url.searchParams.set('action','item');
+      url.searchParams.set('code', code);
+      const res = await fetch(url, {signal:itemCtrl.signal, cache:'no-store'});
+      const data = await res.json();
 
-      const labels = rows.map(r=>r.fecha);
-      const inv    = rows.map(r=>r.inventario);
-      const avg    = sma30(rows);
-      const last   = rows[rows.length-1] || null;
-
-      // panel
-      lblCodigo.textContent     = meta.codigo || '—';
-      lblSuministro.textContent = meta.suministro || '—';
-      lblKBmin.textContent      = Number.isFinite(meta.kb_min) ? nf.format(meta.kb_min) : '—';
-      lblCritico.textContent    = Number.isFinite(meta.critico) ? nf.format(meta.critico) : '—';
-      lblUltInv.textContent     = last ? nf.format(last.inventario) : '—';
-      lblUltFec.textContent     = last ? last.fecha : '—';
-      lblProm30.textContent     = (avg.length && avg[avg.length-1]!=null)? nf.format(avg[avg.length-1]) : '—';
-      lblAct.textContent        = (fromCache?'(caché) ':'') + new Date().toLocaleString();
-      ttlChartEl.textContent    = `${meta.codigo||'—'} — ${meta.suministro||'—'}`;
-
-      const datasets = [
-        { label:'Inventario', data:inv, borderColor:'rgba(59,130,246,1)', backgroundColor:'rgba(59,130,246,.15)', pointRadius:2, borderWidth:2, tension:.2, fill:'origin' },
-        { label:'Promedio 30 días', data:avg, borderColor:'rgba(100,116,139,1)', backgroundColor:'rgba(100,116,139,.08)', pointRadius:0, borderWidth:2, borderDash:[6,4], tension:.2, fill:false }
-      ];
-      if (Number.isFinite(meta.kb_min)){
-        datasets.push({ label:'KB_min', data:labels.map(()=>meta.kb_min), borderColor:'rgba(234,179,8,1)', backgroundColor:'rgba(234,179,8,.10)', pointRadius:0, borderWidth:1, fill:false });
-      }
-      if (Number.isFinite(meta.critico)){
-        datasets.push({ label:'Crítico', data:labels.map(()=>meta.critico), borderColor:'rgba(239,68,68,1)', backgroundColor:'rgba(239,68,68,.10)', pointRadius:0, borderWidth:1, fill:false });
+      // Si falta suministro, intenta inferir por search (1 salto, sin bloquear)
+      if(!data.suministro){
+        try{
+          if(searchCtrl) searchCtrl.abort();
+          searchCtrl = new AbortController();
+          const su = new URL(API_BASE);
+          su.searchParams.set('action','search'); su.searchParams.set('q', code);
+          const sRes = await fetch(su,{signal:searchCtrl.signal, cache:'no-store'});
+          const sData = await sRes.json();
+          const hit = (sData.items||[]).find(it=>String(it.codigo||'')===String(code));
+          if(hit?.suministro) data.suministro = hit.suministro;
+        }catch(_){}
       }
 
-      const lastValuePlugin = {
-        id:'lastValuePlugin',
-        afterDatasetsDraw(c){
-          const {ctx} = c; ctx.save(); ctx.font='12px sans-serif'; ctx.textBaseline='middle';
-          c.data.datasets.forEach((ds,i)=>{
-            const meta = c.getDatasetMeta(i); if(!meta?.data?.length) return;
-            let idx=ds.data.length-1; while(idx>=0 && (ds.data[idx]==null||!isFinite(ds.data[idx]))) idx--;
-            if (idx<0) return;
-            const pt=meta.data[idx]; const v=+ds.data[idx];
-            ctx.fillStyle = Array.isArray(ds.borderColor)?ds.borderColor[0]:ds.borderColor;
-            ctx.fillText(nf.format(v), pt.x+6, pt.y);
-          });
-          ctx.restore();
-        }
-      };
-
-      function xTick(value,index,ticks){
-        const first=index===0, last=index===ticks.length-1;
-        if(first||last) return labels[index];
-        const d0=parseDMY(labels[0]), di=parseDMY(labels[index]);
-        const diff=Math.round((di-d0)/(1000*60*60*24));
-        return diff%14===0 ? labels[index] : '';
+      localStorage.setItem(cacheKey, JSON.stringify(data));
+      renderItem(data);
+    }catch(e){
+      if(e.name!=='AbortError'){
+        console.error('item',e);
+        alert('No se pudo obtener el detalle. Verifica conexión o código.');
       }
+    }finally{ setLoading(false); }
+  }
 
+  function setLoading(b){
+    btnBuscar.disabled = b;
+    btnBuscar.textContent = b? 'Buscando…' : 'Buscar';
+  }
+
+  /* ========= Utilitarios de datos ========= */
+  // Normaliza fecha a ISO (local -> 00:00) y devuelve Date real para escala temporal
+  function normalizeDate(dStr){
+    // Admite "YYYY-MM-DD", "DD/MM/YYYY" o "YYYY/MM/DD"
+    if(!dStr) return null;
+    const s = String(dStr).trim();
+    if(/^\d{4}-\d{2}-\d{2}$/.test(s)) return new Date(s+'T00:00:00');
+    if(/^\d{4}\/\d{2}\/\d{2}$/.test(s)) return new Date(s.replace(/\//g,'-')+'T00:00:00');
+    const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/); // dd/mm/yyyy
+    if(m){
+      const [_,dd,mm,yyyy]=m;
+      return new Date(`${yyyy}-${mm.padStart(2,'0')}-${dd.padStart(2,'0')}T00:00:00`);
+    }
+    const dt = new Date(s);
+    return isNaN(dt)? null : dt;
+  }
+
+  // Agrupa por día sumando inventario
+  function groupByDateSum(points){
+    const map = new Map();
+    for(const p of (points||[])){
+      const d = normalizeDate(p.fecha);
+      if(!d) continue;
+      const key = d.toISOString().slice(0,10); // YYYY-MM-DD
+      const inv = Number(p.inventario||0);
+      map.set(key, (map.get(key)||0)+inv);
+    }
+    const arr = [...map.entries()]
+      .sort((a,b)=> a[0]<b[0]? -1 : 1)
+      .map(([iso, inv]) => ({ x: new Date(iso+'T00:00:00'), y: inv }));
+    return arr;
+  }
+
+  // SMA 30 días sobre datos {x:Date,y:number}
+  function sma30XY(data){
+    const out = [];
+    for(let i=0;i<data.length;i++){
+      const to = data[i].x.getTime();
+      const from = to - 29*86400000;
+      let sum=0,cnt=0;
+      for(let k=i;k>=0;k--){
+        const t = data[k].x.getTime();
+        if(t<from) break;
+        sum += Number(data[k].y||0); cnt++;
+      }
+      out.push({ x: data[i].x, y: cnt? (sum/cnt) : null });
+    }
+    return out;
+  }
+
+  /* ========= Render ========= */
+  function renderItem(data, fromCache=false){
+    // Reset si no hay data
+    if(!data){
+      lblCodigo.textContent='—'; lblSuministro.textContent='—';
+      lblKBmin.textContent='—'; lblCritico.textContent='—';
+      lblUltInv.textContent='—'; lblUltFec.textContent='—'; lblProm30.textContent='—';
+      lblAct.textContent='—'; ttlChartEl.textContent='Curva de Inventario';
       if(chart) chart.destroy();
-      const ctx = document.getElementById('chart').getContext('2d');
-      chart = new Chart(ctx,{
-        type:'line',
-        data:{labels,datasets},
-        options:{
-          responsive:true, maintainAspectRatio:false,
-          interaction:{intersect:false,mode:'index'},
-          layout:{padding:{right:60}},
-          plugins:{legend:{position:'top'}},
-          scales:{x:{ticks:{autoSkip:false,maxRotation:0,callback:xTick}}, y:{beginAtZero:false}}
-        },
-        plugins:[lastValuePlugin]
-      });
+      return;
+    }
 
-      if (!rows.length){
-        console.warn('Sin puntos después de normalizar. Revisa estructura de payload:', payload);
+    // Consolidar serie diaria
+    const puntosRaw = Array.isArray(data.puntos)? data.puntos : [];
+    const serie = groupByDateSum(puntosRaw); // [{x:Date,y:number},...]
+    const sma30 = sma30XY(serie);
+    const last = serie[serie.length-1];
+
+    // Panel
+    lblCodigo.textContent     = data.codigo || '—';
+    lblSuministro.textContent = data.suministro || '—';
+    lblKBmin.textContent      = (data.kb_min!=null? nf.format(+data.kb_min) : '—');
+    lblCritico.textContent    = (data.critico!=null? nf.format(+data.critico) : '—');
+    lblUltInv.textContent     = last? nf.format(+last.y) : '—';
+    lblUltFec.textContent     = last? last.x.toISOString().slice(0,10) : '—';
+    lblProm30.textContent     = (sma30.length && sma30[sma30.length-1].y!=null)? nf.format(+sma30[sma30.length-1].y) : '—';
+    lblAct.textContent        = (fromCache? '(caché) ' : '') + new Date().toLocaleString();
+    ttlChartEl.textContent    = `${data.codigo||'—'} — ${data.suministro||'—'}`;
+
+    // Datasets
+    const ds = [
+      {
+        label:'Inventario',
+        data: serie,            // {x:Date,y:number}
+        parsing: false,         // ya viene en {x,y}
+        borderWidth: 2,
+        borderColor: 'rgba(59,130,246,1)',
+        backgroundColor:'rgba(59,130,246,0.15)',
+        pointRadius: 0,
+        hoverRadius: 3,
+        tension: .2,
+        fill: 'origin'
+      },
+      {
+        label:'Promedio 30 días',
+        data: sma30,
+        parsing: false,
+        borderWidth: 2,
+        borderDash: [6,4],
+        borderColor:'rgba(100,116,139,1)',
+        backgroundColor:'rgba(100,116,139,0.08)',
+        pointRadius: 0,
+        hoverRadius: 0,
+        tension: .2,
+        fill:false
       }
+    ];
+
+    if(Number.isFinite(+data.kb_min)){
+      ds.push({
+        label:'KB_min',
+        data: serie.map(p=>({x:p.x, y:+data.kb_min})),
+        parsing:false,
+        borderColor:'rgba(234,179,8,1)',
+        backgroundColor:'rgba(234,179,8,0.08)',
+        pointRadius:0, borderWidth:1, fill:false
+      });
+    }
+    if(Number.isFinite(+data.critico)){
+      ds.push({
+        label:'Crítico',
+        data: serie.map(p=>({x:p.x, y:+data.critico})),
+        parsing:false,
+        borderColor:'rgba(239,68,68,1)',
+        backgroundColor:'rgba(239,68,68,0.08)',
+        pointRadius:0, borderWidth:1, fill:false
+      });
     }
 
-    /* ===== SW & PWA ===== */
-    if ('serviceWorker' in navigator){
-      window.addEventListener('load', ()=> navigator.serviceWorker.register('./sw.js').catch(console.error));
-    }
-    let deferredPrompt=null;
-    window.addEventListener('beforeinstallprompt', (e)=>{
-      e.preventDefault(); deferredPrompt=e; $('#btnInstall').style.display='inline-block';
+    // Plugin: último valor a la derecha
+    const lastValuePlugin = {
+      id:'lastValuePlugin',
+      afterDatasetsDraw(c, args){
+        const {ctx, data} = c; ctx.save();
+        ctx.font = '12px sans-serif'; ctx.textBaseline='middle';
+        data.datasets.forEach((dSet, idx)=>{
+          const meta = c.getDatasetMeta(idx);
+          if(!meta?.data?.length) return;
+          // busca último punto con y numérico
+          let j = dSet.data.length-1;
+          while(j>=0 && (dSet.data[j]==null || !isFinite(dSet.data[j].y))) j--;
+          if(j<0) return;
+          const elem = meta.data[j]; if(!elem) return;
+          const val = dSet.data[j].y; if(!isFinite(val)) return;
+          const x = elem.x + 6, y = elem.y;
+          ctx.fillStyle = Array.isArray(dSet.borderColor)? dSet.borderColor[0] : (dSet.borderColor||'#334155');
+          ctx.fillText(nf.format(val), x, y);
+        });
+        ctx.restore();
+      }
+    };
+
+    // Render Chart
+    if(chart) chart.destroy();
+    const ctx = document.getElementById('chart').getContext('2d');
+    chart = new Chart(ctx, {
+      type:'line',
+      data:{ datasets: ds },
+      options:{
+        responsive:true, maintainAspectRatio:false,
+        animation:false,                      // sin animación = más veloz
+        interaction:{intersect:false, mode:'index'},
+        layout:{ padding:{ right:64 } },
+        plugins:{
+          legend:{ position:'top' },
+          tooltip:{
+            callbacks:{
+              title(items){
+                if(!items?.length) return '';
+                const x = items[0].raw?.x;
+                return x? new Date(x).toISOString().slice(0,10) : '';
+              },
+              label(ctx){ return `${ctx.dataset.label}: ${nf.format(ctx.raw.y)}`; }
+            }
+          }
+        },
+        scales:{
+          x:{
+            type:'time',
+            time:{ unit:'day', tooltipFormat:'yyyy-MM-dd', displayFormats:{day:'yyyy-MM-dd'} },
+            ticks:{ source:'data', autoSkip:true, maxRotation:0, minRotation:0 },
+            grid:{ display:false }
+          },
+          y:{
+            beginAtZero:false,
+            grid:{ color:'rgba(148,163,184,0.15)' }
+          }
+        }
+      },
+      plugins:[lastValuePlugin]
     });
-    $('#btnInstall').addEventListener('click', async ()=>{
-      if(!deferredPrompt) return; deferredPrompt.prompt(); await deferredPrompt.userChoice; deferredPrompt=null;
-    });
+  }
   </script>
 </body>
 </html>
