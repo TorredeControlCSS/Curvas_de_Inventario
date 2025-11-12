@@ -1,386 +1,338 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>Inventario CEDIS — Curvas en tiempo real</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CEDIS Panamá – Curvas de Inventario</title>
 
-  <!-- PWA -->
-  <link rel="manifest" href="manifest.webmanifest">
-  <meta name="theme-color" content="#0ea5e9">
-  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <!-- Manifest + Icons existentes en tu repo -->
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
+  <link rel="apple-touch-icon" href="./icons/icon-192.png"/>
 
-  <!-- UI -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Chart.js -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1"></script>
+  <!-- Chart.js (CDN oficial) -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 
   <style>
-    .card{ box-shadow:0 6px 24px rgba(0,0,0,.08), 0 2px 6px rgba(0,0,0,.04); }
-    #suggestions li{ cursor:pointer }
+    :root{
+      --bg:#f6f7fb; --card:#fff; --ink:#0f172a; --muted:#64748b; --brand:#0ea5e9;
+      --blue:#3b82f6; --blueA:rgba(59,130,246,.15);
+      --gray:#64748b; --grayA:rgba(100,116,139,.08);
+      --amber:#eab308; --amberA:rgba(234,179,8,.10);
+      --red:#ef4444; --redA:rgba(239,68,68,.10);
+      --shadow:0 10px 25px -15px rgba(2,6,23,.25);
+      --radius:14px;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0;background:var(--bg);color:var(--ink);
+      font-family: system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,"Helvetica Neue",Arial,"Noto Sans",sans-serif;
+    }
+    header{
+      background:#0b74c1;color:#fff;box-shadow:var(--shadow);
+    }
+    .wrap{max-width:1200px;margin:0 auto;padding:18px}
+    .bar{
+      display:flex;align-items:center;gap:14px; padding:12px 0;
+    }
+    .brand{display:flex;align-items:center;gap:12px;font-weight:700;font-size:20px}
+    .brand img{height:38px;width:38px}
+    .install{margin-left:auto;background:#1e90ff;border:0;color:#fff;padding:9px 14px;border-radius:10px;cursor:pointer}
+    .box{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow)}
+    .search{padding:18px}
+    .row{display:grid;grid-template-columns:1fr 2fr;gap:18px;padding:0 18px 18px}
+    @media (max-width:900px){ .row{grid-template-columns:1fr} }
+    .inputbar{display:flex;gap:10px;align-items:center}
+    .inputbar input{
+      flex:1;padding:14px;border-radius:12px;border:1px solid #cbd5e1;outline:none;
+    }
+    .btn{padding:12px 16px;border-radius:12px;border:1px solid #cbd5e1;background:#fff;cursor:pointer}
+    .btn.primary{background:#0ea5e9;color:#fff;border:none}
+    .card{padding:18px}
+    .title{font-weight:700;margin:2px 0 14px 0}
+    .kv{line-height:1.85}
+    .kv b{color:#0b4d86}
+    .muted{color:var(--muted);font-size:12px}
+    .chartWrap{height:440px;padding:12px}
+    .chartHead{display:flex;justify-content:space-between;align-items:center;padding:12px 10px 0 10px}
+    .foot{padding:14px;text-align:center;color:var(--muted);font-size:12px}
+    .link{color:#0b74c1;text-decoration:none}
   </style>
 </head>
-<body class="bg-white text-slate-800 min-h-screen">
-  <!-- HEADER -->
-  <header class="bg-sky-600 text-white">
-    <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
-      <div class="flex items-center gap-3">
-        <!-- Deja tu logo actual (base64 o archivo) -->
-        <img src="icons/icon-192.png" alt="DINALOG - CSS Panamá"
-             class="h-10 sm:h-12 md:h-16 w-auto mr-3 select-none" loading="eager" decoding="async"/>
-        <h1 class="text-lg sm:text-2xl font-semibold">CEDIS Panama – Curvas de Inventario</h1>
+<body>
+  <header>
+    <div class="wrap bar">
+      <div class="brand">
+        <img src="./icons/icon-192.png" alt="CSS Panamá">
+        <div>CEDIS Panama – Curvas de Inventario</div>
       </div>
-      <button id="btnInstall" class="hidden bg-white/10 hover:bg-white/20 px-3 py-1 rounded">Instalar</button>
+      <button id="btnInstall" class="install">Instalar</button>
     </div>
   </header>
 
-  <main class="max-w-6xl mx-auto px-4 py-6 space-y-6">
-    <!-- BUSCADOR -->
-    <section class="card bg-white rounded-2xl p-4">
-      <div class="flex flex-col gap-3">
-        <label class="text-sm text-slate-500">Busca por <b>código</b> o <b>nombre de suministro</b></label>
-
-        <div class="relative">
-          <input id="q" type="search" placeholder="Ej.: 101098001 o amlodipina"
-                 class="w-full rounded-xl border border-slate-300 px-4 py-3 pr-10 focus:outline-none focus:ring-2 focus:ring-sky-500">
-          <button id="btnClearInput" class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xl hidden" aria-label="Limpiar">×</button>
-          <ul id="suggestions" class="absolute z-10 mt-1 w-full bg-white border border-slate-200 rounded-xl max-h-64 overflow-auto hidden"></ul>
-        </div>
-
-        <div class="flex gap-2">
-          <button id="btnBuscar" class="bg-sky-600 hover:bg-sky-700 text-white px-4 py-2 rounded-xl">Buscar</button>
-          <button id="btnLimpiar" class="bg-slate-100 hover:bg-slate-200 px-4 py-2 rounded-xl">Limpiar</button>
-        </div>
+  <main class="wrap">
+    <!-- Buscador -->
+    <section class="box search">
+      <label class="muted">Busca por <b>código</b> o <b>nombre de suministro</b></label>
+      <div class="inputbar" style="margin-top:8px">
+        <input id="q" placeholder="Ej.: 101098001 o amlodipina" autocomplete="off">
+        <button class="btn primary" id="btnBuscar">Buscar</button>
+        <button class="btn" id="btnLimpiar">Limpiar</button>
       </div>
     </section>
 
-    <!-- PANEL DATOS + GRÁFICO -->
-    <section class="grid md:grid-cols-3 gap-4">
-      <!-- DETALLE -->
-      <div class="card bg-white rounded-2xl p-4 md:col-span-1 space-y-1">
-        <h2 class="font-semibold text-slate-700">Detalle</h2>
-        <div class="text-sm space-y-1">
-          <div><span class="text-slate-500">Código:</span> <span id="lblCodigo" class="font-mono">—</span></div>
-          <div><span class="text-slate-500">Suministro:</span> <span id="lblSuministro">—</span></div>
-          <div><span class="text-slate-500">KB_min:</span> <span id="lblKBmin" class="font-mono">—</span></div>
-          <div><span class="text-slate-500">Crítico:</span> <span id="lblCritico" class="font-mono">—</span></div>
-          <div><span class="text-slate-500">Promedio 30 días:</span> <span id="lblProm30" class="font-mono">—</span></div>
-          <div><span class="text-slate-500">Último inventario:</span> <span id="lblUltInv" class="font-mono">—</span></div>
-          <div><span class="text-slate-500">Fecha último:</span> <span id="lblUltFec" class="font-mono">—</span></div>
-          <div class="text-xs text-slate-500 pt-2">Fuente: API Inventario CEDIS (Apps Script)</div>
-        </div>
+    <!-- Detalle + Chart -->
+    <section class="row">
+      <div class="box card">
+        <div class="title">Detalle</div>
+        <div class="kv"><b>Código:</b> <span id="lblCodigo">—</span></div>
+        <div class="kv"><b>Suministro:</b> <span id="lblSuministro">—</span></div>
+        <div class="kv"><b>KB_min:</b> <span id="lblKBmin">—</span></div>
+        <div class="kv"><b>Crítico:</b> <span id="lblCritico">—</span></div>
+        <div class="kv"><b>Promedio 30 días:</b> <span id="lblProm30">—</span></div>
+        <div class="kv"><b>Último inventario:</b> <span id="lblUltInv">—</span></div>
+        <div class="kv"><b>Fecha último:</b> <span id="lblUltFec">—</span></div>
+        <p class="muted" style="margin-top:10px">Fuente: API Inventario CEDIS (Apps Script)</p>
       </div>
 
-      <!-- GRÁFICO -->
-      <div class="card bg-white rounded-2xl p-4 md:col-span-2">
-        <div class="flex items-center justify-between mb-2">
-          <h2 id="ttlChart" class="font-semibold text-slate-700">Curva de Inventario</h2>
-          <div class="text-xs text-slate-500" id="lblActualizado">—</div>
+      <div class="box">
+        <div class="chartHead">
+          <div class="title" id="ttlChart">Curva de Inventario</div>
+          <div class="muted" id="lblActualizado"></div>
         </div>
-        <div class="h-[360px]">
-          <canvas id="chart"></canvas>
-        </div>
+        <div class="chartWrap"><canvas id="chart"></canvas></div>
       </div>
     </section>
+
+    <div class="foot">v1.2 • PWA • Actualiza en tiempo real</div>
   </main>
 
-  <footer class="py-8 text-center text-xs text-slate-400">
-    v1.2 • PWA • Actualiza en tiempo real
-  </footer>
+  <!-- ======= LÓGICA ======= -->
+  <script>
+    /* ===== Config ===== */
+    // Reemplaza por TU endpoint de Apps Script si usas otro:
+    const API_BASE = 'https://script.google.com/macros/s/AKfycbxQsD4XJICmZg-5eiZIAEjJ3GZz-GmqvhvMWtiznEOu7SafIKxWopo5iIVy7ufrq_qq/exec';
 
-<script>
-/* ========= CONFIG ========= */
-// Usa tu URL de WebApp (termina en /exec)
-const API_BASE = 'https://script.google.com/macros/s/AKfycbxQsD4XJICmZg-5eiZIAEjJ3GZz-GmqvhvMWtiznEOu7SafIKxWopo5iIVy7ufrq_qq/exec';
-
-/* ========= Helpers/estado ========= */
-const el  = s => document.querySelector(s);
-const els = s => Array.from(document.querySelectorAll(s));
-const nf  = new Intl.NumberFormat('en-US');
-
-const q = el('#q'), btnBuscar = el('#btnBuscar'), btnLimpiar = el('#btnLimpiar');
-const btnClearInput = el('#btnClearInput'), suggestions = el('#suggestions');
-
-const lblCodigo=el('#lblCodigo'), lblSuministro=el('#lblSuministro'), lblKBmin=el('#lblKBmin'),
-      lblCritico=el('#lblCritico'), lblUltInv=el('#lblUltInv'), lblUltFec=el('#lblUltFec'),
-      lblProm30=el('#lblProm30'), lblAct=el('#lblActualizado'), ttlChartEl=el('#ttlChart');
-
-let chart, searchCtrl=null, itemCtrl=null;
-const memoryCache = new Map(); // término -> resultados sugerencias
-
-/* ========= Parse/format fechas DD/MM/YYYY ========= */
-function parseDMY(s){
-  // admite '01/07/2025' o '1/7/2025'
-  if (!s) return null;
-  const [dd,mm,yy] = String(s).split('/').map(n=>parseInt(n,10));
-  if (!dd||!mm||!yy) return null;
-  return new Date(yy, mm-1, dd); // local
-}
-function fmtDMY(d){ const dd=String(d.getDate()).padStart(2,'0'), mm=String(d.getMonth()+1).padStart(2,'0'), yy=d.getFullYear(); return `${dd}/${mm}/${yy}`; }
-const num = v => Number(String(v).replace(/[^\d.-]/g,''))||0;
-
-/* ========= Entrada/sugerencias ========= */
-q.addEventListener('input', ()=>{
-  btnClearInput.classList.toggle('hidden', q.value.trim()==='');
-});
-btnClearInput.addEventListener('click', ()=>{ q.value=''; btnClearInput.classList.add('hidden'); hideSuggestions(); });
-
-let tDeb=null;
-q.addEventListener('input', ()=>{
-  clearTimeout(tDeb);
-  const term = q.value.trim();
-  if (term.length<2){ hideSuggestions(); return; }
-  tDeb = setTimeout(()=> doSearch(term), 300);
-});
-q.addEventListener('keydown', ev => {
-  if (ev.key==='Enter'){ hideSuggestions(); launchSearch(); }
-});
-btnBuscar.addEventListener('click', launchSearch);
-btnLimpiar.addEventListener('click', ()=>{
-  q.value=''; btnClearInput.classList.add('hidden'); hideSuggestions(); renderItem(null);
-});
-
-function showSuggestions(items){
-  if (!items||!items.length){ hideSuggestions(); return; }
-  const top = items.slice(0,10);
-  suggestions.innerHTML = top.map(it=>`
-    <li class="px-3 py-2 hover:bg-slate-100 border-b border-slate-100" data-cod="${it.codigo}">
-      <div class="font-medium">${it.suministro||''}</div>
-      <div class="text-xs text-slate-500">${it.codigo||''}</div>
-    </li>`).join('');
-  suggestions.classList.remove('hidden');
-  els('#suggestions li').forEach(li=>{
-    li.addEventListener('click', ()=>{
-      const cod = li.getAttribute('data-cod');
-      q.value = cod; hideSuggestions(); fetchItem(cod);
-    });
-  });
-}
-function hideSuggestions(){ suggestions.classList.add('hidden'); suggestions.innerHTML=''; }
-
-async function doSearch(term){
-  try{
-    // cache memoria para UX inmediato
-    if (memoryCache.has(term)) showSuggestions(memoryCache.get(term));
-    if (searchCtrl) searchCtrl.abort();
-    searchCtrl = new AbortController();
-    const url = new URL(API_BASE);
-    url.searchParams.set('action','search');
-    url.searchParams.set('q', term);
-    const res = await fetch(url, {cache:'no-store', signal: searchCtrl.signal});
-    const data = await res.json();
-    const items = data.items || [];
-    memoryCache.set(term, items);
-    showSuggestions(items);
-  }catch(e){ if (e.name!=='AbortError') console.error('search error', e); }
-}
-
-function launchSearch(){
-  const term = q.value.trim();
-  if (!term) return;
-  if (/^\d{6,}$/.test(term)) fetchItem(term);
-  else doSearch(term);
-}
-
-/* ========= Datos/agrupación ========= */
-function groupByDateSum(points){
-  // consolida inventario por fecha (DD/MM/YYYY)
-  const bucket = new Map();
-  (points||[]).forEach(p=>{
-    const f = String(p.fecha||'').trim();
-    if (!f) return;
-    const inv = num(p.inventario);
-    bucket.set(f, (bucket.get(f)||0) + inv);
-  });
-  // ordena por fecha real usando parseDMY
-  return Array.from(bucket.entries())
-    .map(([fecha, inventario]) => ({ fecha, inventario, _d: parseDMY(fecha)}))
-    .filter(r => r._d instanceof Date && !isNaN(r._d))
-    .sort((a,b)=> a._d - b._d);
-}
-
-// SMA de 30 días por ventana temporal real
-function sma30(rows){
-  const out = new Array(rows.length).fill(null);
-  for (let i=0;i<rows.length;i++){
-    const to = rows[i]._d;
-    const from = new Date(to); from.setDate(from.getDate()-29);
-    let sum=0, cnt=0;
-    for (let k=i;k>=0 && rows[k]._d>=from;k--){
-      sum += num(rows[k].inventario); cnt++;
+    /* ===== Helpers ===== */
+    const $ = s => document.querySelector(s);
+    const nf = new Intl.NumberFormat('en-US');
+    function num(v){ return Number(String(v).replace(/[^\d.-]/g,'')) || 0 }
+    function onlyDMY(s){ return String(s).split(/\s+/)[0] }
+    function parseDMY(s){
+      const [dd,mm,yy] = onlyDMY(s).split('/').map(n=>parseInt(n,10));
+      if(!dd||!mm||!yy) return null;
+      return new Date(yy,mm-1,dd);
     }
-    out[i] = cnt ? (sum/cnt) : null;
-  }
-  return out;
-}
+    function pick(o, ...keys){
+      for (const k of keys){
+        if (o && Object.prototype.hasOwnProperty.call(o,k)) return o[k];
+      }
+      return undefined;
+    }
 
-/* ========= Fetch item ========= */
-function setLoading(b){
-  btnBuscar.disabled=b; btnBuscar.textContent = b?'Buscando…':'Buscar';
-}
+    /* ===== DOM ===== */
+    const q = $('#q'), btnBuscar=$('#btnBuscar'), btnLimpiar=$('#btnLimpiar');
+    const lblCodigo=$('#lblCodigo'), lblSuministro=$('#lblSuministro'), lblKBmin=$('#lblKBmin'),
+          lblCritico=$('#lblCritico'), lblUltInv=$('#lblUltInv'), lblUltFec=$('#lblUltFec'),
+          lblProm30=$('#lblProm30'), lblAct=$('#lblActualizado'), ttlChartEl=$('#ttlChart');
 
-async function fetchItem(code){
-  try{
-    setLoading(true);
+    let chart, searchCtrl=null, itemCtrl=null;
+    const mem = new Map();
 
-    // pinta caché localStorage si existiera (UX)
-    const cacheKey = 'item:'+code;
-    const cached = localStorage.getItem(cacheKey);
-    if (cached) renderItem(JSON.parse(cached), true);
+    /* ===== Normalización ===== */
+    function normalizePoints(raw){
+      const rows = [];
+      (raw||[]).forEach(p=>{
+        if (Array.isArray(p)){
+          const f=p[0], inv=p[1];
+          if (f!=null && inv!=null) rows.push({fecha:onlyDMY(f), inventario:num(inv)});
+          return;
+        }
+        if (p && typeof p==='object'){
+          const f = pick(p,'Fecha','fecha','FECHA');
+          const v = pick(p,'Inventario','inventario','INVENTARIO');
+          if (f!=null && v!=null) rows.push({fecha:onlyDMY(f), inventario:num(v)});
+        }
+      });
+      // agrupa por fecha
+      const agg = new Map();
+      rows.forEach(r=> agg.set(r.fecha,(agg.get(r.fecha)||0)+r.inventario));
+      const out = Array.from(agg.entries())
+        .map(([fecha,inventario])=>({fecha,inventario,_d:parseDMY(fecha)}))
+        .filter(r=>r._d && !isNaN(r._d))
+        .sort((a,b)=>a._d-b._d);
+      return out;
+    }
+    function sma30(rows){
+      const out = new Array(rows.length).fill(null);
+      for(let i=0;i<rows.length;i++){
+        const to=rows[i]._d, from=new Date(to); from.setDate(from.getDate()-29);
+        let s=0,c=0;
+        for(let k=i;k>=0 && rows[k]._d>=from;k--){ s+=rows[k].inventario; c++; }
+        out[i]=c? s/c : null;
+      }
+      return out;
+    }
 
-    if (itemCtrl) itemCtrl.abort();
-    itemCtrl = new AbortController();
+    /* ===== Buscar ===== */
+    let tDeb=null;
+    q.addEventListener('keydown', e=>{ if(e.key==='Enter') launchSearch(); });
+    btnBuscar.addEventListener('click', launchSearch);
+    btnLimpiar.addEventListener('click', ()=>{ q.value=''; renderItem(null); });
 
-    const url = new URL(API_BASE);
-    url.searchParams.set('action','item');
-    url.searchParams.set('code', code);
-    const res  = await fetch(url, {cache:'no-store', signal:itemCtrl.signal});
-    const data = await res.json();
-
-    // Si viniera sin nombre, intenta recuperarlo por search
-    if (!data.suministro){
+    function launchSearch(){
+      const term = q.value.trim();
+      if(!term) return;
+      if (/^\d{5,}$/.test(term)) fetchItem(term);
+      else doSearch(term);
+    }
+    async function doSearch(term){
       try{
+        if (mem.has(term)) return; // ya cacheado
         if (searchCtrl) searchCtrl.abort();
         searchCtrl = new AbortController();
-        const sUrl = new URL(API_BASE);
-        sUrl.searchParams.set('action','search');
-        sUrl.searchParams.set('q', code);
-        const sRes = await fetch(sUrl, {cache:'no-store', signal: searchCtrl.signal});
-        const sData = await sRes.json();
-        const hit = (sData.items||[]).find(it => String(it.codigo)===String(code));
-        if (hit?.suministro) data.suministro = hit.suministro;
-      }catch(_){}
+        const url = new URL(API_BASE);
+        url.searchParams.set('action','search'); url.searchParams.set('q', term);
+        const res = await fetch(url,{cache:'no-store', signal:searchCtrl.signal});
+        const data = await res.json();
+        mem.set(term, data.items||[]);
+        // si hay coincidencia única por nombre, pedirla
+        if ((data.items||[]).length===1 && data.items[0].code){
+          fetchItem(String(data.items[0].code));
+        }
+      }catch(e){ if(e.name!=='AbortError') console.error(e); }
     }
 
-    localStorage.setItem(cacheKey, JSON.stringify(data));
-    renderItem(data);
-  }catch(e){
-    if (e.name!=='AbortError'){
-      console.error('item error', e);
-      alert('No se pudo obtener el detalle. Revisa conexión o permisos del endpoint.');
+    function setLoading(b){ btnBuscar.disabled=b; btnBuscar.textContent=b?'Buscando…':'Buscar'; }
+
+    async function fetchItem(code){
+      try{
+        setLoading(true);
+        const k='item:'+code, cached = localStorage.getItem(k);
+        if (cached) renderItem(JSON.parse(cached), true);
+
+        if (itemCtrl) itemCtrl.abort();
+        itemCtrl = new AbortController();
+        const url = new URL(API_BASE);
+        url.searchParams.set('action','item'); url.searchParams.set('code', code);
+        const res = await fetch(url,{cache:'no-store', signal:itemCtrl.signal});
+        const data = await res.json();
+
+        const meta = {
+          codigo    : pick(data,'codigo','Código','CODIGO','code') || code,
+          suministro: pick(data,'suministro','Suministro','SUMINISTRO') || '',
+          kb_min    : num(pick(data,'kb_min','KB_min','KB_MIN')),
+          critico   : num(pick(data,'critico','Critico','CRITICO'))
+        };
+        const puntos = pick(data,'puntos','data','rows','Items','ITEMS') || [];
+        const rows   = normalizePoints(puntos);
+
+        data.__meta = meta; data.__rows = rows;
+        localStorage.setItem(k, JSON.stringify(data));
+        renderItem(data);
+      }catch(e){
+        if (e.name!=='AbortError'){ console.error(e); alert('No se pudo obtener el detalle.'); }
+      }finally{ setLoading(false); }
     }
-  }finally{ setLoading(false); }
-}
 
-/* ========= Render ========= */
-function renderItem(data, fromCache=false){
-  if (!data){
-    lblCodigo.textContent = lblSuministro.textContent = lblKBmin.textContent =
-    lblCritico.textContent = lblUltInv.textContent = lblUltFec.textContent =
-    lblProm30.textContent = '—';
-    lblAct.textContent='—'; ttlChartEl.textContent='Curva de Inventario';
-    if (chart) chart.destroy();
-    return;
-  }
-
-  const rows = groupByDateSum(Array.isArray(data.puntos)?data.puntos:[]);
-  const labels = rows.map(r=>r.fecha);
-  const inv    = rows.map(r=>num(r.inventario));
-  const avg    = sma30(rows);
-  const last   = rows[rows.length-1];
-
-  // Panel
-  lblCodigo.textContent     = data.codigo || '—';
-  lblSuministro.textContent = data.suministro || '—';
-  lblKBmin.textContent      = (data.kb_min!=null ? nf.format(num(data.kb_min)) : '—');
-  lblCritico.textContent    = (data.critico!=null ? nf.format(num(data.critico)) : '—');
-  lblUltInv.textContent     = last ? nf.format(num(last.inventario)) : '—';
-  lblUltFec.textContent     = last ? last.fecha : '—';
-  lblProm30.textContent     = (avg.length && avg[avg.length-1]!=null ? nf.format(avg[avg.length-1]) : '—');
-  lblAct.textContent        = (fromCache?'(caché) ':'') + new Date().toLocaleString();
-  ttlChartEl.textContent    = `${data.codigo||'—'} — ${data.suministro||'—'}`;
-
-  // Datasets
-  const datasets = [
-    {
-      label:'Inventario',
-      data: inv,
-      borderColor: 'rgba(59,130,246,1)',
-      backgroundColor: 'rgba(59,130,246,0.15)',
-      pointRadius: 2, borderWidth: 2, tension:.2, fill:'origin', clip:false
-    },
-    {
-      label:'Promedio 30 días',
-      data: avg,
-      borderColor: 'rgba(100,116,139,1)',
-      backgroundColor: 'rgba(100,116,139,0.08)',
-      pointRadius: 0, borderWidth: 2, borderDash:[6,4], tension:.2, fill:false, clip:false
-    }
-  ];
-  if (Number.isFinite(num(data.kb_min))){
-    datasets.push({
-      label:'KB_min',
-      data: labels.map(()=> num(data.kb_min)),
-      borderColor:'rgba(234,179,8,1)', backgroundColor:'rgba(234,179,8,0.10)',
-      pointRadius:0, borderWidth:1, fill:false, clip:false
-    });
-  }
-  if (Number.isFinite(num(data.critico))){
-    datasets.push({
-      label:'Crítico',
-      data: labels.map(()=> num(data.critico)),
-      borderColor:'rgba(239,68,68,1)', backgroundColor:'rgba(239,68,68,0.10)',
-      pointRadius:0, borderWidth:1, fill:false, clip:false
-    });
-  }
-
-  // Etiqueta de último valor al final de cada dataset
-  const lastValuePlugin = {
-    id:'lastValuePlugin',
-    afterDatasetsDraw(chart){
-      const {ctx} = chart; ctx.save(); ctx.font='12px sans-serif'; ctx.textBaseline='middle';
-      chart.data.datasets.forEach((ds,i)=>{
-        const meta = chart.getDatasetMeta(i);
-        if (!meta?.data?.length) return;
-        let idx = ds.data.length-1;
-        while (idx>=0 && (ds.data[idx]==null || !isFinite(ds.data[idx]))) idx--;
-        if (idx<0) return;
-        const pt = meta.data[idx]; const val = +ds.data[idx];
-        if (!pt || !isFinite(val)) return;
-        ctx.fillStyle = Array.isArray(ds.borderColor)?ds.borderColor[0]:(ds.borderColor||'#334155');
-        ctx.fillText(nf.format(val), pt.x+6, pt.y);
-      });
-      ctx.restore();
-    }
-  };
-
-  // Ticks del eje X cada 14 días + primer y último
-  function xTickCallback(value, index, ticks){
-    const isFirst = index===0, isLast = index===ticks.length-1;
-    if (isFirst||isLast) return labels[index];
-    const d0 = parseDMY(labels[0]); const di = parseDMY(labels[index]);
-    const diff = Math.round((di - d0)/(1000*60*60*24));
-    return (diff%14===0) ? labels[index] : '';
-  }
-
-  if (chart) chart.destroy();
-  const ctx = document.getElementById('chart').getContext('2d');
-  chart = new Chart(ctx, {
-    type:'line',
-    data:{ labels, datasets },
-    options:{
-      responsive:true, maintainAspectRatio:false,
-      interaction:{ intersect:false, mode:'index' },
-      layout:{ padding:{ right: 60 } },
-      plugins:{ legend:{ position:'top' } },
-      scales:{
-        x:{ ticks:{ autoSkip:false, maxRotation:0, minRotation:0, callback:xTickCallback }},
-        y:{ beginAtZero:false }
+    /* ===== Render ===== */
+    function renderItem(payload, fromCache=false){
+      if (!payload){
+        lblCodigo.textContent = lblSuministro.textContent = lblKBmin.textContent =
+        lblCritico.textContent = lblUltInv.textContent = lblUltFec.textContent =
+        lblProm30.textContent = '—';
+        ttlChartEl.textContent='Curva de Inventario';
+        if(chart) chart.destroy();
+        lblAct.textContent='';
+        return;
       }
-    },
-    plugins:[lastValuePlugin]
-  });
-}
 
-/* ========= SW/PWA ========= */
-if ('serviceWorker' in navigator){
-  window.addEventListener('load', ()=>{ navigator.serviceWorker.register('./sw.js').catch(console.error); });
-}
-let deferPrompt=null;
-window.addEventListener('beforeinstallprompt', (e)=>{ e.preventDefault(); deferPrompt=e; el('#btnInstall')?.classList.remove('hidden'); });
-el('#btnInstall')?.addEventListener('click', async ()=>{
-  if (!deferPrompt) return; deferPrompt.prompt(); await deferPrompt.userChoice; deferPrompt=null; el('#btnInstall')?.classList.add('hidden');
-});
-</script>
+      const meta = payload.__meta || {};
+      const rows = payload.__rows || [];
+
+      const labels = rows.map(r=>r.fecha);
+      const inv    = rows.map(r=>r.inventario);
+      const avg    = sma30(rows);
+      const last   = rows[rows.length-1] || null;
+
+      // panel
+      lblCodigo.textContent     = meta.codigo || '—';
+      lblSuministro.textContent = meta.suministro || '—';
+      lblKBmin.textContent      = Number.isFinite(meta.kb_min) ? nf.format(meta.kb_min) : '—';
+      lblCritico.textContent    = Number.isFinite(meta.critico) ? nf.format(meta.critico) : '—';
+      lblUltInv.textContent     = last ? nf.format(last.inventario) : '—';
+      lblUltFec.textContent     = last ? last.fecha : '—';
+      lblProm30.textContent     = (avg.length && avg[avg.length-1]!=null)? nf.format(avg[avg.length-1]) : '—';
+      lblAct.textContent        = (fromCache?'(caché) ':'') + new Date().toLocaleString();
+      ttlChartEl.textContent    = `${meta.codigo||'—'} — ${meta.suministro||'—'}`;
+
+      const datasets = [
+        { label:'Inventario', data:inv, borderColor:'rgba(59,130,246,1)', backgroundColor:'rgba(59,130,246,.15)', pointRadius:2, borderWidth:2, tension:.2, fill:'origin' },
+        { label:'Promedio 30 días', data:avg, borderColor:'rgba(100,116,139,1)', backgroundColor:'rgba(100,116,139,.08)', pointRadius:0, borderWidth:2, borderDash:[6,4], tension:.2, fill:false }
+      ];
+      if (Number.isFinite(meta.kb_min)){
+        datasets.push({ label:'KB_min', data:labels.map(()=>meta.kb_min), borderColor:'rgba(234,179,8,1)', backgroundColor:'rgba(234,179,8,.10)', pointRadius:0, borderWidth:1, fill:false });
+      }
+      if (Number.isFinite(meta.critico)){
+        datasets.push({ label:'Crítico', data:labels.map(()=>meta.critico), borderColor:'rgba(239,68,68,1)', backgroundColor:'rgba(239,68,68,.10)', pointRadius:0, borderWidth:1, fill:false });
+      }
+
+      const lastValuePlugin = {
+        id:'lastValuePlugin',
+        afterDatasetsDraw(c){
+          const {ctx} = c; ctx.save(); ctx.font='12px sans-serif'; ctx.textBaseline='middle';
+          c.data.datasets.forEach((ds,i)=>{
+            const meta = c.getDatasetMeta(i); if(!meta?.data?.length) return;
+            let idx=ds.data.length-1; while(idx>=0 && (ds.data[idx]==null||!isFinite(ds.data[idx]))) idx--;
+            if (idx<0) return;
+            const pt=meta.data[idx]; const v=+ds.data[idx];
+            ctx.fillStyle = Array.isArray(ds.borderColor)?ds.borderColor[0]:ds.borderColor;
+            ctx.fillText(nf.format(v), pt.x+6, pt.y);
+          });
+          ctx.restore();
+        }
+      };
+
+      function xTick(value,index,ticks){
+        const first=index===0, last=index===ticks.length-1;
+        if(first||last) return labels[index];
+        const d0=parseDMY(labels[0]), di=parseDMY(labels[index]);
+        const diff=Math.round((di-d0)/(1000*60*60*24));
+        return diff%14===0 ? labels[index] : '';
+      }
+
+      if(chart) chart.destroy();
+      const ctx = document.getElementById('chart').getContext('2d');
+      chart = new Chart(ctx,{
+        type:'line',
+        data:{labels,datasets},
+        options:{
+          responsive:true, maintainAspectRatio:false,
+          interaction:{intersect:false,mode:'index'},
+          layout:{padding:{right:60}},
+          plugins:{legend:{position:'top'}},
+          scales:{x:{ticks:{autoSkip:false,maxRotation:0,callback:xTick}}, y:{beginAtZero:false}}
+        },
+        plugins:[lastValuePlugin]
+      });
+
+      if (!rows.length){
+        console.warn('Sin puntos después de normalizar. Revisa estructura de payload:', payload);
+      }
+    }
+
+    /* ===== SW & PWA ===== */
+    if ('serviceWorker' in navigator){
+      window.addEventListener('load', ()=> navigator.serviceWorker.register('./sw.js').catch(console.error));
+    }
+    let deferredPrompt=null;
+    window.addEventListener('beforeinstallprompt', (e)=>{
+      e.preventDefault(); deferredPrompt=e; $('#btnInstall').style.display='inline-block';
+    });
+    $('#btnInstall').addEventListener('click', async ()=>{
+      if(!deferredPrompt) return; deferredPrompt.prompt(); await deferredPrompt.userChoice; deferredPrompt=null;
+    });
+  </script>
 </body>
 </html>
