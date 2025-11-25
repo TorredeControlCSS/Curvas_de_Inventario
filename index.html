@@ -45,6 +45,7 @@
     .btn.ghost{background:transparent; color:#fff; border-color:rgba(255,255,255,.25)}
     .btn.install{background:#00b894; color:#fff; border-color:#00b894}
     .theme-select{padding:6px 8px; border:1px solid rgba(255,255,255,.25); border-radius:10px; background:transparent; color:#fff}
+    .net{font-size:12px; opacity:.85; margin-left:8px;}
 
     .container{padding:14px; max-width:1400px; margin:0 auto;}
     .filters{display:grid; grid-template-columns: 120px 1fr 1fr 1fr 140px 140px 130px 120px; gap:8px; align-items:end; margin-bottom:12px;}
@@ -86,6 +87,7 @@
         <option value="light">Claro</option>
         <option value="dark">Oscuro</option>
       </select>
+      <span id="net" class="net"></span>
       <button id="installBtn" class="btn install hidden">Instalar app</button>
       <button id="refreshBtn" class="btn ghost">Actualizar</button>
     </div>
@@ -152,8 +154,8 @@
           <br/>
           <div class="muted">Definiciones</div>
           <ul class="formula" id="defs">
-            <li><b>μ_D</b>: mediana de las <i>tasas</i> de consumo diario (últimos 90 días).</li>
-            <li><b>σ_D</b>: 1.4826 × MAD de las <i>tasas</i> de consumo diario.</li>
+            <li><b>μ_D</b>: mediana de las <i>tasas</i> de despacho diario (últimos 90 días).</li>
+            <li><b>σ_D</b>: 1.4826 × MAD de las <i>tasas</i> de despacho diario.</li>
             <li><b>L</b>: lead time en días (por defecto 45).</li>
             <li><b>z</b>: factor de servicio (95% ⇒ 1.65).</li>
             <li><b>I₀</b>: SMA_15 del inventario (media móvil recortada de los últimos 15 días).</li>
@@ -222,14 +224,52 @@ window.addEventListener('appinstalled', ()=>{
   $('installBtn').classList.add('hidden');
 });
 
+// Indicador red
+function setNet(status){
+  $('net').textContent = status || '';
+}
+window.addEventListener('online', ()=> setNet(''));
+window.addEventListener('offline', ()=> setNet('Sin conexión'));
+if (!navigator.onLine) setNet('Sin conexión');
+
+// --- helpers de red robustos ---
+async function fetchRetry(url, opts={}, retries=3, backoff=800){
+  try{
+    const r = await fetch(url, {...opts, cache:'no-store'});
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    return r;
+  }catch(e){
+    if (retries <= 0) throw e;
+    await new Promise(res => setTimeout(res, backoff));
+    return fetchRetry(url, opts, retries-1, backoff*1.8);
+  }
+}
+
 async function fetchJSON(url){
-  const r = await fetch(url, {cache:'no-store'});
-  if (!r.ok) throw new Error("HTTP " + r.status + " al solicitar " + url);
+  const r = await fetchRetry(url);
   return r.json();
 }
-async function fetchList(){ return fetchJSON(API_BASE + '?list=true'); }
-async function fetchSerie(params){
+
+// caché local para lista (10 min)
+async function safeFetchList(){
+  try{
+    const data = await fetchJSON(API_BASE + '?list=true&ts=' + Date.now());
+    localStorage.setItem('metaCache', JSON.stringify({t:Date.now(), data}));
+    return data;
+  }catch(e){
+    const c = localStorage.getItem('metaCache');
+    if (c){
+      console.warn('Usando metaCache por fallo de red', e);
+      setNet('Sin conexión (caché)');
+      return JSON.parse(c).data;
+    }
+    throw e;
+  }
+}
+
+async function safeFetchSerie(params){
   const p = new URLSearchParams(params);
+  p.set('ts', Date.now());
   return fetchJSON(API_BASE + '?' + p.toString());
 }
 
@@ -245,7 +285,7 @@ function fillDatalist(arr, q=''){
     const contains = arr.filter(v => !v.toLowerCase().startsWith(normQ) && v.toLowerCase().includes(normQ));
     suggestions = starts.concat(contains).slice(0, TYPEAHEAD_LIMIT);
   }
-  dl.innerHTML = suggestions.map(v => `<option value="${v}"></option>`).join('');
+  dl.innerHTML = suggestions.map(v => `<option value="\${v}"></option>`).join('');
 }
 
 // Stats helpers
@@ -325,14 +365,14 @@ function fillTable(tbody, serie){
   for (let i=serie.length-1; i>=0; i--){
     const p = serie[i];
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${p.fecha}</td><td>${fmtInt(p.inventario)}</td>`;
+    tr.innerHTML = `<td>\${p.fecha}</td><td>\${fmtInt(p.inventario)}</td>`;
     tbody.appendChild(tr);
   }
 }
 
 function setKPIs(invLast, kb, sfty, lastDateISO, I0){
   $('kpiInv').textContent = fmtInt(invLast);
-  $('kpiInvDate').textContent = lastDateISO ? `al ${lastDateISO}` : '';
+  $('kpiInvDate').textContent = lastDateISO ? `al \${lastDateISO}` : '';
   $('kpiKb').textContent = fmtInt(kb);
   $('kpiCrit').textContent = fmtInt(sfty);
   $('kpiI0').textContent = fmtInt(Math.round(I0));
@@ -340,19 +380,19 @@ function setKPIs(invLast, kb, sfty, lastDateISO, I0){
 
 function setSideMetrics(minV, minD, maxV, maxD, avg30, lastV, lastD){
   $('mLast').textContent = fmtInt(lastV);
-  $('mLastDate').textContent = lastD ? `en ${lastD}` : '';
+  $('mLastDate').textContent = lastD ? `en \${lastD}` : '';
   $('mMin').textContent = fmtInt(minV);
-  $('mMinDate').textContent = minD ? `en ${minD}` : '';
+  $('mMinDate').textContent = minD ? `en \${minD}` : '';
   $('mMax').textContent = fmtInt(maxV);
-  $('mMaxDate').textContent = maxD ? `en ${maxD}` : '';
+  $('mMaxDate').textContent = maxD ? `en \${maxD}` : '';
   $('mAvg30').textContent = fmtInt(avg30);
 }
 
 function setFormulas(mu, sigma, kb, sfty, I0){
-  $('f_kb').textContent = `KB_min = μ_D × L = ${fmtInt(Math.round(mu))} × ${LEAD} = ${fmtInt(Math.round(kb))}`;
-  $('f_sfty').textContent = `Inventario Crítico = z × σ_D × √L = 1.65 × ${fmtInt(Math.round(sigma))} × √${LEAD} = ${fmtInt(Math.round(sfty))}`;
-  $('f_proj1').textContent = `I₀ = SMA_15(inventario) = ${fmtInt(Math.round(I0))}`;
-  $('f_proj2').textContent = `Î_{t+h} = max(Î_{t+h−1} − d̂_h, 0), h=1..45; d̂ por SES(α=0.3), estacionalidad semanal: ${USE_SEASONAL ? 'activa' : 'inactiva'}`;
+  $('f_kb').textContent = `KB_min = μ_D × L = \${fmtInt(Math.round(mu))} × \${LEAD} = \${fmtInt(Math.round(kb))}`;
+  $('f_sfty').textContent = `Inventario Crítico = z × σ_D × √L = 1.65 × \${fmtInt(Math.round(sigma))} × √\${LEAD} = \${fmtInt(Math.round(sfty))}`;
+  $('f_proj1').textContent = `I₀ = SMA_15(inventario) = \${fmtInt(Math.round(I0))}`;
+  $('f_proj2').textContent = `Î_{t+h} = max(Î_{t+h−1} − d̂_h, 0), h=1..45; d̂ por SES(α=0.3), estacionalidad semanal: \${USE_SEASONAL ? 'activa' : 'inactiva'}`;
 }
 
 async function init(){
@@ -370,11 +410,11 @@ async function init(){
   const tbody = document.querySelector('#tbl tbody');
   const ctx = $('chart').getContext('2d');
 
-  const meta = await fetchList();
+  const meta = await safeFetchList();
   codes = meta.codigos || [];
   sups  = meta.suministros || [];
   groups = [''].concat(meta.grupos || []);
-  groupSel.innerHTML = groups.map(g => `<option value="${g}">${g||'Todos'}</option>`).join('');
+  groupSel.innerHTML = groups.map(g => `<option value="\${g}">\${g||'Todos'}</option>`).join('');
   from.value = meta.min_fecha || ''; to.value = meta.max_fecha || '';
 
   function fillTerms(){
@@ -420,7 +460,7 @@ async function init(){
     if (fromV) params.from = fromV;
     if (toV) params.to = toV;
 
-    const data = await fetchSerie(params);
+    const data = await safeFetchSerie(params);
     const serie = data.serie || [];
     if (!serie.length){ alert('Sin datos para esa selección/filtro.'); return; }
 
@@ -478,6 +518,7 @@ async function init(){
     else if (data.subject_code) graphTitle = `Código: ${data.subject_code}`;
     else graphTitle = data.subject_label || 'Serie seleccionada';
 
+    const ctx = document.getElementById('chart').getContext('2d');
     if (!chartInstance){
       chartInstance = new Chart(ctx, {
         type:'line',
