@@ -47,14 +47,9 @@
     .theme-select{padding:6px 8px; border:1px solid rgba(255,255,255,.25); border-radius:10px; background:transparent; color:#fff}
 
     .container{padding:14px; max-width:1400px; margin:0 auto;}
-    /* Filtros responsivos */
     .filters{display:grid; grid-template-columns: 120px 1fr 1fr 1fr 140px 140px 130px 120px; gap:8px; align-items:end; margin-bottom:12px;}
-    @media (max-width: 1024px){
-      .filters{grid-template-columns: 1fr 1fr; }
-    }
-    @media (max-width: 640px){
-      .filters{grid-template-columns: 1fr; }
-    }
+    @media (max-width: 1024px){ .filters{grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 640px){ .filters{grid-template-columns: 1fr; } }
     .card{background:var(--card); border:1px solid var(--border); border-radius:14px; padding:12px;}
     label{font-size:12px; color:var(--sub);}
     select,input,button{width:100%; padding:8px 10px; border:1px solid var(--ring); border-radius:10px; background:#fff; color:#0f172a;}
@@ -69,7 +64,7 @@
     th,td{border-bottom:1px solid var(--ring); padding:8px 10px; text-align:left; white-space:nowrap;}
     thead th{position:sticky; top:0; background:var(--card); z-index:1;}
     .muted{color:var(--muted); font-size:12px}
-    .kpis{display:grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap:10px; margin-top:8px; margin-bottom:12px;}
+    .kpis{display:grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap:10px; margin-top:8px; margin-bottom:12px;}
     .kpi{background:var(--card); border:1px solid var(--border); border-radius:12px; padding:12px}
     .kpi .v{font-size:20px; font-weight:800}
     .kpi .l{font-size:12px; color:var(--sub)}
@@ -77,12 +72,13 @@
     .metric{display:flex; justify-content:space-between; font-weight:700}
     .metric small{color:var(--muted); font-weight:500}
     .hidden{display:none !important;}
+    .formula{font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; color:var(--sub);}
   </style>
 </head>
 <body>
   <div class="topbar">
     <img id="logo" src="icons/icon-192.png" alt="Logo">
-    <div class="title">Curvas de Inventario — CEDIS Panamá</div>
+    <div class="title" id="title">Curvas de Inventario — CEDIS Panamá</div>
     <div class="top-actions">
       <select id="theme" class="theme-select" title="Tema">
         <option value="system">Sistema</option>
@@ -106,7 +102,6 @@
       </div>
       <div id="termWrap">
         <label id="lbl-term">Suministro</label>
-        <!-- TYPEAHEAD: input + datalist -->
         <input id="term" list="termOptions" placeholder="Escribe para buscar..." autocomplete="off">
         <datalist id="termOptions"></datalist>
       </div>
@@ -135,14 +130,25 @@
     </div>
 
     <div class="kpis">
-      <div class="kpi"><div class="l">Inventario actual</div><div class="v" id="kpiInv">–</div></div>
+      <div class="kpi"><div class="l">Inventario actual</div><div class="v" id="kpiInv">–</div><div class="muted" id="kpiInvDate">–</div></div>
       <div class="kpi"><div class="l">KB_min (reorden)</div><div class="v" id="kpiKb">–</div></div>
       <div class="kpi"><div class="l">Inv. Crítico (95%)</div><div class="v" id="kpiCrit">–</div></div>
+      <div class="kpi"><div class="l">SMA_15 Inventario (nivel inicial)</div><div class="v" id="kpiI0">–</div></div>
     </div>
 
     <div class="row">
-      <div class="card chart-wrap">
-        <canvas id="chart"></canvas>
+      <div>
+        <div class="card chart-wrap">
+          <canvas id="chart"></canvas>
+        </div>
+        <div class="card" id="formulas">
+          <div class="muted">Fórmulas</div>
+          <div class="formula" id="f_kb">KB_min = μ_D × L = ?</div>
+          <div class="formula" id="f_sfty">Inventario Crítico = z × σ_D × √L = ?</div>
+          <div class="formula" id="f_proj1">I₀ = SMA_15(inventario) = ?</div>
+          <div class="formula" id="f_proj2">Î_{t+h} = max(Î_{t+h−1} − d̂_h, 0), h=1..45; d̂ por SES(α=0.3), estacionalidad semanal: ?</div>
+          <div class="formula" id="f_order">Si Q>0: I'_{t+L} = Î_{t+L} + Q</div>
+        </div>
       </div>
       <div class="side">
         <div class="card">
@@ -162,10 +168,10 @@
   </div>
 
 <script>
-// === CONFIG ===
 const API_BASE = 'https://script.google.com/macros/s/AKfycbyvmMSLIwNNAZSr_CffgH_LGTw6xFPqZ4H2tjQdVZnlTP0_bgFgvasLqPTElBUHSPkdOA/exec';
 const LEAD = 45;
 const TYPEAHEAD_LIMIT = 100;
+const USE_SEASONAL = true;
 
 let chartInstance = null;
 let deferredPrompt = null;
@@ -174,7 +180,7 @@ let codes = [], sups = [], groups = [];
 const fmtInt = (n)=> Number(n||0).toLocaleString();
 const $ = (id)=> document.getElementById(id);
 
-// ---- Theme ----
+// Theme
 (function initTheme(){
   const saved = localStorage.getItem('theme') || 'system';
   document.documentElement.setAttribute('data-theme', saved);
@@ -186,7 +192,7 @@ const $ = (id)=> document.getElementById(id);
   });
 })();
 
-// ---- PWA install button ----
+// PWA install
 window.addEventListener('beforeinstallprompt', (e)=>{
   e.preventDefault();
   deferredPrompt = e;
@@ -208,30 +214,13 @@ async function fetchJSON(url){
   if (!r.ok) throw new Error("HTTP " + r.status + " al solicitar " + url);
   return r.json();
 }
-
-// Cache ligero de /list en localStorage
-async function fetchList(){
-  const KEY = 'inv_meta_v3';
-  const now = Date.now();
-  try {
-    const raw = localStorage.getItem(KEY);
-    if (raw){
-      const cached = JSON.parse(raw);
-      if (now - cached.t < 10*60*1000) { // 10 minutos
-        return cached.data;
-      }
-    }
-  } catch(_) {}
-  const data = await fetchJSON(API_BASE + '?list=true');
-  try { localStorage.setItem(KEY, JSON.stringify({t: now, data})); } catch(_) {}
-  return data;
-}
+async function fetchList(){ return fetchJSON(API_BASE + '?list=true'); }
 async function fetchSerie(params){
   const p = new URLSearchParams(params);
   return fetchJSON(API_BASE + '?' + p.toString());
 }
 
-// === TYPEAHEAD ===
+// Typeahead
 function fillDatalist(arr, q=''){
   const dl = $('termOptions');
   const normQ = q.trim().toLowerCase();
@@ -239,7 +228,6 @@ function fillDatalist(arr, q=''){
   if (!normQ){
     suggestions = arr.slice(0, TYPEAHEAD_LIMIT);
   } else {
-    // prioriza prefijo; luego contiene
     const starts = arr.filter(v => v.toLowerCase().startsWith(normQ));
     const contains = arr.filter(v => !v.toLowerCase().startsWith(normQ) && v.toLowerCase().includes(normQ));
     suggestions = starts.concat(contains).slice(0, TYPEAHEAD_LIMIT);
@@ -247,6 +235,51 @@ function fillDatalist(arr, q=''){
   dl.innerHTML = suggestions.map(v => `<option value="${v}"></option>`).join('');
 }
 
+// Stats helpers
+function mean(a){ if(!a.length) return 0; return a.reduce((x,y)=>x+Number(y||0),0)/a.length; }
+function smaLast(arr, k){
+  const n = arr.length; if (!n) return 0;
+  const start = Math.max(0, n - k);
+  const slice = arr.slice(start, n).map(Number).filter(v=>Number.isFinite(v));
+  if (!slice.length) return 0;
+  if (slice.length >= 3){
+    const s = [...slice].sort((a,b)=>a-b);
+    s.shift(); s.pop();
+    return mean(s);
+  }
+  return mean(slice);
+}
+
+function seasonalityWeekly(consHist, H, lastDateISO){
+  const n = consHist.length;
+  if (n < 14) return null;
+  const weeks = Math.min(8, Math.floor(n/7));
+  if (weeks < 2) return null;
+
+  const lastDate = new Date(lastDateISO);
+  const weekdayLast = lastDate.getDay(); // 0..6
+  const wkIdx = new Array(n);
+  for (let i = n-1, w = weekdayLast; i >= 0; i--, w = (w-1+7)%7) wkIdx[i] = w;
+
+  const sums = Array(7).fill(0), counts = Array(7).fill(0);
+  for (let i=0; i<n; i++){
+    const w = wkIdx[i];
+    sums[w] += Number(consHist[i]||0);
+    counts[w] += 1;
+  }
+  const avgW = sums.map((s,i)=> counts[i] ? s / counts[i] : 0);
+  const grand = mean(avgW.filter(v=>v>0)) || 1;
+  const factors = avgW.map(v=> v>0 ? v/grand : 1);
+
+  const startW = (weekdayLast + 1) % 7;
+  const season = new Array(H);
+  for (let h=0; h<H; h++){
+    season[h] = factors[(startW + h) % 7] || 1;
+  }
+  return season;
+}
+
+// SES
 function ses(cons, H, alpha=0.3){
   if (!cons.length) return Array(H).fill(0);
   let s = cons[0];
@@ -254,15 +287,16 @@ function ses(cons, H, alpha=0.3){
   return Array(H).fill(s);
 }
 
-function simulate(invLast, dHat, q=0, lead=LEAD){
+// simulate
+function simulate(inv0, dHat, q=0, lead=45){
   const H = dHat.length;
   const base = new Array(H);
   const withOrder = new Array(H);
   for (let h=0; h<H; h++){
-    if (h===0) base[h] = Math.max(invLast - dHat[h], 0);
+    if (h===0) base[h] = Math.max(inv0 - dHat[h], 0);
     else base[h] = Math.max(base[h-1] - dHat[h], 0);
   }
-  withOrder[0] = Math.max(invLast - dHat[0], 0);
+  withOrder[0] = Math.max(inv0 - dHat[0], 0);
   for (let h=1; h<H; h++){ withOrder[h] = Math.max(withOrder[h-1] - dHat[h], 0); }
   const idx = lead-1;
   if (idx>=0 && idx<H){
@@ -274,17 +308,21 @@ function simulate(invLast, dHat, q=0, lead=LEAD){
 
 function fillTable(tbody, serie){
   tbody.innerHTML='';
-  for (const p of serie){
+  // mostrar del más reciente al más antiguo
+  for (let i=serie.length-1; i>=0; i--){
+    const p = serie[i];
     const tr = document.createElement('tr');
     tr.innerHTML = `<td>${p.fecha}</td><td>${fmtInt(p.inventario)}</td>`;
     tbody.appendChild(tr);
   }
 }
 
-function setKPIs(invLast, kb, sfty){
+function setKPIs(invLast, kb, sfty, lastDateISO, I0){
   $('kpiInv').textContent = fmtInt(invLast);
+  $('kpiInvDate').textContent = lastDateISO ? `al ${lastDateISO}` : '';
   $('kpiKb').textContent = fmtInt(kb);
   $('kpiCrit').textContent = fmtInt(sfty);
+  $('kpiI0').textContent = fmtInt(Math.round(I0));
 }
 
 function setSideMetrics(minV, minD, maxV, maxD, avg30){
@@ -293,6 +331,13 @@ function setSideMetrics(minV, minD, maxV, maxD, avg30){
   $('mMax').textContent = fmtInt(maxV);
   $('mMaxDate').textContent = maxD ? `en ${maxD}` : '';
   $('mAvg30').textContent = fmtInt(avg30);
+}
+
+function setFormulas(mu, sigma, kb, sfty, I0){
+  $('f_kb').textContent = `KB_min = μ_D × L = ${fmtInt(Math.round(mu))} × ${LEAD} = ${fmtInt(Math.round(kb))}`;
+  $('f_sfty').textContent = `Inventario Crítico = z × σ_D × √L = 1.65 × ${fmtInt(Math.round(sigma))} × √${LEAD} = ${fmtInt(Math.round(sfty))}`;
+  $('f_proj1').textContent = `I₀ = SMA_15(inventario) = ${fmtInt(Math.round(I0))}`;
+  $('f_proj2').textContent = `Î_{t+h} = max(Î_{t+h−1} − d̂_h, 0), h=1..45; d̂ por SES(α=0.3), estacionalidad semanal: ${USE_SEASONAL ? 'activa' : 'inactiva'}`;
 }
 
 async function init(){
@@ -310,7 +355,6 @@ async function init(){
   const tbody = document.querySelector('#tbl tbody');
   const ctx = $('chart').getContext('2d');
 
-  // listas
   const meta = await fetchList();
   codes = meta.codigos || [];
   sups  = meta.suministros || [];
@@ -330,7 +374,7 @@ async function init(){
       termWrap.classList.remove('hidden');
       termInp.value = '';
       fillDatalist(sups);
-    } else { // Grupo
+    } else {
       termWrap.classList.add('hidden');
       termInp.value = '';
     }
@@ -342,12 +386,10 @@ async function init(){
     fillDatalist(arr, e.target.value || '');
   });
 
-  // Forzar modo inicial = Suministro, autoselect primera opción (sin llenar miles de opciones)
+  // Default: Suministro y primer valor
   modeSel.value = 'Suministro';
   fillTerms();
-  if (sups.length > 0) {
-    termInp.value = sups[0];
-  }
+  if (sups.length > 0) termInp.value = sups[0];
 
   async function run(){
     const mode = modeSel.value;
@@ -358,7 +400,7 @@ async function init(){
     const params = {};
     if (mode==='Código') params.codigo = termInp.value;
     if (mode==='Suministro') params.suministro = termInp.value;
-    if (group && mode!=='Grupo') params.grupo = group; // filtro adicional
+    if (group && mode!=='Grupo') params.grupo = group;
     if (mode==='Grupo') params.grupo = group;
     if (fromV) params.from = fromV;
     if (toV) params.to = toV;
@@ -368,16 +410,36 @@ async function init(){
     if (!serie.length){ alert('Sin datos para esa selección/filtro.'); return; }
 
     const invHist = serie.map(p=>Number(p.inventario));
-    const cons=[]; for(let i=1;i<invHist.length;i++){ cons.push(Math.max(invHist[i-1]-invHist[i],0)); }
-    const dHat = ses(cons, 45, 0.3);
-    const invLast = invHist[invHist.length-1];
-    const {base, withOrder} = simulate(invLast, dHat, Q, data.lead||LEAD);
 
+    // Consumos observados (decrementos)
+    const cons=[]; for(let i=1;i<invHist.length;i++){ cons.push(Math.max(invHist[i-1]-invHist[i],0)); }
+
+    // Pronóstico demanda SES + estacionalidad semanal opcional
+    let dHat = ses(cons, 45, 0.3);
+    if (USE_SEASONAL){
+      const seas = (function(cons, H, lastDateStr){
+        const n = cons.length;
+        if (n < 14) return null;
+        const lastDate = serie[serie.length-1].fecha;
+        const season = seasonalityWeekly(cons, H, lastDate);
+        return season;
+      })(cons, 45);
+      if (seas){
+        dHat = dHat.map((v,i)=> Math.max(v * seas[i], 0));
+      }
+    }
+
+    // Nivel inicial: SMA_15 del inventario
+    const I0 = smaLast(invHist, 15);
+
+    // Simulación
+    const {base, withOrder} = simulate(I0, dHat, Q, data.lead||LEAD);
+
+    // Fechas
     const lastDate = new Date(serie[serie.length-1].fecha);
     const future = [];
     for(let i=1;i<=45;i++){
-      const d=new Date(lastDate);
-      d.setDate(d.getDate()+i);
+      const d=new Date(lastDate); d.setDate(d.getDate()+i);
       future.push(d.toISOString().slice(0,10));
     }
     const labels = serie.map(p=>p.fecha).concat(future);
@@ -390,9 +452,15 @@ async function init(){
     const sfty = Number(data.inventario_critico||0);
 
     fillTable(tbody, serie);
-    setKPIs(invLast, kb, sfty);
+    setKPIs(invHist[invHist.length-1], kb, sfty, serie[serie.length-1].fecha, I0);
     setSideMetrics(data.min_value||0, data.min_date||'', data.max_value||0, data.max_date||'', data.avg_30||0);
+    setFormulas(data.mu_d||0, data.sigma_d||0, kb, sfty, I0);
 
+    const baseTitle = data.subject_label || 'Curvas de Inventario';
+    const composed = data.subject_code ? (data.subject_code + ' — ' + baseTitle) : baseTitle;
+    document.getElementById('title').textContent = composed;
+
+    const ctx = document.getElementById('chart').getContext('2d');
     if (!chartInstance){
       chartInstance = new Chart(ctx, {
         type:'line',
@@ -413,7 +481,7 @@ async function init(){
           },
           plugins:{
             legend:{ position:'bottom' },
-            title:{ display:true, text: (data.subject_label||('Suministro: ' + (termInp.value||''))) },
+            title:{ display:false, text: composed },
             tooltip:{ callbacks:{ label:(ctx)=>{
               const v = ctx.parsed.y;
               return `${ctx.dataset.label}: ${Number.isFinite(v)? fmtInt(v) : ''}`;
@@ -429,12 +497,10 @@ async function init(){
       chartInstance.data.datasets[2].data = projPlusData;
       chartInstance.data.datasets[3].data = Array(labels.length).fill(kb);
       chartInstance.data.datasets[4].data = Array(labels.length).fill(sfty);
-      chartInstance.options.plugins.title.text = (data.subject_label||('Suministro: ' + (termInp.value||'')));
       chartInstance.update();
     }
   }
 
-  // Listeners
   $('btn').addEventListener('click', run);
   $('refreshBtn').addEventListener('click', run);
   $('btnClear').addEventListener('click', ()=>{
@@ -446,18 +512,18 @@ async function init(){
     from.value = meta.min_fecha || '';
     to.value = meta.max_fecha || '';
     document.querySelector('#tbl tbody').innerHTML='';
-    setKPIs(0,0,0);
+    setKPIs(0,0,0,'',0);
     setSideMetrics(0,'',0,'',0);
+    setFormulas(0,0,0,0,0);
     if (chartInstance){ chartInstance.destroy(); chartInstance=null; }
+    document.getElementById('title').textContent = 'Curvas de Inventario — CEDIS Panamá';
   });
 
-  // Ejecutar una primera vez con el primer Suministro
   await run();
 }
 
 window.addEventListener('load', ()=>{ init(); });
 
-// Register SW if present
 if ('serviceWorker' in navigator){
   navigator.serviceWorker.register('sw.js').catch(()=>{});
 }
