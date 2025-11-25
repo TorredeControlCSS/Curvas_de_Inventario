@@ -73,6 +73,7 @@
     .metric small{color:var(--muted); font-weight:500}
     .hidden{display:none !important;}
     .formula{font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; color:var(--sub);}
+    ul.formula{padding-left:18px;}
   </style>
 </head>
 <body>
@@ -148,11 +149,23 @@
           <div class="formula" id="f_proj1">I₀ = SMA_15(inventario) = ?</div>
           <div class="formula" id="f_proj2">Î_{t+h} = max(Î_{t+h−1} − d̂_h, 0), h=1..45; d̂ por SES(α=0.3), estacionalidad semanal: ?</div>
           <div class="formula" id="f_order">Si Q>0: I'_{t+L} = Î_{t+L} + Q</div>
+          <br/>
+          <div class="muted">Definiciones</div>
+          <ul class="formula" id="defs">
+            <li><b>μ_D</b>: mediana de las <i>tasas</i> de consumo diario (últimos 90 días).</li>
+            <li><b>σ_D</b>: 1.4826 × MAD de las <i>tasas</i> de consumo diario.</li>
+            <li><b>L</b>: lead time en días (por defecto 45).</li>
+            <li><b>z</b>: factor de servicio (95% ⇒ 1.65).</li>
+            <li><b>I₀</b>: SMA_15 del inventario (media móvil recortada de los últimos 15 días).</li>
+            <li><b>d̂_h</b>: demanda pronosticada por SES (α=0.3), ajustada por estacionalidad semanal.</li>
+          </ul>
         </div>
       </div>
       <div class="side">
         <div class="card">
           <div class="muted">Indicadores de la serie</div>
+          <div class="metric"><span>Último inventario</span><span id="mLast">–</span></div>
+          <small id="mLastDate" class="muted"></small>
           <div class="metric"><span>Mínimo histórico</span><span id="mMin">–</span></div>
           <small id="mMinDate" class="muted"></small>
           <div class="metric"><span>Máximo histórico</span><span id="mMax">–</span></div>
@@ -325,7 +338,9 @@ function setKPIs(invLast, kb, sfty, lastDateISO, I0){
   $('kpiI0').textContent = fmtInt(Math.round(I0));
 }
 
-function setSideMetrics(minV, minD, maxV, maxD, avg30){
+function setSideMetrics(minV, minD, maxV, maxD, avg30, lastV, lastD){
+  $('mLast').textContent = fmtInt(lastV);
+  $('mLastDate').textContent = lastD ? `en ${lastD}` : '';
   $('mMin').textContent = fmtInt(minV);
   $('mMinDate').textContent = minD ? `en ${minD}` : '';
   $('mMax').textContent = fmtInt(maxV);
@@ -410,6 +425,8 @@ async function init(){
     if (!serie.length){ alert('Sin datos para esa selección/filtro.'); return; }
 
     const invHist = serie.map(p=>Number(p.inventario));
+    const lastVal = invHist[invHist.length-1];
+    const lastDateStr = serie[serie.length-1].fecha;
 
     // Consumos observados (decrementos)
     const cons=[]; for(let i=1;i<invHist.length;i++){ cons.push(Math.max(invHist[i-1]-invHist[i],0)); }
@@ -420,10 +437,9 @@ async function init(){
       const seas = (function(cons, H, lastDateStr){
         const n = cons.length;
         if (n < 14) return null;
-        const lastDate = serie[serie.length-1].fecha;
-        const season = seasonalityWeekly(cons, H, lastDate);
+        const season = seasonalityWeekly(cons, H, lastDateStr);
         return season;
-      })(cons, 45);
+      })(cons, 45, lastDateStr);
       if (seas){
         dHat = dHat.map((v,i)=> Math.max(v * seas[i], 0));
       }
@@ -435,8 +451,8 @@ async function init(){
     // Simulación
     const {base, withOrder} = simulate(I0, dHat, Q, data.lead||LEAD);
 
-    // Fechas
-    const lastDate = new Date(serie[serie.length-1].fecha);
+    // Fechas futuras
+    const lastDate = new Date(lastDateStr);
     const future = [];
     for(let i=1;i<=45;i++){
       const d=new Date(lastDate); d.setDate(d.getDate()+i);
@@ -452,15 +468,16 @@ async function init(){
     const sfty = Number(data.inventario_critico||0);
 
     fillTable(tbody, serie);
-    setKPIs(invHist[invHist.length-1], kb, sfty, serie[serie.length-1].fecha, I0);
-    setSideMetrics(data.min_value||0, data.min_date||'', data.max_value||0, data.max_date||'', data.avg_30||0);
+    setKPIs(lastVal, kb, sfty, lastDateStr, I0);
+    setSideMetrics(data.min_value||0, data.min_date||'', data.max_value||0, data.max_date||'', data.avg_30||0, lastVal, lastDateStr);
     setFormulas(data.mu_d||0, data.sigma_d||0, kb, sfty, I0);
 
-    const baseTitle = data.subject_label || 'Curvas de Inventario';
-    const composed = data.subject_code ? (data.subject_code + ' — ' + baseTitle) : baseTitle;
-    document.getElementById('title').textContent = composed;
+    // Título del GRÁFICO con código
+    let graphTitle = '';
+    if (data.subject_code && data.subject_name) graphTitle = `${data.subject_code} — ${data.subject_name}`;
+    else if (data.subject_code) graphTitle = `Código: ${data.subject_code}`;
+    else graphTitle = data.subject_label || 'Serie seleccionada';
 
-    const ctx = document.getElementById('chart').getContext('2d');
     if (!chartInstance){
       chartInstance = new Chart(ctx, {
         type:'line',
@@ -481,7 +498,7 @@ async function init(){
           },
           plugins:{
             legend:{ position:'bottom' },
-            title:{ display:false, text: composed },
+            title:{ display:true, text: graphTitle },
             tooltip:{ callbacks:{ label:(ctx)=>{
               const v = ctx.parsed.y;
               return `${ctx.dataset.label}: ${Number.isFinite(v)? fmtInt(v) : ''}`;
@@ -497,6 +514,8 @@ async function init(){
       chartInstance.data.datasets[2].data = projPlusData;
       chartInstance.data.datasets[3].data = Array(labels.length).fill(kb);
       chartInstance.data.datasets[4].data = Array(labels.length).fill(sfty);
+      chartInstance.options.plugins.title.display = true;
+      chartInstance.options.plugins.title.text = graphTitle;
       chartInstance.update();
     }
   }
@@ -513,10 +532,9 @@ async function init(){
     to.value = meta.max_fecha || '';
     document.querySelector('#tbl tbody').innerHTML='';
     setKPIs(0,0,0,'',0);
-    setSideMetrics(0,'',0,'',0);
+    setSideMetrics(0,'',0,'',0,0,'');
     setFormulas(0,0,0,0,0);
     if (chartInstance){ chartInstance.destroy(); chartInstance=null; }
-    document.getElementById('title').textContent = 'Curvas de Inventario — CEDIS Panamá';
   });
 
   await run();
