@@ -28,27 +28,35 @@
   <table id="tbl"><thead><tr><th>Fecha</th><th>Inventario</th><th>Inv. Crítico</th><th>KB_min</th></tr></thead><tbody></tbody></table>
 </div>
 <script>
-const API_BASE = 'https://script.google.com/macros/s/AKfycbyvmMSLIwNNAZSr_CffgH_LGTw6xFPqZ4H2tjQdVZnlTP0_bgFgvasLqPTElBUHSPkdOA/exec'; // pega aquí la URL del Web App
+// >>>>>>> Pega la URL de tu Web App aquí <<<<<<<
+const API_BASE = 'https://script.google.com/macros/s/AKfycbyvmMSLIwNNAZSr_CffgH_LGTw6xFPqZ4H2tjQdVZnlTP0_bgFgvasLqPTElBUHSPkdOA/exec';
 const LEAD = 45; // debe coincidir con backend
 
-let chart;
-async function fetchList(){
-  const r = await fetch(API_BASE + '?list=true');
+let chartInstance = null;
+
+async function fetchJSON(url){
+  const r = await fetch(url);
+  if (!r.ok) throw new Error("HTTP " + r.status + " al solicitar " + url);
   return r.json();
 }
+
+async function fetchList(){ return fetchJSON(API_BASE + '?list=true'); }
 async function fetchSerieBy(mode, term){
   const url = mode==='Código' ? `${API_BASE}?codigo=${encodeURIComponent(term)}` : `${API_BASE}?suministro=${encodeURIComponent(term)}`;
-  const r = await fetch(url);
-  return r.json();
+  return fetchJSON(url);
 }
+
 function ses(cons, H, alpha=0.3){
   if (!cons.length) return Array(H).fill(0);
   let s = cons[0];
   for (let i=1;i<cons.length;i++){ s = alpha*cons[i] + (1-alpha)*s; }
   return Array(H).fill(s);
 }
+
 function simulate(invLast, dHat, q=0, lead=LEAD){
-  const H = dHat.length; const base = new Array(H); const withOrder = new Array(H);
+  const H = dHat.length;
+  const base = new Array(H);
+  const withOrder = new Array(H);
   for (let h=0; h<H; h++){
     if (h===0) base[h] = Math.max(invLast - dHat[h], 0);
     else base[h] = Math.max(base[h-1] - dHat[h], 0);
@@ -56,11 +64,14 @@ function simulate(invLast, dHat, q=0, lead=LEAD){
   // aplicar pedido en t+lead
   withOrder[0] = Math.max(invLast - dHat[0], 0);
   for (let h=1; h<H; h++){ withOrder[h] = Math.max(withOrder[h-1] - dHat[h], 0); }
-  const idx = lead-1; if (idx>=0 && idx<H){ withOrder[idx] += Number(q||0);
-    for (let h=idx+1, prev=withOrder[idx]; h<H; h++){ withOrder[h] = Math.max(withOrder[h-1] - dHat[h], 0); }
+  const idx = lead-1;
+  if (idx>=0 && idx<H){
+    withOrder[idx] += Number(q||0);
+    for (let h=idx+1; h<H; h++){ withOrder[h] = Math.max(withOrder[h-1] - dHat[h], 0); }
   }
   return {base, withOrder};
 }
+
 function updateTable(tbody, serie, kb, sfty){
   tbody.innerHTML='';
   for (const p of serie){
@@ -69,6 +80,7 @@ function updateTable(tbody, serie, kb, sfty){
     tbody.appendChild(tr);
   }
 }
+
 async function init(){
   const modeSel = document.getElementById('mode');
   const termSel = document.getElementById('term');
@@ -77,66 +89,82 @@ async function init(){
   const btn = document.getElementById('btn');
   const tbody = document.querySelector('#tbl tbody');
   const meta = document.getElementById('meta');
+  const ctx = document.getElementById('chart').getContext('2d');
 
-  const list = await fetchList();
-  const codes = [...new Set(list.map(x=>x.codigo))].sort();
-  const sups  = [...new Set(list.map(x=>x.suministro))].sort();
+  try{
+    const list = await fetchList();
+    const codes = [...new Set(list.map(x=>x.codigo))].sort();
+    const sups  = [...new Set(list.map(x=>x.suministro))].sort();
 
-  function fillTerms(){
-    const isCode = modeSel.value==='Código';
-    lbl.textContent = isCode ? 'Código' : 'Suministro';
-    const arr = isCode ? codes : sups;
-    termSel.innerHTML = arr.map(v=>`<option>${v}</option>`).join('');
+    function fillTerms(){
+      const isCode = modeSel.value==='Código';
+      lbl.textContent = isCode ? 'Código' : 'Suministro';
+      const arr = isCode ? codes : sups;
+      termSel.innerHTML = arr.map(v=>`<option>${v}</option>`).join('');
+    }
+    modeSel.addEventListener('change', fillTerms);
+    fillTerms();
+
+    btn.addEventListener('click', async ()=>{
+      try{
+        const mode = modeSel.value; const term = termSel.value; const Q = Number(qty.value||0);
+        const data = await fetchSerieBy(mode, term);
+        if (data.error){ alert(data.error); return; }
+        const serie = data.serie;
+        if (!serie.length){ alert('Sin datos'); return; }
+
+        const inv = serie.map(p=>Number(p.inventario));
+        const cons=[]; for(let i=1;i<inv.length;i++){ cons.push(Math.max(inv[i-1]-inv[i],0)); }
+        const dHat = ses(cons, 45, 0.3);
+
+        const invLast = inv[inv.length-1];
+        const {base, withOrder} = simulate(invLast, dHat, Q, data.lead||LEAD);
+
+        const lastDate = new Date(serie[serie.length-1].fecha);
+        const future = [];
+        for(let i=1;i<=45;i++){ const d=new Date(lastDate); d.setDate(d.getDate()+i); future.push(d.toISOString().slice(0,10)); }
+
+        const labels = serie.map(p=>p.fecha).concat(future);
+
+        // ¡Alinear longitudes!
+        const histData = inv.concat(Array(future.length).fill(null));
+        const projData = Array(serie.length).fill(null).concat(base);
+        const projPlusData = Array(serie.length).fill(null).concat(withOrder);
+
+        const invAvg = inv.reduce((a,b)=>a+b,0)/inv.length;
+        const kb = Number(data.kb_min||0);
+        const sfty = Number(data.inventario_critico||0);
+
+        updateTable(tbody, serie, kb, sfty);
+
+        if (chartInstance && typeof chartInstance.destroy === 'function') chartInstance.destroy();
+
+        chartInstance = new Chart(ctx, {
+          type:'line',
+          data:{
+            labels,
+            datasets:[
+              {label:'Inventario histórico', data:histData},
+              {label:'Proyección 45 días', data:projData},
+              {label:'Proyección + pedido', data:projPlusData},
+              {label:'KB_min (Punto de Reorden)', data:Array(labels.length).fill(kb)},
+              {label:'Inventario Crítico', data:Array(labels.length).fill(sfty)},
+              {label:'Inventario Promedio', data:Array(labels.length).fill(invAvg)}
+            ]
+          },
+          options:{ responsive:true, maintainAspectRatio:false }
+        });
+
+        meta.textContent = `KB_min: ${kb.toFixed(2)} | Inv. Crítico: ${sfty.toFixed(2)} | Promedio histórico: ${invAvg.toFixed(2)}`;
+      }catch(err){
+        console.error(err);
+        alert('Error cargando datos. Revisa la consola para más detalles.');
+      }
+    });
+  }catch(err){
+    console.error(err);
+    alert('No se pudo cargar la lista inicial. Verifica API_BASE.');
   }
-
-  modeSel.addEventListener('change', fillTerms);
-  fillTerms();
-
-  btn.addEventListener('click', async ()=>{
-    const mode = modeSel.value; const term = termSel.value; const Q = Number(qty.value||0);
-    const data = await fetchSerieBy(mode, term);
-    if (data.error){ alert(data.error); return; }
-    const serie = data.serie; // [{fecha, inventario}]
-    if (!serie.length){ alert('Sin datos'); return; }
-
-    // consumo y SES
-    const inv = serie.map(p=>Number(p.inventario));
-    const cons=[]; for(let i=1;i<inv.length;i++){ cons.push(Math.max(inv[i-1]-inv[i],0)); }
-    const dHat = ses( cons, 45, 0.3 );
-
-    const invLast = inv[inv.length-1];
-    const {base, withOrder} = simulate(invLast, dHat, Q, data.lead||LEAD);
-
-    const lastDate = new Date(serie[serie.length-1].fecha);
-    const future = []; for(let i=1;i<=45;i++){ const d=new Date(lastDate); d.setDate(d.getDate()+i); future.push(d.toISOString().slice(0,10)); }
-
-    const labels = serie.map(p=>p.fecha).concat(future);
-    const invHist = inv;
-    const proj = base;
-    const projPlus = withOrder;
-
-    const invAvg = inv.reduce((a,b)=>a+b,0)/inv.length;
-    const kb = Number(data.kb_min||0);
-    const sfty = Number(data.inventario_critico||0);
-
-    updateTable(tbody, serie, kb, sfty);
-
-    const ctx = document.getElementById('chart').getContext('2d');
-    if (window.chart) window.chart.destroy();
-    window.chart = new Chart(ctx, { type:'line', data:{
-      labels,
-      datasets:[
-        {label:'Inventario histórico', data:invHist},
-        {label:'Proyección 45 días', data:proj},
-        {label:'Proyección + pedido', data:projPlus},
-        {label:'KB_min (Punto de Reorden)', data:Array(labels.length).fill(kb)},
-        {label:'Inventario Crítico', data:Array(labels.length).fill(sfty)},
-        {label:'Inventario Promedio', data:Array(labels.length).fill(invAvg)}
-      ]
-    }, options:{ responsive:true, maintainAspectRatio:false }});
-
-    meta.textContent = `KB_min: ${kb.toFixed(2)} | Inv. Crítico: ${sfty.toFixed(2)} | Promedio histórico: ${invAvg.toFixed(2)}`;
-  });
 }
 
 window.addEventListener('load', ()=>{ init(); if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js'); });
