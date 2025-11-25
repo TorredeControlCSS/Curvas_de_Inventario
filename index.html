@@ -60,7 +60,7 @@
 <body>
   <div class="topbar">
     <img src="icons/icon-192.png" alt="Logo">
-    <div class="title">Curvas de Inventario — CEDIS PANAMA CSS</div>
+    <div class="title">Curvas de Inventario — CEDIS PANAMA CSS/div>
     <div class="top-actions">
       <select id="theme" class="theme-select" title="Tema">
         <option value="system">Sistema</option><option value="light">Claro</option><option value="dark">Oscuro</option>
@@ -95,7 +95,7 @@
 
     <div class="kpis">
       <div class="kpi"><div class="l">Inventario actual</div><div class="v" id="kpiInv">–</div><div class="muted" id="kpiInvDate">–</div></div>
-      <div class="kpi"><div class="l">KB_min (reorden)</div><div class="v" id="kpiKb">–</div></div>
+      <div class="kpi"><div class="l">Punto de Reorden (KB_min + SS)</div><div class="v" id="kpiKb">–</div></div>
       <div class="kpi"><div class="l">Inv. Crítico (95%)</div><div class="v" id="kpiCrit">–</div></div>
       <div class="kpi"><div class="l">SMA_15 Inventario (nivel inicial)</div><div class="v" id="kpiI0">–</div></div>
     </div>
@@ -105,8 +105,8 @@
         <div class="card chart-wrap"><canvas id="chart"></canvas></div>
         <div class="card" id="formulas">
           <div class="muted">Fórmulas</div>
-          <div class="formula" id="f_kb">KB_min = μ_D × L = ?</div>
-          <div class="formula" id="f_sfty">Inventario Crítico = z × σ_D × √L = ?</div>
+          <div class="formula" id="f_kb">Punto de Reorden = μ_D × L + SS = ?</div>
+          <div class="formula" id="f_sfty">SS (Inventario Crítico) = z × σ_D × √L = ?</div>
           <div class="formula" id="f_proj1">I₀ = SMA_15(inventario) = ?</div>
           <div class="formula" id="f_proj2">Î_{t+h} = max(Î_{t+h−1} − d̂_h, 0), h=1..45; d̂ por SES(α=0.3), estacionalidad semanal: ?</div>
           <div class="formula" id="f_order">Si Q>0: I'_{t+L} = Î_{t+L} + Q</div>
@@ -119,6 +119,7 @@
             <li><b>z</b>: 95% ⇒ 1.65.</li>
             <li><b>I₀</b>: SMA_15 del inventario.</li>
             <li><b>d̂_h</b>: demanda por SES (α=0.3), con estacionalidad semanal si aplica.</li>
+            <li><b>ROP</b>: Punto de Reorden = KB_min + SS.</li>
           </ul>
         </div>
       </div>
@@ -207,9 +208,7 @@ async function safeFetchList(){
 }
 async function safeFetchSerie(params){
   const p = new URLSearchParams(params); p.set('ts', Date.now());
-  const url = API_BASE + '?' + p.toString();
-  console.log('API:', url); // <- debug
-  return fetchJSON(url);
+  return fetchJSON(API_BASE + '?' + p.toString());
 }
 
 // Typeahead
@@ -264,9 +263,9 @@ function fillTable(tbody, serie){
     const tr=document.createElement('tr'); tr.innerHTML=`<td>${p.fecha}</td><td>${fmtInt(p.inventario)}</td>`; tbody.appendChild(tr);
   }
 }
-function setKPIs(invLast, kb, sfty, lastDateISO, I0){
+function setKPIs(invLast, rop, sfty, lastDateISO, I0){
   $('kpiInv').textContent=fmtInt(invLast); $('kpiInvDate').textContent= lastDateISO? `al ${lastDateISO}`:'';
-  $('kpiKb').textContent=fmtInt(kb); $('kpiCrit').textContent=fmtInt(sfty); $('kpiI0').textContent=fmtInt(Math.round(I0));
+  $('kpiKb').textContent=fmtInt(rop); $('kpiCrit').textContent=fmtInt(sfty); $('kpiI0').textContent=fmtInt(Math.round(I0));
 }
 function setSideMetrics(minV,minD,maxV,maxD,avg30,lastV,lastD){
   $('mLast').textContent=fmtInt(lastV); $('mLastDate').textContent= lastD?`en ${lastD}`:'';
@@ -274,11 +273,11 @@ function setSideMetrics(minV,minD,maxV,maxD,avg30,lastV,lastD){
   $('mMax').textContent=fmtInt(maxV);  $('mMaxDate').textContent= maxD?`en ${maxD}`:'';
   $('mAvg30').textContent=fmtInt(avg30);
 }
-function setFormulas(mu, sigma, kb, sfty, I0){
-  $('f_kb').textContent = `KB_min = μ_D × L = ${fmtInt(Math.round(mu))} × ${LEAD} = ${fmtInt(Math.round(kb))}`;
-  $('f_sfty').textContent = `Inventario Crítico = z × σ_D × √L = 1.65 × ${fmtInt(Math.round(sigma))} × √${LEAD} = ${fmtInt(Math.round(sfty))}`;
-  $('f_proj1').textContent = `I₀ = SMA_15(inventario) = ${fmtInt(Math.round(I0))}`;
-  $('f_proj2').textContent = `Î_{t+h} = max(Î_{t+h−1} − d̂_h, 0), h=1..45; d̂ por SES(α=0.3), estacionalidad semanal: ${USE_SEASONAL ? 'activa' : 'inactiva'}`;
+function setFormulas(mu, sigma, kb, sfty, I0, rop){
+  $('f_kb').textContent   = `Punto de Reorden = μ_D × L + SS = ${fmtInt(Math.round(mu))} × ${LEAD} + ${fmtInt(Math.round(sfty))} = ${fmtInt(Math.round(rop))}`;
+  $('f_sfty').textContent = `SS (Inventario Crítico) = z × σ_D × √L = 1.65 × ${fmtInt(Math.round(sigma))} × √${LEAD} = ${fmtInt(Math.round(sfty))}`;
+  $('f_proj1').textContent= `I₀ = SMA_15(inventario) = ${fmtInt(Math.round(I0))}`;
+  $('f_proj2').textContent= `Î_{t+h} = max(Î_{t+h−1} − d̂_h, 0), h=1..45; d̂ por SES(α=0.3), estacionalidad semanal: ${USE_SEASONAL ? 'activa' : 'inactiva'}`;
 }
 
 // INIT
@@ -345,12 +344,14 @@ async function init(){
     const projData = Array(serie.length).fill(null).concat(base);
     const projPlusData = Array(serie.length).fill(null).concat(withOrder);
 
-    const kb = Number(data.kb_min||0), sfty = Number(data.inventario_critico||0);
+    const kb = Number(data.kb_min||0);               // μ_D × L
+    const sfty = Number(data.inventario_critico||0); // SS
+    const rop = kb + sfty;                            // ROP = KB_min + SS
 
     fillTable(tbody, serie);
-    setKPIs(lastVal, kb, sfty, lastDateStr, I0);
+    setKPIs(lastVal, rop, sfty, lastDateStr, I0);
     setSideMetrics(data.min_value||0, data.min_date||'', data.max_value||0, data.max_date||'', data.avg_30||0, lastVal, lastDateStr);
-    setFormulas(data.mu_d||0, data.sigma_d||0, kb, sfty, I0);
+    setFormulas(data.mu_d||0, data.sigma_d||0, kb, sfty, I0, rop);
 
     // Título con código + nombre
     let graphTitle = '';
@@ -365,7 +366,7 @@ async function init(){
           {label:'Inventario histórico', data:histData, fill:true, pointRadius:0},
           {label:'Proyección 45 días', data:projData, fill:true, pointRadius:0},
           {label:'Proyección + pedido', data:projPlusData, fill:true, pointRadius:0},
-          {label:'KB_min (Punto de Reorden)', data:Array(labels.length).fill(kb), pointRadius:0, borderDash:[4,4], fill:false},
+          {label:'Punto de Reorden (KB_min+SS)', data:Array(labels.length).fill(rop), pointRadius:0, borderDash:[4,4], fill:false},
           {label:'Inventario Crítico', data:Array(labels.length).fill(sfty), pointRadius:0, borderDash:[4,2], fill:false}
         ]},
         options:{
@@ -382,7 +383,7 @@ async function init(){
       chartInstance.data.datasets[0].data=histData;
       chartInstance.data.datasets[1].data=projData;
       chartInstance.data.datasets[2].data=projPlusData;
-      chartInstance.data.datasets[3].data=Array(labels.length).fill(kb);
+      chartInstance.data.datasets[3].data=Array(labels.length).fill(rop);
       chartInstance.data.datasets[4].data=Array(labels.length).fill(sfty);
       chartInstance.options.plugins.title.text=graphTitle;
       chartInstance.update();
@@ -395,7 +396,7 @@ async function init(){
     modeSel.value='Suministro'; fillTerms(); if(sups.length>0) termInp.value=sups[0];
     groupSel.value=''; $('qty').value=0; from.value=meta.min_fecha||''; to.value=meta.max_fecha||'';
     document.querySelector('#tbl tbody').innerHTML=''; setKPIs(0,0,0,'',0);
-    setSideMetrics(0,'',0,'',0,0,''); setFormulas(0,0,0,0,0);
+    setSideMetrics(0,'',0,'',0,0,''); setFormulas(0,0,0,0,0,0);
     if(chartInstance){ chartInstance.destroy(); chartInstance=null; }
   });
 
