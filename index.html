@@ -98,10 +98,14 @@
     <div class="card filters">
       <div>
         <label>Buscar por</label>
-        <select id="mode"><option>Código</option><option>Suministro</option><option>Grupo</option></select>
+        <select id="mode">
+          <option>Código</option>
+          <option selected>Suministro</option>
+          <option>Grupo</option>
+        </select>
       </div>
       <div id="termWrap">
-        <label id="lbl-term">Código</label>
+        <label id="lbl-term">Suministro</label>
         <select id="term"></select>
       </div>
       <div>
@@ -291,8 +295,13 @@ async function init(){
       termWrap.classList.add('hidden');
     }
   }
-  modeSel.addEventListener('change', fillTerms);
+
+  // Forzar modo inicial = Suministro y seleccionar el primero
+  modeSel.value = 'Suministro';
   fillTerms();
+  if (termSel.options.length > 0) {
+    termSel.selectedIndex = 0;
+  }
 
   async function run(){
     const mode = modeSel.value;
@@ -314,9 +323,31 @@ async function init(){
 
     const invHist = serie.map(p=>Number(p.inventario));
     const cons=[]; for(let i=1;i<invHist.length;i++){ cons.push(Math.max(invHist[i-1]-invHist[i],0)); }
-    const dHat = ses(cons, 45, 0.3);
+    const dHat = (function(cons, H, alpha=0.3){
+      if (!cons.length) return Array(45).fill(0);
+      let s = cons[0];
+      for (let i=1;i<cons.length;i++){ s = alpha*cons[i] + (1-alpha)*s; }
+      return Array(45).fill(s);
+    })(cons, 45, 0.3);
     const invLast = invHist[invHist.length-1];
-    const {base, withOrder} = simulate(invLast, dHat, Q, data.lead||LEAD);
+    const sim = (function(invLast, dHat, q=0, lead=45){
+      const H = dHat.length;
+      const base = new Array(H);
+      const withOrder = new Array(H);
+      for (let h=0; h<H; h++){
+        if (h===0) base[h] = Math.max(invLast - dHat[h], 0);
+        else base[h] = Math.max(base[h-1] - dHat[h], 0);
+      }
+      withOrder[0] = Math.max(invLast - dHat[0], 0);
+      for (let h=1; h<H; h++){ withOrder[h] = Math.max(withOrder[h-1] - dHat[h], 0); }
+      const idx = lead-1;
+      if (idx>=0 && idx<H){
+        withOrder[idx] += Number(q||0);
+        for (let h=idx+1; h<H; h++){ withOrder[h] = Math.max(withOrder[h-1] - dHat[h], 0); }
+      }
+      return {base, withOrder};
+    })(invLast, dHat, Q, 45);
+    const base = sim.base, withOrder = sim.withOrder;
 
     const lastDate = new Date(serie[serie.length-1].fecha);
     const future = [];
@@ -358,7 +389,7 @@ async function init(){
           },
           plugins:{
             legend:{ position:'bottom' },
-            title:{ display:true, text: (data.subject_label||'Curvas de Inventario') },
+            title:{ display:true, text: (data.subject_label||('Suministro: ' + (termSel.value||''))) },
             tooltip:{ callbacks:{ label:(ctx)=>{
               const v = ctx.parsed.y;
               return `${ctx.dataset.label}: ${Number.isFinite(v)? fmtInt(v) : ''}`;
@@ -374,16 +405,18 @@ async function init(){
       chartInstance.data.datasets[2].data = projPlusData;
       chartInstance.data.datasets[3].data = Array(labels.length).fill(kb);
       chartInstance.data.datasets[4].data = Array(labels.length).fill(sfty);
-      chartInstance.options.plugins.title.text = data.subject_label || 'Curvas de Inventario';
+      chartInstance.options.plugins.title.text = (data.subject_label||('Suministro: ' + (termSel.value||'')));
       chartInstance.update();
     }
   }
 
+  // Listeners
   $('btn').addEventListener('click', run);
   $('refreshBtn').addEventListener('click', run);
-
   $('btnClear').addEventListener('click', ()=>{
-    modeSel.value = 'Código'; fillTerms();
+    modeSel.value = 'Suministro'; // default back to Suministro
+    fillTerms();
+    if (termSel.options.length > 0) termSel.selectedIndex = 0;
     groupSel.value = '';
     $('qty').value = 0;
     from.value = meta.min_fecha || '';
@@ -393,6 +426,9 @@ async function init(){
     setSideMetrics(0,'',0,'',0);
     if (chartInstance){ chartInstance.destroy(); chartInstance=null; }
   });
+
+  // Ejecutar una primera vez con el primer Suministro
+  run();
 }
 
 window.addEventListener('load', ()=>{ init(); });
