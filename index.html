@@ -4,38 +4,109 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Curvas de Inventario</title>
+  <link rel="icon" href="data:,">
   <link rel="manifest" href="manifest.json">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-  <style> body{font-family:system-ui, sans-serif; margin:16px;} .row{display:flex; gap:16px; flex-wrap:wrap;} .card{flex:1 1 380px; border:1px solid #ddd; border-radius:12px; padding:16px;} label{display:block; margin-bottom:6px;} input,select{width:100%; padding:8px; margin-bottom:8px;} table{width:100%; border-collapse:collapse;} th,td{border:1px solid #eee; padding:6px; font-size:12px;} </style>
-  <link rel="icon" type="image/x-icon" href="favicon.ico">
-  <link rel="manifest" href="manifest.json">
-  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <style>
+    :root{
+      --bg:#0b1f3a; --bg2:#133a74; --card:#ffffff; --muted:#6b7280; --ring:#e5e7eb;
+    }
+    *{box-sizing:border-box}
+    body{font-family:system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, sans-serif; margin:0; background:#f6f7fb; color:#0f172a;}
+    .topbar{
+      background: linear-gradient(90deg, var(--bg), var(--bg2));
+      color:#fff; padding:14px 18px; display:flex; align-items:center; gap:14px;
+      box-shadow: 0 2px 10px rgba(0,0,0,.1);
+    }
+    .topbar img{width:40px; height:40px; border-radius:8px}
+    .title{font-size:18px; font-weight:700; letter-spacing:.3px}
+    .container{padding:16px; max-width:1400px; margin:0 auto;}
+    .filters{
+      display:grid; grid-template-columns: 130px 1fr 1fr 1fr 160px 160px 140px 140px;
+      gap:10px; align-items:end; margin-bottom:12px;
+    }
+    .card{background:var(--card); border:1px solid var(--ring); border-radius:14px; padding:14px;}
+    label{font-size:12px; color:#334155;}
+    select,input,button{
+      width:100%; padding:8px 10px; border:1px solid var(--ring); border-radius:10px; background:#fff; color:#0f172a;
+    }
+    button.primary{background:#0b5fff; color:#fff; border-color:#0b5fff; font-weight:600}
+    button.ghost{background:#fff}
+    .chart-wrap{height:420px;}
+    .table-wrap{max-height:420px; overflow:auto}
+    table{width:100%; border-collapse:collapse; font-size:12px;}
+    th,td{border-bottom:1px solid #eef2f7; padding:8px 10px; text-align:left; white-space:nowrap;}
+    thead th{position:sticky; top:0; background:#fff; z-index:1;}
+    .muted{color:var(--muted); font-size:12px}
+    .kpis{display:grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap:10px; margin-top:8px; margin-bottom:12px;}
+    .kpi{background:#fff; border:1px solid var(--ring); border-radius:12px; padding:12px}
+    .kpi .v{font-size:20px; font-weight:800}
+    .kpi .l{font-size:12px; color:#475569}
+  </style>
 </head>
 <body>
-<h1>Curvas de Inventario — CEDIS Panamá</h1>
-<div class="row">
-  <div class="card">
-    <label for="mode">Buscar por</label>
-    <select id="mode"><option>Código</option><option>Suministro</option></select>
-    <label id="lbl-term" for="term">Código</label>
-    <select id="term"></select>
-    <label for="qty">Cantidad a solicitar (entrega en 45 días)</label>
-    <input id="qty" type="number" min="0" step="100" value="0" />
-    <button id="btn">Actualizar</button>
-    <p id="meta"></p>
+  <div class="topbar">
+    <!-- Reemplaza src con la URL de tu logo en GitHub (192x192) -->
+    <img id="logo" src="https://github.com/TorredeControlCSS/Curvas_de_Inventario/blob/c0071956b221d6048d9b1fe58792b5d2b2638075/icons/icon-192.png" alt="Logo">
+    <div class="title">Curvas de Inventario — CEDIS Panamá</div>
   </div>
-  <div class="card"><canvas id="chart" height="300"></canvas></div>
-</div>
-<div class="card">
-  <h3>Tabla diaria</h3>
-  <table id="tbl"><thead><tr><th>Fecha</th><th>Inventario</th><th>Inv. Crítico</th><th>KB_min</th></tr></thead><tbody></tbody></table>
-</div>
+
+  <div class="container">
+    <div class="card filters">
+      <div>
+        <label>Buscar por</label>
+        <select id="mode"><option>Código</option><option>Suministro</option></select>
+      </div>
+      <div>
+        <label id="lbl-term">Código</label>
+        <select id="term"></select>
+      </div>
+      <div>
+        <label>Grupo</label>
+        <select id="group"><option value="">Todos</option></select>
+      </div>
+      <div>
+        <label>Cant. a solicitar (llega en +45 días)</label>
+        <input id="qty" type="number" min="0" step="100" value="0" />
+      </div>
+      <div>
+        <label>Desde</label>
+        <input id="from" type="date" />
+      </div>
+      <div>
+        <label>Hasta</label>
+        <input id="to" type="date" />
+      </div>
+      <div>
+        <button id="btn" class="primary">Actualizar</button>
+      </div>
+      <div>
+        <button id="btnClear" class="ghost">Limpiar</button>
+      </div>
+    </div>
+
+    <div class="kpis">
+      <div class="kpi"><div class="l">Inventario actual</div><div class="v" id="kpiInv">–</div></div>
+      <div class="kpi"><div class="l">KB_min (reorden)</div><div class="v" id="kpiKb">–</div></div>
+      <div class="kpi"><div class="l">Inv. Crítico (95%)</div><div class="v" id="kpiCrit">–</div></div>
+    </div>
+
+    <div class="card chart-wrap">
+      <canvas id="chart"></canvas>
+    </div>
+
+    <div class="card table-wrap">
+      <div class="muted">Tabla diaria</div>
+      <table id="tbl"><thead><tr><th>Fecha</th><th>Cantidad</th><th>Inv. Crítico</th><th>KB_min</th></tr></thead><tbody></tbody></table>
+    </div>
+  </div>
+
 <script>
-// >>>>>>> Pega la URL de tu Web App aquí <<<<<<<
 const API_BASE = 'https://script.google.com/macros/s/AKfycbyvmMSLIwNNAZSr_CffgH_LGTw6xFPqZ4H2tjQdVZnlTP0_bgFgvasLqPTElBUHSPkdOA/exec';
-const LEAD = 45; // debe coincidir con backend
+const LEAD = 45;
 
 let chartInstance = null;
+const fmtInt = (n)=> Number(n||0).toLocaleString();
 
 async function fetchJSON(url){
   const r = await fetch(url);
@@ -44,8 +115,13 @@ async function fetchJSON(url){
 }
 
 async function fetchList(){ return fetchJSON(API_BASE + '?list=true'); }
-async function fetchSerieBy(mode, term){
-  const url = mode==='Código' ? `${API_BASE}?codigo=${encodeURIComponent(term)}` : `${API_BASE}?suministro=${encodeURIComponent(term)}`;
+async function fetchSerie({mode, term, group, from, to}){
+  const p = new URLSearchParams();
+  if (mode==='Código') p.set('codigo', term); else p.set('suministro', term);
+  if (group) p.set('grupo', group);
+  if (from) p.set('from', from);
+  if (to) p.set('to', to);
+  const url = API_BASE + '?' + p.toString();
   return fetchJSON(url);
 }
 
@@ -64,7 +140,6 @@ function simulate(invLast, dHat, q=0, lead=LEAD){
     if (h===0) base[h] = Math.max(invLast - dHat[h], 0);
     else base[h] = Math.max(base[h-1] - dHat[h], 0);
   }
-  // aplicar pedido en t+lead
   withOrder[0] = Math.max(invLast - dHat[0], 0);
   for (let h=1; h<H; h++){ withOrder[h] = Math.max(withOrder[h-1] - dHat[h], 0); }
   const idx = lead-1;
@@ -75,102 +150,137 @@ function simulate(invLast, dHat, q=0, lead=LEAD){
   return {base, withOrder};
 }
 
-function updateTable(tbody, serie, kb, sfty){
+function fillTable(tbody, serie, kb, sfty){
   tbody.innerHTML='';
   for (const p of serie){
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${p.fecha}</td><td>${Number(p.inventario).toLocaleString()}</td><td>${sfty.toFixed(2)}</td><td>${kb.toFixed(2)}</td>`;
+    tr.innerHTML = `<td>${p.fecha}</td><td>${fmtInt(p.inventario)}</td><td>${fmtInt(sfty)}</td><td>${fmtInt(kb)}</td>`;
     tbody.appendChild(tr);
   }
+}
+
+function setKPIs(invLast, kb, sfty){
+  document.getElementById('kpiInv').textContent = fmtInt(invLast);
+  document.getElementById('kpiKb').textContent = fmtInt(kb);
+  document.getElementById('kpiCrit').textContent = fmtInt(sfty);
 }
 
 async function init(){
   const modeSel = document.getElementById('mode');
   const termSel = document.getElementById('term');
   const lbl = document.getElementById('lbl-term');
+  const groupSel = document.getElementById('group');
   const qty = document.getElementById('qty');
+  const from = document.getElementById('from');
+  const to = document.getElementById('to');
   const btn = document.getElementById('btn');
+  const btnClear = document.getElementById('btnClear');
   const tbody = document.querySelector('#tbl tbody');
-  const meta = document.getElementById('meta');
   const ctx = document.getElementById('chart').getContext('2d');
 
-  try{
-    const list = await fetchList();
-    const codes = [...new Set(list.map(x=>x.codigo))].sort();
-    const sups  = [...new Set(list.map(x=>x.suministro))].sort();
+  const meta = await fetchList();
+  const codes = meta.codigos || [];
+  const sups  = meta.suministros || [];
+  const groups = [''].concat(meta.grupos || []);
+  groupSel.innerHTML = groups.map(g => `<option value="${g}">${g||'Todos'}</option>`).join('');
+  from.value = meta.min_fecha || ''; to.value = meta.max_fecha || '';
 
-    function fillTerms(){
-      const isCode = modeSel.value==='Código';
-      lbl.textContent = isCode ? 'Código' : 'Suministro';
-      const arr = isCode ? codes : sups;
-      termSel.innerHTML = arr.map(v=>`<option>${v}</option>`).join('');
+  function fillTerms(){
+    const isCode = modeSel.value==='Código';
+    lbl.textContent = isCode ? 'Código' : 'Suministro';
+    const arr = isCode ? codes : sups;
+    termSel.innerHTML = arr.map(v=>`<option>${v}</option>`).join('');
+  }
+  modeSel.addEventListener('change', fillTerms);
+  fillTerms();
+
+  btn.addEventListener('click', async ()=>{
+    const mode = modeSel.value;
+    const term = termSel.value;
+    const group = groupSel.value;
+    const Q = Number(qty.value||0);
+    const fromV = from.value;
+    const toV = to.value;
+    if (!term){ alert('Selecciona un valor en el campo ' + lbl.textContent); return; }
+
+    const data = await fetchSerie({mode, term, group, from:fromV, to:toV});
+    if (data.error){ alert(data.error); return; }
+    const serie = data.serie || [];
+    if (!serie.length){ alert('Sin datos para esa selección/filtro.'); return; }
+
+    const invHist = serie.map(p=>Number(p.inventario));
+    const cons=[]; for(let i=1;i<invHist.length;i++){ cons.push(Math.max(invHist[i-1]-invHist[i],0)); }
+    const dHat = ses(cons, 45, 0.3);
+    const invLast = invHist[invHist.length-1];
+    const {base, withOrder} = simulate(invLast, dHat, Q, data.lead||LEAD);
+
+    const lastDate = new Date(serie[serie.length-1].fecha);
+    const future = [];
+    for(let i=1;i<=45;i++){
+      const d=new Date(lastDate);
+      d.setDate(d.getDate()+i);
+      future.push(d.toISOString().slice(0,10));
     }
-    modeSel.addEventListener('change', fillTerms);
-    fillTerms();
+    const labels = serie.map(p=>p.fecha).concat(future);
 
-    btn.addEventListener('click', async ()=>{
-      try{
-        const mode = modeSel.value; const term = termSel.value; const Q = Number(qty.value||0);
-        const data = await fetchSerieBy(mode, term);
-        if (data.error){ alert(data.error); return; }
-        const serie = data.serie;
-        if (!serie.length){ alert('Sin datos'); return; }
+    const histData = invHist.concat(Array(future.length).fill(null));
+    const projData = Array(serie.length).fill(null).concat(base);
+    const projPlusData = Array(serie.length).fill(null).concat(withOrder);
 
-        const inv = serie.map(p=>Number(p.inventario));
-        const cons=[]; for(let i=1;i<inv.length;i++){ cons.push(Math.max(inv[i-1]-inv[i],0)); }
-        const dHat = ses(cons, 45, 0.3);
+    const kb = Number(data.kb_min||0);
+    const sfty = Number(data.inventario_critico||0);
 
-        const invLast = inv[inv.length-1];
-        const {base, withOrder} = simulate(invLast, dHat, Q, data.lead||LEAD);
+    fillTable(tbody, serie, kb, sfty);
+    setKPIs(invLast, kb, sfty);
 
-        const lastDate = new Date(serie[serie.length-1].fecha);
-        const future = [];
-        for(let i=1;i<=45;i++){ const d=new Date(lastDate); d.setDate(d.getDate()+i); future.push(d.toISOString().slice(0,10)); }
+    if (chartInstance && typeof chartInstance.destroy === 'function') chartInstance.destroy();
 
-        const labels = serie.map(p=>p.fecha).concat(future);
-
-        // ¡Alinear longitudes!
-        const histData = inv.concat(Array(future.length).fill(null));
-        const projData = Array(serie.length).fill(null).concat(base);
-        const projPlusData = Array(serie.length).fill(null).concat(withOrder);
-
-        const invAvg = inv.reduce((a,b)=>a+b,0)/inv.length;
-        const kb = Number(data.kb_min||0);
-        const sfty = Number(data.inventario_critico||0);
-
-        updateTable(tbody, serie, kb, sfty);
-
-        if (chartInstance && typeof chartInstance.destroy === 'function') chartInstance.destroy();
-
-        chartInstance = new Chart(ctx, {
-          type:'line',
-          data:{
-            labels,
-            datasets:[
-              {label:'Inventario histórico', data:histData},
-              {label:'Proyección 45 días', data:projData},
-              {label:'Proyección + pedido', data:projPlusData},
-              {label:'KB_min (Punto de Reorden)', data:Array(labels.length).fill(kb)},
-              {label:'Inventario Crítico', data:Array(labels.length).fill(sfty)},
-              {label:'Inventario Promedio', data:Array(labels.length).fill(invAvg)}
-            ]
-          },
-          options:{ responsive:true, maintainAspectRatio:false }
-        });
-
-        meta.textContent = `KB_min: ${kb.toFixed(2)} | Inv. Crítico: ${sfty.toFixed(2)} | Promedio histórico: ${invAvg.toFixed(2)}`;
-      }catch(err){
-        console.error(err);
-        alert('Error cargando datos. Revisa la consola para más detalles.');
+    chartInstance = new Chart(ctx, {
+      type:'line',
+      data:{
+        labels,
+        datasets:[
+          {label:'Inventario histórico', data:histData, fill:true, pointRadius:0},
+          {label:'Proyección 45 días', data:projData, fill:true, pointRadius:0},
+          {label:'Proyección + pedido', data:projPlusData, fill:true, pointRadius:0},
+          {label:'KB_min (Punto de Reorden)', data:Array(labels.length).fill(kb), pointRadius:0, borderDash:[4,4], fill:false},
+          {label:'Inventario Crítico', data:Array(labels.length).fill(sfty), pointRadius:0, borderDash:[4,2], fill:false}
+        ]
+      },
+      options:{
+        responsive:true, maintainAspectRatio:false,
+        interaction:{ mode:'nearest', intersect:false },
+        scales:{
+          y:{ beginAtZero:true, title:{display:true, text:'Cantidad'}, ticks:{ callback:(v)=> new Intl.NumberFormat().format(v) } },
+          x:{ ticks:{ maxRotation:0, autoSkipPadding:20 } }
+        },
+        plugins:{
+          legend:{ position:'bottom' },
+          tooltip:{ callbacks:{ label:(ctx)=>{
+            const v = ctx.parsed.y;
+            return `${ctx.dataset.label}: ${Number.isFinite(v)? fmtInt(v) : ''}`;
+          }}}
+        },
+        elements:{
+          line:{ tension:0.2 },
+        }
       }
     });
-  }catch(err){
-    console.error(err);
-    alert('No se pudo cargar la lista inicial. Verifica API_BASE.');
-  }
+  });
+
+  btnClear.addEventListener('click', ()=>{
+    modeSel.value = 'Código'; fillTerms();
+    groupSel.value = '';
+    qty.value = 0;
+    from.value = meta.min_fecha || '';
+    to.value = meta.max_fecha || '';
+    document.querySelector('#tbl tbody').innerHTML='';
+    setKPIs(0,0,0);
+    if (chartInstance && typeof chartInstance.destroy === 'function') chartInstance.destroy();
+  });
 }
 
-window.addEventListener('load', ()=>{ init(); if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js'); });
+window.addEventListener('load', ()=>{ init(); });
 </script>
 </body>
 </html>
