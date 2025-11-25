@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="es">
+<html lang="es" data-theme="system">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -10,54 +10,97 @@
   <style>
     :root{
       --bg:#0b1f3a; --bg2:#133a74; --card:#ffffff; --muted:#6b7280; --ring:#e5e7eb;
+      --text:#0f172a; --sub:#334155; --chip:#eef2ff; --chipText:#1e40af;
+      --border:#e5e7eb; --canvas:#f6f7fb;
     }
+    @media (prefers-color-scheme: dark){
+      :root{
+        --bg:#0a1120; --bg2:#0f2142; --card:#0f172a; --muted:#94a3b8; --ring:#1f2937;
+        --text:#e5e7eb; --sub:#cbd5e1; --chip:#0b2b5f; --chipText:#bfdbfe;
+        --border:#334155; --canvas:#0b1220;
+      }
+    }
+    [data-theme="dark"]{
+      --bg:#0a1120; --bg2:#0f2142; --card:#0f172a; --muted:#94a3b8; --ring:#1f2937;
+      --text:#e5e7eb; --sub:#cbd5e1; --chip:#0b2b5f; --chipText:#bfdbfe;
+      --border:#334155; --canvas:#0b1220;
+    }
+    [data-theme="light"]{
+      --bg:#0b1f3a; --bg2:#133a74; --card:#ffffff; --muted:#6b7280; --ring:#e5e7eb;
+      --text:#0f172a; --sub:#334155; --chip:#eef2ff; --chipText:#1e40af;
+      --border:#e5e7eb; --canvas:#f6f7fb;
+    }
+
     *{box-sizing:border-box}
-    body{font-family:system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, sans-serif; margin:0; background:#f6f7fb; color:#0f172a;}
+    body{font-family:system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, sans-serif; margin:0; background:var(--canvas); color:var(--text);}
     .topbar{
       background: linear-gradient(90deg, var(--bg), var(--bg2));
-      color:#fff; padding:14px 18px; display:flex; align-items:center; gap:14px;
-      box-shadow: 0 2px 10px rgba(0,0,0,.1);
+      color:#fff; padding:12px 14px; display:flex; align-items:center; gap:12px;
+      box-shadow: 0 2px 10px rgba(0,0,0,.2); position:sticky; top:0; z-index:10;
     }
-    .topbar img{width:40px; height:40px; border-radius:8px}
-    .title{font-size:18px; font-weight:700; letter-spacing:.3px}
-    .container{padding:16px; max-width:1400px; margin:0 auto;}
-    .filters{
-      display:grid; grid-template-columns: 130px 1fr 1fr 1fr 160px 160px 140px 140px;
-      gap:10px; align-items:end; margin-bottom:12px;
+    .topbar img{width:36px; height:36px; border-radius:8px}
+    .title{font-size:16px; font-weight:700; letter-spacing:.3px; flex:1}
+    .top-actions{display:flex; gap:8px; align-items:center}
+    .btn{padding:8px 10px; border:1px solid var(--ring); border-radius:10px; background:#fff; color:#0f172a; cursor:pointer; font-weight:600}
+    .btn.ghost{background:transparent; color:#fff; border-color:rgba(255,255,255,.25)}
+    .btn.install{background:#00b894; color:#fff; border-color:#00b894}
+    .theme-select{padding:6px 8px; border:1px solid rgba(255,255,255,.25); border-radius:10px; background:transparent; color:#fff}
+
+    .container{padding:14px; max-width:1400px; margin:0 auto;}
+    /* Filtros responsivos */
+    .filters{display:grid; grid-template-columns: 120px 1fr 1fr 1fr 140px 140px 130px 120px; gap:8px; align-items:end; margin-bottom:12px;}
+    @media (max-width: 1024px){
+      .filters{grid-template-columns: 1fr 1fr; }
     }
-    .card{background:var(--card); border:1px solid var(--ring); border-radius:14px; padding:14px;}
-    label{font-size:12px; color:#334155;}
-    select,input,button{
-      width:100%; padding:8px 10px; border:1px solid var(--ring); border-radius:10px; background:#fff; color:#0f172a;
+    @media (max-width: 640px){
+      .filters{grid-template-columns: 1fr; }
     }
-    button.primary{background:#0b5fff; color:#fff; border-color:#0b5fff; font-weight:600}
+    .card{background:var(--card); border:1px solid var(--border); border-radius:14px; padding:12px;}
+    label{font-size:12px; color:var(--sub);}
+    select,input,button{width:100%; padding:8px 10px; border:1px solid var(--ring); border-radius:10px; background:#fff; color:#0f172a;}
+    [data-theme="dark"] select,[data-theme="dark"] input{ background:#0b1324; color:#e5e7eb; border-color:#334155; }
+    button.primary{background:#0b5fff; color:#fff; border-color:#0b5fff; font-weight:700}
     button.ghost{background:#fff}
+    .row{display:grid; grid-template-columns: 2fr 1fr; gap:12px;}
+    @media (max-width: 1024px){ .row{grid-template-columns: 1fr;} }
     .chart-wrap{height:420px;}
     .table-wrap{max-height:420px; overflow:auto}
     table{width:100%; border-collapse:collapse; font-size:12px;}
-    th,td{border-bottom:1px solid #eef2f7; padding:8px 10px; text-align:left; white-space:nowrap;}
-    thead th{position:sticky; top:0; background:#fff; z-index:1;}
+    th,td{border-bottom:1px solid var(--ring); padding:8px 10px; text-align:left; white-space:nowrap;}
+    thead th{position:sticky; top:0; background:var(--card); z-index:1;}
     .muted{color:var(--muted); font-size:12px}
     .kpis{display:grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap:10px; margin-top:8px; margin-bottom:12px;}
-    .kpi{background:#fff; border:1px solid var(--ring); border-radius:12px; padding:12px}
+    .kpi{background:var(--card); border:1px solid var(--border); border-radius:12px; padding:12px}
     .kpi .v{font-size:20px; font-weight:800}
-    .kpi .l{font-size:12px; color:#475569}
+    .kpi .l{font-size:12px; color:var(--sub)}
+    .side{display:grid; gap:10px; align-content:start}
+    .metric{display:flex; justify-content:space-between; font-weight:700}
+    .metric small{color:var(--muted); font-weight:500}
+    .hidden{display:none !important;}
   </style>
 </head>
 <body>
   <div class="topbar">
-    <!-- Reemplaza src con la URL de tu logo en GitHub (192x192) -->
     <img id="logo" src="icons/icon-192.png" alt="Logo">
     <div class="title">Curvas de Inventario — CEDIS Panamá</div>
+    <div class="top-actions">
+      <select id="theme" class="theme-select" title="Tema">
+        <option value="system">Sistema</option>
+        <option value="light">Claro</option>
+        <option value="dark">Oscuro</option>
+      </select>
+      <button id="installBtn" class="btn install hidden">Instalar app</button>
+      <button id="refreshBtn" class="btn ghost">Actualizar</button>
+    </div>
   </div>
 
   <div class="container">
     <div class="card filters">
       <div>
         <label>Buscar por</label>
-        <select id="mode"><option>Código</option><option>Suministro</option></select>
+        <select id="mode"><option>Código</option><option>Suministro</option><option>Grupo</option></select>
       </div>
-      <div>
+      <div id="termWrap">
         <label id="lbl-term">Código</label>
         <select id="term"></select>
       </div>
@@ -66,7 +109,7 @@
         <select id="group"><option value="">Todos</option></select>
       </div>
       <div>
-        <label>Cant. a solicitar (llega en +45 días)</label>
+        <label>Pedido (+45d)</label>
         <input id="qty" type="number" min="0" step="100" value="0" />
       </div>
       <div>
@@ -78,7 +121,7 @@
         <input id="to" type="date" />
       </div>
       <div>
-        <button id="btn" class="primary">Actualizar</button>
+        <button id="btn" class="primary">Mostrar</button>
       </div>
       <div>
         <button id="btnClear" class="ghost">Limpiar</button>
@@ -91,38 +134,76 @@
       <div class="kpi"><div class="l">Inv. Crítico (95%)</div><div class="v" id="kpiCrit">–</div></div>
     </div>
 
-    <div class="card chart-wrap">
-      <canvas id="chart"></canvas>
-    </div>
-
-    <div class="card table-wrap">
-      <div class="muted">Tabla diaria</div>
-      <table id="tbl"><thead><tr><th>Fecha</th><th>Cantidad</th><th>Inv. Crítico</th><th>KB_min</th></tr></thead><tbody></tbody></table>
+    <div class="row">
+      <div class="card chart-wrap">
+        <canvas id="chart"></canvas>
+      </div>
+      <div class="side">
+        <div class="card">
+          <div class="muted">Indicadores de la serie</div>
+          <div class="metric"><span>Mínimo histórico</span><span id="mMin">–</span></div>
+          <small id="mMinDate" class="muted"></small>
+          <div class="metric"><span>Máximo histórico</span><span id="mMax">–</span></div>
+          <small id="mMaxDate" class="muted"></small>
+          <div class="metric"><span>Promedio 30 días</span><span id="mAvg30">–</span></div>
+        </div>
+        <div class="card table-wrap">
+          <div class="muted">Tabla diaria</div>
+          <table id="tbl"><thead><tr><th>Fecha</th><th>Cantidad</th></tr></thead><tbody></tbody></table>
+        </div>
+      </div>
     </div>
   </div>
 
 <script>
+// === CONFIG ===
 const API_BASE = 'https://script.google.com/macros/s/AKfycbyvmMSLIwNNAZSr_CffgH_LGTw6xFPqZ4H2tjQdVZnlTP0_bgFgvasLqPTElBUHSPkdOA/exec';
 const LEAD = 45;
 
 let chartInstance = null;
+let deferredPrompt = null;
+
 const fmtInt = (n)=> Number(n||0).toLocaleString();
+const $ = (id)=> document.getElementById(id);
+
+// ---- Theme ----
+(function initTheme(){
+  const saved = localStorage.getItem('theme') || 'system';
+  document.documentElement.setAttribute('data-theme', saved);
+  $('theme').value = saved;
+  $('theme').addEventListener('change', (e)=>{
+    const val = e.target.value;
+    localStorage.setItem('theme', val);
+    document.documentElement.setAttribute('data-theme', val);
+  });
+})();
+
+// ---- PWA install button ----
+window.addEventListener('beforeinstallprompt', (e)=>{
+  e.preventDefault();
+  deferredPrompt = e;
+  $('installBtn').classList.remove('hidden');
+});
+$('installBtn').addEventListener('click', async ()=>{
+  if (!deferredPrompt) return;
+  deferredPrompt.prompt();
+  await deferredPrompt.userChoice;
+  $('installBtn').classList.add('hidden');
+  deferredPrompt = null;
+});
+window.addEventListener('appinstalled', ()=>{
+  $('installBtn').classList.add('hidden');
+});
 
 async function fetchJSON(url){
-  const r = await fetch(url);
+  const r = await fetch(url, {cache:'no-store'});
   if (!r.ok) throw new Error("HTTP " + r.status + " al solicitar " + url);
   return r.json();
 }
-
 async function fetchList(){ return fetchJSON(API_BASE + '?list=true'); }
-async function fetchSerie({mode, term, group, from, to}){
-  const p = new URLSearchParams();
-  if (mode==='Código') p.set('codigo', term); else p.set('suministro', term);
-  if (group) p.set('grupo', group);
-  if (from) p.set('from', from);
-  if (to) p.set('to', to);
-  const url = API_BASE + '?' + p.toString();
-  return fetchJSON(url);
+async function fetchSerie(params){
+  const p = new URLSearchParams(params);
+  return fetchJSON(API_BASE + '?' + p.toString());
 }
 
 function ses(cons, H, alpha=0.3){
@@ -150,34 +231,45 @@ function simulate(invLast, dHat, q=0, lead=LEAD){
   return {base, withOrder};
 }
 
-function fillTable(tbody, serie, kb, sfty){
+function fillTable(tbody, serie){
   tbody.innerHTML='';
   for (const p of serie){
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${p.fecha}</td><td>${fmtInt(p.inventario)}</td><td>${fmtInt(sfty)}</td><td>${fmtInt(kb)}</td>`;
+    tr.innerHTML = `<td>${p.fecha}</td><td>${fmtInt(p.inventario)}</td>`;
     tbody.appendChild(tr);
   }
 }
 
 function setKPIs(invLast, kb, sfty){
-  document.getElementById('kpiInv').textContent = fmtInt(invLast);
-  document.getElementById('kpiKb').textContent = fmtInt(kb);
-  document.getElementById('kpiCrit').textContent = fmtInt(sfty);
+  $('kpiInv').textContent = fmtInt(invLast);
+  $('kpiKb').textContent = fmtInt(kb);
+  $('kpiCrit').textContent = fmtInt(sfty);
+}
+
+function setSideMetrics(minV, minD, maxV, maxD, avg30){
+  $('mMin').textContent = fmtInt(minV);
+  $('mMinDate').textContent = minD ? `en ${minD}` : '';
+  $('mMax').textContent = fmtInt(maxV);
+  $('mMaxDate').textContent = maxD ? `en ${maxD}` : '';
+  $('mAvg30').textContent = fmtInt(avg30);
 }
 
 async function init(){
-  const modeSel = document.getElementById('mode');
-  const termSel = document.getElementById('term');
-  const lbl = document.getElementById('lbl-term');
-  const groupSel = document.getElementById('group');
-  const qty = document.getElementById('qty');
-  const from = document.getElementById('from');
-  const to = document.getElementById('to');
-  const btn = document.getElementById('btn');
-  const btnClear = document.getElementById('btnClear');
+  const modeSel = $('mode');
+  const termSel = $('term');
+  const lbl = $('lbl-term');
+  const termWrap = $('termWrap');
+  const groupSel = $('group');
+  const qty = $('qty');
+  const from = $('from');
+  const to = $('to');
+  const btn = $('btn');
+  const btnClear = $('btnClear');
+  const refreshBtn = $('refreshBtn');
   const tbody = document.querySelector('#tbl tbody');
-  const ctx = document.getElementById('chart').getContext('2d');
+  const ctx = $('chart').getContext('2d');
 
+  // listas
   const meta = await fetchList();
   const codes = meta.codigos || [];
   const sups  = meta.suministros || [];
@@ -186,25 +278,37 @@ async function init(){
   from.value = meta.min_fecha || ''; to.value = meta.max_fecha || '';
 
   function fillTerms(){
-    const isCode = modeSel.value==='Código';
-    lbl.textContent = isCode ? 'Código' : 'Suministro';
-    const arr = isCode ? codes : sups;
-    termSel.innerHTML = arr.map(v=>`<option>${v}</option>`).join('');
+    const mode = modeSel.value;
+    if (mode==='Código'){
+      lbl.textContent = 'Código';
+      termWrap.classList.remove('hidden');
+      termSel.innerHTML = codes.map(v=>`<option>${v}</option>`).join('');
+    } else if (mode==='Suministro'){
+      lbl.textContent = 'Suministro';
+      termWrap.classList.remove('hidden');
+      termSel.innerHTML = sups.map(v=>`<option>${v}</option>`).join('');
+    } else { // Grupo
+      termWrap.classList.add('hidden');
+    }
   }
   modeSel.addEventListener('change', fillTerms);
   fillTerms();
 
-  btn.addEventListener('click', async ()=>{
+  async function run(){
     const mode = modeSel.value;
-    const term = termSel.value;
     const group = groupSel.value;
     const Q = Number(qty.value||0);
-    const fromV = from.value;
-    const toV = to.value;
-    if (!term){ alert('Selecciona un valor en el campo ' + lbl.textContent); return; }
+    const fromV = from.value, toV = to.value;
 
-    const data = await fetchSerie({mode, term, group, from:fromV, to:toV});
-    if (data.error){ alert(data.error); return; }
+    const params = {};
+    if (mode==='Código') params.codigo = termSel.value;
+    if (mode==='Suministro') params.suministro = termSel.value;
+    if (group && mode!=='Grupo') params.grupo = group; // filtro adicional
+    if (mode==='Grupo') params.grupo = group;
+    if (fromV) params.from = fromV;
+    if (toV) params.to = toV;
+
+    const data = await fetchSerie(params);
     const serie = data.serie || [];
     if (!serie.length){ alert('Sin datos para esa selección/filtro.'); return; }
 
@@ -230,57 +334,73 @@ async function init(){
     const kb = Number(data.kb_min||0);
     const sfty = Number(data.inventario_critico||0);
 
-    fillTable(tbody, serie, kb, sfty);
+    fillTable(tbody, serie);
     setKPIs(invLast, kb, sfty);
+    setSideMetrics(data.min_value||0, data.min_date||'', data.max_value||0, data.max_date||'', data.avg_30||0);
 
-    if (chartInstance && typeof chartInstance.destroy === 'function') chartInstance.destroy();
-
-    chartInstance = new Chart(ctx, {
-      type:'line',
-      data:{
-        labels,
-        datasets:[
+    if (!chartInstance){
+      chartInstance = new Chart(ctx, {
+        type:'line',
+        data:{ labels, datasets:[
           {label:'Inventario histórico', data:histData, fill:true, pointRadius:0},
           {label:'Proyección 45 días', data:projData, fill:true, pointRadius:0},
           {label:'Proyección + pedido', data:projPlusData, fill:true, pointRadius:0},
           {label:'KB_min (Punto de Reorden)', data:Array(labels.length).fill(kb), pointRadius:0, borderDash:[4,4], fill:false},
           {label:'Inventario Crítico', data:Array(labels.length).fill(sfty), pointRadius:0, borderDash:[4,2], fill:false}
-        ]
-      },
-      options:{
-        responsive:true, maintainAspectRatio:false,
-        interaction:{ mode:'nearest', intersect:false },
-        scales:{
-          y:{ beginAtZero:true, title:{display:true, text:'Cantidad'}, ticks:{ callback:(v)=> new Intl.NumberFormat().format(v) } },
-          x:{ ticks:{ maxRotation:0, autoSkipPadding:20 } }
-        },
-        plugins:{
-          legend:{ position:'bottom' },
-          tooltip:{ callbacks:{ label:(ctx)=>{
-            const v = ctx.parsed.y;
-            return `${ctx.dataset.label}: ${Number.isFinite(v)? fmtInt(v) : ''}`;
-          }}}
-        },
-        elements:{
-          line:{ tension:0.2 },
+        ]},
+        options:{
+          responsive:true, maintainAspectRatio:false,
+          animation:false,
+          interaction:{ mode:'nearest', intersect:false },
+          scales:{
+            y:{ beginAtZero:true, title:{display:true, text:'Cantidad'}, ticks:{ callback:(v)=> new Intl.NumberFormat().format(v) } },
+            x:{ ticks:{ maxRotation:0, autoSkipPadding:20 } }
+          },
+          plugins:{
+            legend:{ position:'bottom' },
+            title:{ display:true, text: (data.subject_label||'Curvas de Inventario') },
+            tooltip:{ callbacks:{ label:(ctx)=>{
+              const v = ctx.parsed.y;
+              return `${ctx.dataset.label}: ${Number.isFinite(v)? fmtInt(v) : ''}`;
+            }}}
+          },
+          elements:{ line:{ tension:0.2 } }
         }
-      }
-    });
-  });
+      });
+    } else {
+      chartInstance.data.labels = labels;
+      chartInstance.data.datasets[0].data = histData;
+      chartInstance.data.datasets[1].data = projData;
+      chartInstance.data.datasets[2].data = projPlusData;
+      chartInstance.data.datasets[3].data = Array(labels.length).fill(kb);
+      chartInstance.data.datasets[4].data = Array(labels.length).fill(sfty);
+      chartInstance.options.plugins.title.text = data.subject_label || 'Curvas de Inventario';
+      chartInstance.update();
+    }
+  }
 
-  btnClear.addEventListener('click', ()=>{
+  $('btn').addEventListener('click', run);
+  $('refreshBtn').addEventListener('click', run);
+
+  $('btnClear').addEventListener('click', ()=>{
     modeSel.value = 'Código'; fillTerms();
     groupSel.value = '';
-    qty.value = 0;
+    $('qty').value = 0;
     from.value = meta.min_fecha || '';
     to.value = meta.max_fecha || '';
     document.querySelector('#tbl tbody').innerHTML='';
     setKPIs(0,0,0);
-    if (chartInstance && typeof chartInstance.destroy === 'function') chartInstance.destroy();
+    setSideMetrics(0,'',0,'',0);
+    if (chartInstance){ chartInstance.destroy(); chartInstance=null; }
   });
 }
 
 window.addEventListener('load', ()=>{ init(); });
+
+// Register SW if present
+if ('serviceWorker' in navigator){
+  navigator.serviceWorker.register('sw.js').catch(()=>{});
+}
 </script>
 </body>
 </html>
