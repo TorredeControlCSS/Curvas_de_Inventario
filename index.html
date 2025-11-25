@@ -97,11 +97,51 @@
     .fc-formula{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:12px; color:var(--sub)}
     .muted{color:var(--muted);font-size:12px}
     ul.formula{padding-left:18px}
-  </style>
+  /* === Logo centrado y tamaño fluido === */
+.topbar{
+  justify-content: space-between; /* desktop por defecto */
+}
+
+/* Tamaño base del logo (fluido) */
+.topbar img{
+  width: clamp(40px, 6vw, 56px);
+  height: clamp(40px, 6vw, 56px);
+}
+
+/* Escritorio ancho: un poco más grande */
+@media (min-width: 1280px){
+  .topbar img{
+    width: 64px;
+    height: 64px;
+  }
+}
+
+/* Móvil: logo centrado en la 1ª fila, título y acciones bajan */
+@media (max-width: 720px){
+  .topbar{ justify-content: center; }
+  .topbar img{
+    order: 1;              /* el logo va primero */
+    display: block;
+    margin: 0 auto;        /* centrado */
+    width: clamp(56px, 20vw, 84px);
+    height: clamp(56px, 20vw, 84px);
+  }
+  .title{
+    order: 2;
+    flex-basis: 100%;
+    text-align: center;    /* título centrado debajo del logo */
+    margin-top: 4px;
+  }
+  .top-actions{
+    order: 3;
+    width: 100%;
+  }
+}
+ </style>
 </head>
 <body>
   <div class="topbar">
-    <img src="icons/icon-192.png" alt="Logo">
+    <img src="icons/icon-512.png" alt="Logo">
     <div class="title">Curvas de Inventario — CEDIS PANAMA CSS</div>
     <div class="top-actions">
       <select id="theme" class="theme-select" title="Tema">
