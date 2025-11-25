@@ -1,0 +1,9 @@
+{
+  "name": "Curvas de Inventario",
+  "short_name": "Inventario",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0b5fff",
+  "icons": []
+}
