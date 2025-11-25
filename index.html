@@ -106,7 +106,9 @@
       </div>
       <div id="termWrap">
         <label id="lbl-term">Suministro</label>
-        <select id="term"></select>
+        <!-- TYPEAHEAD: input + datalist -->
+        <input id="term" list="termOptions" placeholder="Escribe para buscar..." autocomplete="off">
+        <datalist id="termOptions"></datalist>
       </div>
       <div>
         <label>Grupo</label>
@@ -163,9 +165,11 @@
 // === CONFIG ===
 const API_BASE = 'https://script.google.com/macros/s/AKfycbyvmMSLIwNNAZSr_CffgH_LGTw6xFPqZ4H2tjQdVZnlTP0_bgFgvasLqPTElBUHSPkdOA/exec';
 const LEAD = 45;
+const TYPEAHEAD_LIMIT = 100;
 
 let chartInstance = null;
 let deferredPrompt = null;
+let codes = [], sups = [], groups = [];
 
 const fmtInt = (n)=> Number(n||0).toLocaleString();
 const $ = (id)=> document.getElementById(id);
@@ -204,10 +208,43 @@ async function fetchJSON(url){
   if (!r.ok) throw new Error("HTTP " + r.status + " al solicitar " + url);
   return r.json();
 }
-async function fetchList(){ return fetchJSON(API_BASE + '?list=true'); }
+
+// Cache ligero de /list en localStorage
+async function fetchList(){
+  const KEY = 'inv_meta_v3';
+  const now = Date.now();
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (raw){
+      const cached = JSON.parse(raw);
+      if (now - cached.t < 10*60*1000) { // 10 minutos
+        return cached.data;
+      }
+    }
+  } catch(_) {}
+  const data = await fetchJSON(API_BASE + '?list=true');
+  try { localStorage.setItem(KEY, JSON.stringify({t: now, data})); } catch(_) {}
+  return data;
+}
 async function fetchSerie(params){
   const p = new URLSearchParams(params);
   return fetchJSON(API_BASE + '?' + p.toString());
+}
+
+// === TYPEAHEAD ===
+function fillDatalist(arr, q=''){
+  const dl = $('termOptions');
+  const normQ = q.trim().toLowerCase();
+  let suggestions = [];
+  if (!normQ){
+    suggestions = arr.slice(0, TYPEAHEAD_LIMIT);
+  } else {
+    // prioriza prefijo; luego contiene
+    const starts = arr.filter(v => v.toLowerCase().startsWith(normQ));
+    const contains = arr.filter(v => !v.toLowerCase().startsWith(normQ) && v.toLowerCase().includes(normQ));
+    suggestions = starts.concat(contains).slice(0, TYPEAHEAD_LIMIT);
+  }
+  dl.innerHTML = suggestions.map(v => `<option value="${v}"></option>`).join('');
 }
 
 function ses(cons, H, alpha=0.3){
@@ -260,7 +297,7 @@ function setSideMetrics(minV, minD, maxV, maxD, avg30){
 
 async function init(){
   const modeSel = $('mode');
-  const termSel = $('term');
+  const termInp = $('term');
   const lbl = $('lbl-term');
   const termWrap = $('termWrap');
   const groupSel = $('group');
@@ -275,9 +312,9 @@ async function init(){
 
   // listas
   const meta = await fetchList();
-  const codes = meta.codigos || [];
-  const sups  = meta.suministros || [];
-  const groups = [''].concat(meta.grupos || []);
+  codes = meta.codigos || [];
+  sups  = meta.suministros || [];
+  groups = [''].concat(meta.grupos || []);
   groupSel.innerHTML = groups.map(g => `<option value="${g}">${g||'Todos'}</option>`).join('');
   from.value = meta.min_fecha || ''; to.value = meta.max_fecha || '';
 
@@ -286,21 +323,30 @@ async function init(){
     if (mode==='Código'){
       lbl.textContent = 'Código';
       termWrap.classList.remove('hidden');
-      termSel.innerHTML = codes.map(v=>`<option>${v}</option>`).join('');
+      termInp.value = '';
+      fillDatalist(codes);
     } else if (mode==='Suministro'){
       lbl.textContent = 'Suministro';
       termWrap.classList.remove('hidden');
-      termSel.innerHTML = sups.map(v=>`<option>${v}</option>`).join('');
+      termInp.value = '';
+      fillDatalist(sups);
     } else { // Grupo
       termWrap.classList.add('hidden');
+      termInp.value = '';
     }
   }
+  modeSel.addEventListener('change', fillTerms);
+  termInp.addEventListener('input', (e)=>{
+    const mode = modeSel.value;
+    const arr = (mode==='Código') ? codes : sups;
+    fillDatalist(arr, e.target.value || '');
+  });
 
-  // Forzar modo inicial = Suministro y seleccionar el primero
+  // Forzar modo inicial = Suministro, autoselect primera opción (sin llenar miles de opciones)
   modeSel.value = 'Suministro';
   fillTerms();
-  if (termSel.options.length > 0) {
-    termSel.selectedIndex = 0;
+  if (sups.length > 0) {
+    termInp.value = sups[0];
   }
 
   async function run(){
@@ -310,8 +356,8 @@ async function init(){
     const fromV = from.value, toV = to.value;
 
     const params = {};
-    if (mode==='Código') params.codigo = termSel.value;
-    if (mode==='Suministro') params.suministro = termSel.value;
+    if (mode==='Código') params.codigo = termInp.value;
+    if (mode==='Suministro') params.suministro = termInp.value;
     if (group && mode!=='Grupo') params.grupo = group; // filtro adicional
     if (mode==='Grupo') params.grupo = group;
     if (fromV) params.from = fromV;
@@ -323,31 +369,9 @@ async function init(){
 
     const invHist = serie.map(p=>Number(p.inventario));
     const cons=[]; for(let i=1;i<invHist.length;i++){ cons.push(Math.max(invHist[i-1]-invHist[i],0)); }
-    const dHat = (function(cons, H, alpha=0.3){
-      if (!cons.length) return Array(45).fill(0);
-      let s = cons[0];
-      for (let i=1;i<cons.length;i++){ s = alpha*cons[i] + (1-alpha)*s; }
-      return Array(45).fill(s);
-    })(cons, 45, 0.3);
+    const dHat = ses(cons, 45, 0.3);
     const invLast = invHist[invHist.length-1];
-    const sim = (function(invLast, dHat, q=0, lead=45){
-      const H = dHat.length;
-      const base = new Array(H);
-      const withOrder = new Array(H);
-      for (let h=0; h<H; h++){
-        if (h===0) base[h] = Math.max(invLast - dHat[h], 0);
-        else base[h] = Math.max(base[h-1] - dHat[h], 0);
-      }
-      withOrder[0] = Math.max(invLast - dHat[0], 0);
-      for (let h=1; h<H; h++){ withOrder[h] = Math.max(withOrder[h-1] - dHat[h], 0); }
-      const idx = lead-1;
-      if (idx>=0 && idx<H){
-        withOrder[idx] += Number(q||0);
-        for (let h=idx+1; h<H; h++){ withOrder[h] = Math.max(withOrder[h-1] - dHat[h], 0); }
-      }
-      return {base, withOrder};
-    })(invLast, dHat, Q, 45);
-    const base = sim.base, withOrder = sim.withOrder;
+    const {base, withOrder} = simulate(invLast, dHat, Q, data.lead||LEAD);
 
     const lastDate = new Date(serie[serie.length-1].fecha);
     const future = [];
@@ -389,7 +413,7 @@ async function init(){
           },
           plugins:{
             legend:{ position:'bottom' },
-            title:{ display:true, text: (data.subject_label||('Suministro: ' + (termSel.value||''))) },
+            title:{ display:true, text: (data.subject_label||('Suministro: ' + (termInp.value||''))) },
             tooltip:{ callbacks:{ label:(ctx)=>{
               const v = ctx.parsed.y;
               return `${ctx.dataset.label}: ${Number.isFinite(v)? fmtInt(v) : ''}`;
@@ -405,7 +429,7 @@ async function init(){
       chartInstance.data.datasets[2].data = projPlusData;
       chartInstance.data.datasets[3].data = Array(labels.length).fill(kb);
       chartInstance.data.datasets[4].data = Array(labels.length).fill(sfty);
-      chartInstance.options.plugins.title.text = (data.subject_label||('Suministro: ' + (termSel.value||'')));
+      chartInstance.options.plugins.title.text = (data.subject_label||('Suministro: ' + (termInp.value||'')));
       chartInstance.update();
     }
   }
@@ -414,9 +438,9 @@ async function init(){
   $('btn').addEventListener('click', run);
   $('refreshBtn').addEventListener('click', run);
   $('btnClear').addEventListener('click', ()=>{
-    modeSel.value = 'Suministro'; // default back to Suministro
+    modeSel.value = 'Suministro';
     fillTerms();
-    if (termSel.options.length > 0) termSel.selectedIndex = 0;
+    if (sups.length > 0) termInp.value = sups[0];
     groupSel.value = '';
     $('qty').value = 0;
     from.value = meta.min_fecha || '';
@@ -428,7 +452,7 @@ async function init(){
   });
 
   // Ejecutar una primera vez con el primer Suministro
-  run();
+  await run();
 }
 
 window.addEventListener('load', ()=>{ init(); });
