@@ -18,42 +18,84 @@
                          --text:#e5e7eb; --sub:#cbd5e1; --border:#334155; --canvas:#0b1220; }
     [data-theme="light"]{ --bg:#0b1f3a; --bg2:#133a74; --card:#ffffff; --muted:#6b7280; --ring:#e5e7eb;
                           --text:#0f172a; --sub:#334155; --border:#e5e7eb; --canvas:#f6f7fb; }
+
     *{box-sizing:border-box}
     body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,sans-serif;margin:0;background:var(--canvas);color:var(--text)}
-    .topbar{background:linear-gradient(90deg,var(--bg),var(--bg2));color:#fff;padding:12px 14px;display:flex;align-items:center;gap:12px;box-shadow:0 2px 10px rgba(0,0,0,.2);position:sticky;top:0;z-index:10}
-    .topbar img{width:36px;height:36px;border-radius:8px}
-    .title{font-size:16px;font-weight:700;letter-spacing:.3px;flex:1}
-    .top-actions{display:flex;gap:8px;align-items:center}
+
+    /* Topbar responsive */
+    .topbar{
+      background:linear-gradient(90deg,var(--bg),var(--bg2)); color:#fff;
+      padding:12px 14px; display:flex; align-items:center; gap:12px;
+      box-shadow:0 2px 10px rgba(0,0,0,.2); position:sticky; top:0; z-index:10;
+      flex-wrap:wrap; /* permite 2 filas */
+    }
+    .topbar img{width:36px;height:36px;border-radius:8px;flex:0 0 auto;}
+    .title{font-size:16px;font-weight:700;letter-spacing:.3px;flex:1 1 auto;min-width:200px;}
+    .top-actions{display:flex;gap:8px;align-items:center;flex:0 0 auto;}
     .btn{padding:8px 10px;border:1px solid var(--ring);border-radius:10px;background:#fff;color:#0f172a;cursor:pointer;font-weight:600}
     .btn.ghost{background:transparent;color:#fff;border-color:rgba(255,255,255,.25)}
     .btn.install{background:#00b894;color:#fff;border-color:#00b894}
     .theme-select{padding:6px 8px;border:1px solid rgba(255,255,255,.25);border-radius:10px;background:transparent;color:#fff}
     .net{font-size:12px;opacity:.85;margin-left:8px}
+
+    @media (max-width: 720px){
+      .title{order:2;flex-basis:100%;margin-top:4px}
+      .top-actions{
+        order:3; width:100%;
+        display:grid; grid-template-columns:1fr 1fr; gap:8px;
+        grid-auto-rows:minmax(36px,auto);
+      }
+      .theme-select{grid-column:1 / -1; width:auto; justify-self:start}
+      #installBtn,#refreshBtn{width:100%}
+    }
+    @media (max-width: 420px){
+      .top-actions{grid-template-columns:1fr}
+    }
+
     .container{padding:14px;max-width:1400px;margin:0 auto}
     .filters{display:grid;grid-template-columns:120px 1fr 1fr 1fr 140px 140px 130px 120px;gap:8px;align-items:end;margin-bottom:12px}
     @media (max-width:1024px){.filters{grid-template-columns:1fr 1fr}}
     @media (max-width:640px){.filters{grid-template-columns:1fr}}
+
     .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px}
     label{font-size:12px;color:var(--sub)}
     select,input,button{width:100%;padding:8px 10px;border:1px solid var(--ring);border-radius:10px;background:#fff;color:#0f172a}
     [data-theme="dark"] select,[data-theme="dark"] input{background:#0b1324;color:#e5e7eb;border-color:#334155}
     button.primary{background:#0b5fff;color:#fff;border-color:#0b5fff;font-weight:700}
+
+    .kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:8px;margin-bottom:12px}
+    @media (max-width:1024px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+    @media (max-width:520px){.kpis{grid-template-columns:1fr}}
+    .kpi{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px;min-height:72px}
+    .kpi .v{font-size:clamp(18px, 5.2vw, 22px); font-weight:800; line-height:1.15; word-break:break-word}
+    .kpi .l{font-size:12px;color:var(--sub)}
+    .kpi .muted{display:block;margin-top:4px}
+
     .row{display:grid;grid-template-columns:2fr 1fr;gap:12px}
     @media (max-width:1024px){.row{grid-template-columns:1fr}}
     .chart-wrap{height:420px}
+
+    .side{display:grid;gap:10px;align-content:start}
+    .metric{display:flex;justify-content:space-between;gap:12px;font-weight:700}
+    .metric span:last-child{max-width:50%;text-align:right;word-break:break-word}
     .table-wrap{max-height:420px;overflow:auto}
     table{width:100%;border-collapse:collapse;font-size:12px}
     th,td{border-bottom:1px solid var(--ring);padding:8px 10px;text-align:left;white-space:nowrap}
     thead th{position:sticky;top:0;background:var(--card);z-index:1}
+
+    /* Tarjetero de fórmulas */
+    .formula-cards{
+      display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; margin-top:6px;
+    }
+    @media (max-width:720px){ .formula-cards{grid-template-columns:1fr} }
+    .formula-card{
+      border:1px dashed var(--border); border-radius:12px; padding:10px; background:rgba(0,0,0,0.02);
+    }
+    [data-theme="dark"] .formula-card{ background:rgba(255,255,255,0.02); }
+    .fc-title{font-weight:700; color:var(--sub); margin-bottom:4px}
+    .fc-value{font-weight:800; font-size:clamp(16px,4.6vw,20px); margin-bottom:4px}
+    .fc-formula{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:12px; color:var(--sub)}
     .muted{color:var(--muted);font-size:12px}
-    .kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:8px;margin-bottom:12px}
-    .kpi{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px}
-    .kpi .v{font-size:20px;font-weight:800}
-    .kpi .l{font-size:12px;color:var(--sub)}
-    .side{display:grid;gap:10px;align-content:start}
-    .metric{display:flex;justify-content:space-between;font-weight:700}
-    .hidden{display:none!important}
-    .formula{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;color:var(--sub)}
     ul.formula{padding-left:18px}
   </style>
 </head>
@@ -66,9 +108,9 @@
         <option value="system">Sistema</option><option value="light">Claro</option><option value="dark">Oscuro</option>
       </select>
       <span id="net" class="net"></span>
-      <button id="installBtn" class="btn install hidden">Instalar app</button>
       <button id="refreshBtn" class="btn ghost">Actualizar</button>
-    </div>
+      <button id="installBtn" class="btn install hidden">Instalar app</button>
+      </div>
   </div>
 
   <div class="container">
@@ -94,7 +136,7 @@
     </div>
 
     <div class="kpis">
-      <div class="kpi"><div class="l">Inventario actual</div><div class="v" id="kpiInv">–</div><div class="muted" id="kpiInvDate">–</div></div>
+      <div class="kpi"><div class="l">Inventario actual</div><div class="v" id="kpiInv">–</div><span class="muted" id="kpiInvDate">–</span></div>
       <div class="kpi"><div class="l">Punto de Reorden (KB_min + SS)</div><div class="v" id="kpiKb">–</div></div>
       <div class="kpi"><div class="l">Inv. Crítico (95%)</div><div class="v" id="kpiCrit">–</div></div>
       <div class="kpi"><div class="l">SMA_15 Inventario (nivel inicial)</div><div class="v" id="kpiI0">–</div></div>
@@ -103,13 +145,32 @@
     <div class="row">
       <div>
         <div class="card chart-wrap"><canvas id="chart"></canvas></div>
+
+        <!-- Tarjetero de fórmulas -->
         <div class="card" id="formulas">
           <div class="muted">Fórmulas</div>
-          <div class="formula" id="f_kb">Punto de Reorden = μ_D × L + SS = ?</div>
-          <div class="formula" id="f_sfty">SS (Inventario Crítico) = z × σ_D × √L = ?</div>
-          <div class="formula" id="f_proj1">I₀ = SMA_15(inventario) = ?</div>
-          <div class="formula" id="f_proj2">Î_{t+h} = max(Î_{t+h−1} − d̂_h, 0), h=1..45; d̂ por SES(α=0.3), estacionalidad semanal: ?</div>
-          <div class="formula" id="f_order">Si Q>0: I'_{t+L} = Î_{t+L} + Q</div>
+          <div class="formula-cards">
+            <div class="formula-card">
+              <div class="fc-title">Punto de Reorden (ROP = KB_min + SS)</div>
+              <div class="fc-value" id="fc_rop">–</div>
+              <div class="fc-formula" id="f_kb">ROP = μ_D × L + SS = ?</div>
+            </div>
+            <div class="formula-card">
+              <div class="fc-title">SS (Inventario Crítico)</div>
+              <div class="fc-value" id="fc_ss">–</div>
+              <div class="fc-formula" id="f_sfty">SS = z × σ_D × √L = ?</div>
+            </div>
+            <div class="formula-card">
+              <div class="fc-title">Nivel inicial</div>
+              <div class="fc-value" id="fc_i0">–</div>
+              <div class="fc-formula" id="f_proj1">I₀ = SMA_15(inventario) = ?</div>
+            </div>
+            <div class="formula-card">
+              <div class="fc-title">Dinámica de proyección</div>
+              <div class="fc-formula" id="f_proj2">Î_{t+h} = max(Î_{t+h−1} − d̂_h, 0); d̂ por SES(α=0.3), estacionalidad semanal: ?</div>
+              <div class="fc-formula" id="f_order">Si Q>0: I'_{t+L} = Î_{t+L} + Q</div>
+            </div>
+          </div>
           <br/>
           <div class="muted">Definiciones</div>
           <ul class="formula" id="defs">
@@ -123,17 +184,19 @@
           </ul>
         </div>
       </div>
+
       <div class="side">
         <div class="card">
           <div class="muted">Indicadores de la serie</div>
-          <div class="metric"><span>Último inventario</span><span id="mLast">–</span></div>
-          <small id="mLastDate" class="muted"></small>
+          <div class="metric"><span>% Abastecimiento (4 meses)</span><span id="mCoverage">–</span></div>
+          <small id="mCoverageNote" class="muted"></small>
           <div class="metric"><span>Mínimo histórico</span><span id="mMin">–</span></div>
           <small id="mMinDate" class="muted"></small>
           <div class="metric"><span>Máximo histórico</span><span id="mMax">–</span></div>
           <small id="mMaxDate" class="muted"></small>
           <div class="metric"><span>Promedio 30 días</span><span id="mAvg30">–</span></div>
         </div>
+
         <div class="card table-wrap">
           <div class="muted">Tabla diaria</div>
           <table id="tbl"><thead><tr><th>Fecha</th><th>Cantidad</th></tr></thead><tbody></tbody></table>
@@ -150,6 +213,7 @@ let chartInstance=null, deferredPrompt=null;
 let codes=[], sups=[], groups=[];
 
 const fmtInt = (n)=> Number(n||0).toLocaleString();
+const fmtPct = (x)=> (Number.isFinite(x)? (Math.round(x*10)/10).toLocaleString(undefined,{maximumFractionDigits:1})+'%' : '–');
 const $ = (id)=> document.getElementById(id);
 
 // Tema
@@ -258,26 +322,73 @@ function simulate(inv0, dHat, q=0, lead=45){
   const idx=lead-1; if(idx>=0&&idx<H){ withOrder[idx]+=Number(q||0); for(let h=idx+1;h<H;h++) withOrder[h]=Math.max(withOrder[h-1]-dHat[h],0); }
   return {base, withOrder};
 }
+
+// Tabla (más reciente primero)
 function fillTable(tbody, serie){
   tbody.innerHTML=''; for(let i=serie.length-1;i>=0;i--){ const p=serie[i];
     const tr=document.createElement('tr'); tr.innerHTML=`<td>${p.fecha}</td><td>${fmtInt(p.inventario)}</td>`; tbody.appendChild(tr);
   }
 }
+
+// KPIs
 function setKPIs(invLast, rop, sfty, lastDateISO, I0){
   $('kpiInv').textContent=fmtInt(invLast); $('kpiInvDate').textContent= lastDateISO? `al ${lastDateISO}`:'';
   $('kpiKb').textContent=fmtInt(rop); $('kpiCrit').textContent=fmtInt(sfty); $('kpiI0').textContent=fmtInt(Math.round(I0));
 }
-function setSideMetrics(minV,minD,maxV,maxD,avg30,lastV,lastD){
-  $('mLast').textContent=fmtInt(lastV); $('mLastDate').textContent= lastD?`en ${lastD}`:'';
+
+// Indicadores laterales (con cobertura)
+function setSideMetrics(minV,minD,maxV,maxD,avg30,coveragePct,coverageNote){
+  $('mCoverage').textContent = fmtPct(coveragePct);
+  $('mCoverageNote').textContent = coverageNote || '';
   $('mMin').textContent=fmtInt(minV);  $('mMinDate').textContent= minD?`en ${minD}`:'';
   $('mMax').textContent=fmtInt(maxV);  $('mMaxDate').textContent= maxD?`en ${maxD}`:'';
   $('mAvg30').textContent=fmtInt(avg30);
 }
+
+// Tarjetero (resultados y fórmulas)
 function setFormulas(mu, sigma, kb, sfty, I0, rop){
-  $('f_kb').textContent   = `Punto de Reorden = μ_D × L + SS = ${fmtInt(Math.round(mu))} × ${LEAD} + ${fmtInt(Math.round(sfty))} = ${fmtInt(Math.round(rop))}`;
-  $('f_sfty').textContent = `SS (Inventario Crítico) = z × σ_D × √L = 1.65 × ${fmtInt(Math.round(sigma))} × √${LEAD} = ${fmtInt(Math.round(sfty))}`;
+  $('fc_rop').textContent = fmtInt(Math.round(rop));
+  $('fc_ss').textContent  = fmtInt(Math.round(sfty));
+  $('fc_i0').textContent  = fmtInt(Math.round(I0));
+
+  $('f_kb').textContent   = `ROP = μ_D × L + SS = ${fmtInt(Math.round(mu))} × ${LEAD} + ${fmtInt(Math.round(sfty))} = ${fmtInt(Math.round(rop))}`;
+  $('f_sfty').textContent = `SS = z × σ_D × √L = 1.65 × ${fmtInt(Math.round(sigma))} × √${LEAD} = ${fmtInt(Math.round(sfty))}`;
   $('f_proj1').textContent= `I₀ = SMA_15(inventario) = ${fmtInt(Math.round(I0))}`;
   $('f_proj2').textContent= `Î_{t+h} = max(Î_{t+h−1} − d̂_h, 0), h=1..45; d̂ por SES(α=0.3), estacionalidad semanal: ${USE_SEASONAL ? 'activa' : 'inactiva'}`;
+}
+
+// % Abastecimiento (4 meses = 16 semanas)
+function coverageFourMonths(invLast, serie, mu_d){
+  // tasas diarias por tramo (consumo/día) usando fechas reales
+  const n = serie.length;
+  const rates = [];
+  for(let i=1;i<n;i++){
+    const prev = serie[i-1], cur = serie[i];
+    const invDec = Math.max(Number(prev.inventario) - Number(cur.inventario), 0);
+    const d1 = new Date(prev.fecha), d2 = new Date(cur.fecha);
+    const days = Math.max( (d2 - d1)/(1000*60*60*24), 1 );
+    const rate = invDec / days;
+    if (Number.isFinite(rate)) rates.push(rate);
+  }
+  // promedio simple de tasas diarias recientes y convertir a semanal
+  let dailyExpected;
+  if (rates.length >= 8){ // usamos ~últimas semanas (aprox)
+    const recent = rates.slice(-Math.min(rates.length, 56)); // ~8 semanas * 7 días aprox
+    // media recortada (quita extremos)
+    if (recent.length >= 5){
+      const s = [...recent].sort((a,b)=>a-b); s.shift(); s.pop();
+      dailyExpected = mean(s);
+    } else {
+      dailyExpected = mean(recent);
+    }
+  } else {
+    dailyExpected = Number(mu_d||0); // fallback robusto
+  }
+  const weeklyExpected = dailyExpected * 7;
+  const needFor4M = weeklyExpected * 16; // 4 meses ~ 16 semanas
+  const pct = needFor4M > 0 ? (invLast / needFor4M) * 100 : 0;
+  const note = `Consumo semanal esperado ≈ ${fmtInt(Math.round(weeklyExpected))}. Requerido 4 meses ≈ ${fmtInt(Math.round(needFor4M))}.`;
+  return {pct, note};
 }
 
 // INIT
@@ -323,7 +434,7 @@ async function init(){
     const invHist = serie.map(p=>Number(p.inventario));
     const lastVal = invHist[invHist.length-1]; const lastDateStr = serie[serie.length-1].fecha;
 
-    // Consumo (decrementos)
+    // Consumo (decrementos para proyección)
     const cons=[]; for(let i=1;i<invHist.length;i++) cons.push(Math.max(invHist[i-1]-invHist[i],0));
 
     // Pronóstico demanda
@@ -344,13 +455,19 @@ async function init(){
     const projData = Array(serie.length).fill(null).concat(base);
     const projPlusData = Array(serie.length).fill(null).concat(withOrder);
 
-    const kb = Number(data.kb_min||0);               // μ_D × L
+    const kb = Number(data.kb_min||0);               // μ_D × L (del backend)
     const sfty = Number(data.inventario_critico||0); // SS
     const rop = kb + sfty;                            // ROP = KB_min + SS
 
+    // Tabla + KPIs
     fillTable(tbody, serie);
     setKPIs(lastVal, rop, sfty, lastDateStr, I0);
-    setSideMetrics(data.min_value||0, data.min_date||'', data.max_value||0, data.max_date||'', data.avg_30||0, lastVal, lastDateStr);
+
+    // Indicadores laterales (con cobertura 4M)
+    const {pct: covPct, note: covNote} = coverageFourMonths(lastVal, serie, data.mu_d||0);
+    setSideMetrics(data.min_value||0, data.min_date||'', data.max_value||0, data.max_date||'', data.avg_30||0, covPct, covNote);
+
+    // Tarjetero fórmulas
     setFormulas(data.mu_d||0, data.sigma_d||0, kb, sfty, I0, rop);
 
     // Título con código + nombre
