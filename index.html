@@ -127,6 +127,35 @@
     @keyframes spin{ to{ transform:translateY(-50%) rotate(360deg) } }
     button.primary.is-ok{ background:#16a34a; border-color:#16a34a; color:#fff; }
     button.primary.is-error{ background:#dc2626; border-color:#dc2626; color:#fff; }
+      /* --- FIX móvil: header estable y sin solapes cuando se renderiza el chart --- */
+    @media (max-width: 720px){
+      /* 1) en móvil el header deja de ser sticky para no superponerse tras el reflow */
+      .topbar{
+        position: static !important;
+        box-shadow: none;            /* opcional: menos “peso visual” en móvil */
+        overflow-anchor: none;       /* evita “anclaje” de scroll sobre el header */
+      }
+    }
+    
+    /* 2) tarjetas KPI con alto consistente (evita saltos de layout) */
+    .kpi{
+      min-height: 92px;              /* sube si lo prefieres más alto */
+    }
+    .kpi .v{
+      white-space: nowrap;           /* no rompas números grandes en 2 líneas */
+    }
+    
+    /* 3) el área del gráfico crea su propio stacking context y aísla el reflow */
+    .chart-wrap{
+      isolation: isolate;
+      position: relative;            /* asegura contexto propio de apilado */
+    }
+    
+    /* 4) por si alguna regla externa aplica radios o bordes al header */
+    .topbar{
+      border-radius: 0 !important;
+      width: 100% !important;
+    }
   </style>
 </head>
 <body>
@@ -593,6 +622,29 @@ async function init(){
 
 window.addEventListener('load', init);
 if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js').catch(()=>{}); }
+// Reestablece estado visual del header después de renderizar/actualizar el gráfico
+  function normalizeHeader(){
+    const tb = document.querySelector('.topbar');
+    if (!tb) return;
+    // en móvil, forzamos a no-sticky por si alguna clase quedó aplicada
+    if (window.innerWidth <= 720){
+      tb.classList.remove('topbar--hidden');  // por si quedó oculto
+      tb.style.position = 'static';
+      tb.style.transform = 'none';
+    }
+  }
+  // Llamada después de cada ejecución de 'run()'
+  const _oldRun = (typeof init === 'function') ? null : null; // no toques nada
+  // Engancha a la función run ya definida
+  (function(){
+    const BTN = document.getElementById('btn');
+    const REF = document.getElementById('refreshBtn');
+    const _safe = (fn)=> fn && fn.addEventListener && fn.addEventListener('click', ()=> setTimeout(normalizeHeader, 0));
+    _safe(BTN); _safe(REF);
+    // también al terminar de cargar
+    window.addEventListener('load', ()=> setTimeout(normalizeHeader, 0));
+  })();
+  
 </script>
 </body>
 </html>
