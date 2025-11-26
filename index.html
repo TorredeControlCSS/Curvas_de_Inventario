@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Curvas de Inventario</title>
-  <link rel="icon" href="icons/icon-192.png">
+  <link rel="icon" href="icons/icon-512.png">
   <link rel="manifest" href="manifest.json">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <style>
@@ -22,34 +22,67 @@
     *{box-sizing:border-box}
     body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,sans-serif;margin:0;background:var(--canvas);color:var(--text)}
 
-    /* Topbar responsive */
+    /* Topbar base */
     .topbar{
       background:linear-gradient(90deg,var(--bg),var(--bg2)); color:#fff;
       padding:12px 14px; display:flex; align-items:center; gap:12px;
       box-shadow:0 2px 10px rgba(0,0,0,.2); position:sticky; top:0; z-index:10;
-      flex-wrap:wrap; /* permite 2 filas */
+      flex-wrap:wrap;
+      justify-content: space-between;
     }
-    .topbar img{width:36px;height:36px;border-radius:8px;flex:0 0 auto;}
+    .topbar img{width: clamp(40px, 6vw, 56px); height: clamp(40px, 6vw, 56px); border-radius:12px; flex:0 0 auto;}
     .title{font-size:16px;font-weight:700;letter-spacing:.3px;flex:1 1 auto;min-width:200px;}
     .top-actions{display:flex;gap:8px;align-items:center;flex:0 0 auto;}
     .btn{padding:8px 10px;border:1px solid var(--ring);border-radius:10px;background:#fff;color:#0f172a;cursor:pointer;font-weight:600}
     .btn.ghost{background:transparent;color:#fff;border-color:rgba(255,255,255,.25)}
     .btn.install{background:#00b894;color:#fff;border-color:#00b894}
-    .theme-select{padding:6px 8px;border:1px solid rgba(255,255,255,.25);border-radius:10px;background:transparent;color:#fff}
-    .net{font-size:12px;opacity:.85;margin-left:8px}
+    .theme-select{padding:6px 8px;border:1px solid rgba(255,255,255,.25);border-radius:10px;background:transparent;color:#fff; min-width:110px}
+    .net{font-size:12px;opacity:.85;margin-left:4px}
 
+    /* Mobile general */
     @media (max-width: 720px){
-      .title{order:2;flex-basis:100%;margin-top:4px}
-      .top-actions{
-        order:3; width:100%;
-        display:grid; grid-template-columns:1fr 1fr; gap:8px;
-        grid-auto-rows:minmax(36px,auto);
-      }
-      .theme-select{grid-column:1 / -1; width:auto; justify-self:start}
+      .title{order:2;flex-basis:100%;text-align:center;margin-top:4px}
+      .top-actions{order:3;width:100%;display:grid;grid-template-columns:1fr 1fr;gap:8px}
+      .theme-select{grid-column:1 / -1; width:auto; justify-self:center}
       #installBtn,#refreshBtn{width:100%}
     }
     @media (max-width: 420px){
       .top-actions{grid-template-columns:1fr}
+    }
+
+    /* === Compact Header para PWA móvil (una fila, logo centrado, acciones a la derecha) === */
+    @media (display-mode: standalone) and (max-width: 720px){
+      .topbar{
+        display:grid;
+        grid-template-columns: 1fr auto 1fr; /* [vacío] [logo] [acciones] */
+        align-items:center;
+        padding:6px 10px;
+        gap:8px;
+        flex-wrap:nowrap;
+        justify-content:initial;
+      }
+      .topbar img{
+        grid-column:2; justify-self:center;
+        width: clamp(44px, 18vw, 72px); height: clamp(44px, 18vw, 72px);
+        margin:0;
+      }
+      .title{ display:none; }                 /* ocultamos título para ganar alto */
+      .top-actions{
+        grid-column:3; justify-self:end;
+        display:flex; align-items:center; gap:6px; flex-wrap:nowrap;
+      }
+      .btn{ padding:6px 8px; border-radius:10px; }
+      #installBtn{ display:none !important; } /* en PWA no tiene sentido mostrar instalar */
+      .theme-select{ display:inline-block !important; min-width:96px; } /* compacto, pero seguimos usando el selector */
+      .net{ display:none; }
+    }
+    @media (display-mode: standalone) and (orientation: landscape){
+      .topbar{ padding:4px 8px; }
+      .topbar img{ width: clamp(36px, 10vw, 56px); height: clamp(36px, 10vw, 56px); }
+      .btn{ padding:4px 8px; }
+    }
+    @media (min-width: 1280px){
+      .topbar img{ width:64px; height:64px; }
     }
 
     .container{padding:14px;max-width:1400px;margin:0 auto}
@@ -84,60 +117,16 @@
     thead th{position:sticky;top:0;background:var(--card);z-index:1}
 
     /* Tarjetero de fórmulas */
-    .formula-cards{
-      display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; margin-top:6px;
-    }
+    .formula-cards{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; margin-top:6px; }
     @media (max-width:720px){ .formula-cards{grid-template-columns:1fr} }
-    .formula-card{
-      border:1px dashed var(--border); border-radius:12px; padding:10px; background:rgba(0,0,0,0.02);
-    }
+    .formula-card{ border:1px dashed var(--border); border-radius:12px; padding:10px; background:rgba(0,0,0,0.02); }
     [data-theme="dark"] .formula-card{ background:rgba(255,255,255,0.02); }
     .fc-title{font-weight:700; color:var(--sub); margin-bottom:4px}
     .fc-value{font-weight:800; font-size:clamp(16px,4.6vw,20px); margin-bottom:4px}
     .fc-formula{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:12px; color:var(--sub)}
     .muted{color:var(--muted);font-size:12px}
     ul.formula{padding-left:18px}
-  /* === Logo centrado y tamaño fluido === */
-.topbar{
-  justify-content: space-between; /* desktop por defecto */
-}
-
-/* Tamaño base del logo (fluido) */
-.topbar img{
-  width: clamp(40px, 6vw, 56px);
-  height: clamp(40px, 6vw, 56px);
-}
-
-/* Escritorio ancho: un poco más grande */
-@media (min-width: 1280px){
-  .topbar img{
-    width: 64px;
-    height: 64px;
-  }
-}
-
-/* Móvil: logo centrado en la 1ª fila, título y acciones bajan */
-@media (max-width: 720px){
-  .topbar{ justify-content: center; }
-  .topbar img{
-    order: 1;              /* el logo va primero */
-    display: block;
-    margin: 0 auto;        /* centrado */
-    width: clamp(56px, 20vw, 84px);
-    height: clamp(56px, 20vw, 84px);
-  }
-  .title{
-    order: 2;
-    flex-basis: 100%;
-    text-align: center;    /* título centrado debajo del logo */
-    margin-top: 4px;
-  }
-  .top-actions{
-    order: 3;
-    width: 100%;
-  }
-}
- </style>
+  </style>
 </head>
 <body>
   <div class="topbar">
@@ -145,12 +134,14 @@
     <div class="title">Curvas de Inventario — CEDIS PANAMA CSS</div>
     <div class="top-actions">
       <select id="theme" class="theme-select" title="Tema">
-        <option value="system">Sistema</option><option value="light">Claro</option><option value="dark">Oscuro</option>
+        <option value="system">Sistema</option>
+        <option value="light">Claro</option>
+        <option value="dark">Oscuro</option>
       </select>
       <span id="net" class="net"></span>
       <button id="refreshBtn" class="btn ghost">Actualizar</button>
       <button id="installBtn" class="btn install hidden">Instalar app</button>
-      </div>
+    </div>
   </div>
 
   <div class="container">
@@ -256,7 +247,7 @@ const fmtInt = (n)=> Number(n||0).toLocaleString();
 const fmtPct = (x)=> (Number.isFinite(x)? (Math.round(x*10)/10).toLocaleString(undefined,{maximumFractionDigits:1})+'%' : '–');
 const $ = (id)=> document.getElementById(id);
 
-// Tema
+// Tema (mantiene selector Sistema/Claro/Oscuro)
 (function(){
   const saved = localStorage.getItem('theme') || 'system';
   document.documentElement.setAttribute('data-theme', saved);
@@ -399,7 +390,6 @@ function setFormulas(mu, sigma, kb, sfty, I0, rop){
 
 // % Abastecimiento (4 meses = 16 semanas)
 function coverageFourMonths(invLast, serie, mu_d){
-  // tasas diarias por tramo (consumo/día) usando fechas reales
   const n = serie.length;
   const rates = [];
   for(let i=1;i<n;i++){
@@ -410,22 +400,16 @@ function coverageFourMonths(invLast, serie, mu_d){
     const rate = invDec / days;
     if (Number.isFinite(rate)) rates.push(rate);
   }
-  // promedio simple de tasas diarias recientes y convertir a semanal
   let dailyExpected;
-  if (rates.length >= 8){ // usamos ~últimas semanas (aprox)
-    const recent = rates.slice(-Math.min(rates.length, 56)); // ~8 semanas * 7 días aprox
-    // media recortada (quita extremos)
-    if (recent.length >= 5){
-      const s = [...recent].sort((a,b)=>a-b); s.shift(); s.pop();
-      dailyExpected = mean(s);
-    } else {
-      dailyExpected = mean(recent);
-    }
+  if (rates.length >= 8){
+    const recent = rates.slice(-Math.min(rates.length, 56));
+    if (recent.length >= 5){ const s=[...recent].sort((a,b)=>a-b); s.shift(); s.pop(); dailyExpected = mean(s); }
+    else { dailyExpected = mean(recent); }
   } else {
-    dailyExpected = Number(mu_d||0); // fallback robusto
+    dailyExpected = Number(mu_d||0);
   }
   const weeklyExpected = dailyExpected * 7;
-  const needFor4M = weeklyExpected * 16; // 4 meses ~ 16 semanas
+  const needFor4M = weeklyExpected * 16;
   const pct = needFor4M > 0 ? (invLast / needFor4M) * 100 : 0;
   const note = `Consumo semanal esperado ≈ ${fmtInt(Math.round(weeklyExpected))}. Requerido 4 meses ≈ ${fmtInt(Math.round(needFor4M))}.`;
   return {pct, note};
@@ -440,7 +424,7 @@ async function init(){
 
   const meta = await safeFetchList();
   codes = meta.codigos||[]; sups = meta.suministros||[]; groups=[''].concat(meta.grupos||[]);
-  groupSel.innerHTML = groups.map(g => `<option value="${g}">${g||'Todos'}</option>`).join('');
+  $('group').innerHTML = groups.map(g => `<option value="${g}">${g||'Todos'}</option>`).join('');
   from.value = meta.min_fecha||''; to.value = meta.max_fecha||'';
 
   function fillTerms(){
@@ -474,7 +458,7 @@ async function init(){
     const invHist = serie.map(p=>Number(p.inventario));
     const lastVal = invHist[invHist.length-1]; const lastDateStr = serie[serie.length-1].fecha;
 
-    // Consumo (decrementos para proyección)
+    // Consumo (decrementos)
     const cons=[]; for(let i=1;i<invHist.length;i++) cons.push(Math.max(invHist[i-1]-invHist[i],0));
 
     // Pronóstico demanda
@@ -495,9 +479,9 @@ async function init(){
     const projData = Array(serie.length).fill(null).concat(base);
     const projPlusData = Array(serie.length).fill(null).concat(withOrder);
 
-    const kb = Number(data.kb_min||0);               // μ_D × L (del backend)
+    const kb = Number(data.kb_min||0);               // μ_D × L
     const sfty = Number(data.inventario_critico||0); // SS
-    const rop = kb + sfty;                            // ROP = KB_min + SS
+    const rop = kb + sfty;                            // ROP
 
     // Tabla + KPIs
     fillTable(tbody, serie);
@@ -516,6 +500,7 @@ async function init(){
     else if (data.subject_code) graphTitle = `Código: ${data.subject_code}`;
     else graphTitle = data.subject_label || 'Serie seleccionada';
 
+    const ctx = document.getElementById('chart').getContext('2d');
     if(!chartInstance){
       chartInstance = new Chart(ctx, {
         type:'line',
