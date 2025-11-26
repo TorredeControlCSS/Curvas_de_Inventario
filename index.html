@@ -141,12 +141,16 @@
     /* Altura del gráfico según el alto de pantalla, evitando “saltos” al rotar */
     .chart-wrap{
       height: clamp(320px, 58vh, 560px);
+      height: clamp(320px, 58dvh, 560px);
+      height: clamp(320px, 58vh, 560px);
       isolation: isolate;            /* ya lo tenías, lo mantenemos */
       position: relative;
     }
     
     @media (max-width: 720px){
       .chart-wrap{
+        height: clamp(280px, 58vh, 520px);
+        height: clamp(280px, 58dvh, 520px);
         height: clamp(280px, 58vh, 520px);
       }
     }
@@ -510,6 +514,7 @@ async function init(){
           }
         });
         // ✅ Normaliza layout tras el primer render del gráfico (móvil)
+        window.chartInstance = chartInstance;
         setTimeout(fixAfterRotate, 0);
         
       }else{
@@ -528,6 +533,7 @@ async function init(){
         }
         chartInstance.update();
           // ✅ Normaliza layout tras actualizar el gráfico (móvil)
+        window.chartInstance = chartInstance;
         setTimeout(fixAfterRotate, 0);
       }
 
@@ -583,8 +589,8 @@ function fixAfterRotate(){
   }
 
   // 3) avisar a Chart.js que cambió el tamaño real
-  if (window.chartInstance && typeof window.chartInstance.resize === 'function'){
-    try{ window.chartInstance.resize(); }catch(e){}
+  if (chartInstance && typeof chartInstance.resize === 'function'){
+    try{ chartInstance.resize(); }catch(e){}
   }
 }
 
