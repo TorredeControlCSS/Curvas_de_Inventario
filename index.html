@@ -150,6 +150,11 @@
       cursor:not-allowed;
     }
     
+  
+    /* Fix overflow in grid and canvas scaling */
+    .row > * { min-width: 0; }
+    .chart-wrap { width: 100%; }
+    canvas#chart { display:block; width:100% !important; height:100% !important; }
   </style>
 </head>
 <body>
@@ -272,7 +277,7 @@
 
 <script>
 // === Config ===
-const API_BASE = 'https://script.google.com/macros/s/AKfycbwqqOM5YIaNDtSOczNTMJ51s-WVDOjqTqQbKwub44K9tScLM3itznTrbDLUuqbs599REg/exec';
+const API_BASE = 'https://script.google.com/macros/s/AKfycbzZm2HIOvNhVjstrEPQeYLaqG_mOeqIOMlguSRyKBU_jHbK31vasaBlifz-rQPueB2jHQ/exec';
 const LEAD = 45, TYPEAHEAD_LIMIT = 100, USE_SEASONAL = true;
 const EXTRA_AFTER_ORDER = 30; // días extra cuando hay Q>0
 const horizon = (Q)=> Number(Q) > 0 ? LEAD + EXTRA_AFTER_ORDER : LEAD;
@@ -321,7 +326,16 @@ async function safeFetchList(){
   try{ const data = await fetchJSON(API_BASE + '?list=true&ts=' + Date.now()); localStorage.setItem('metaCache', JSON.stringify({t:Date.now(), data})); return data; }
   catch(e){ const c = localStorage.getItem('metaCache'); if (c){ console.warn('Usando metaCache', e); setNet('Sin conexión (caché)'); return JSON.parse(c).data; } throw e; }
 }
-async function safeFetchSerie(params){ const p = new URLSearchParams(params); p.set('ts', Date.now()); return fetchJSON(API_BASE + '?' + p.toString()); }
+async function safeFetchSerie(params){
+  const p = new URLSearchParams(params);
+  const key = 'serie:' + p.toString();
+  const cached = localStorage.getItem(key);
+  if (cached){ try { return JSON.parse(cached); } catch(_){} }
+  const r = await fetch(API_BASE + '?' + p.toString());
+  const json = await r.json();
+  try { localStorage.setItem(key, JSON.stringify(json)); } catch(_){}
+  return json;
+}
 
 // Typeahead
 function fillDatalist(arr, q=''){
@@ -386,7 +400,10 @@ async function init(){
   const meta = await safeFetchList();
   codes = meta.codigos||[]; sups = meta.suministros||[]; groups=[''].concat(meta.grupos||[]);
   $('group').innerHTML = groups.map(g => `<option value="${g}">${g||'Todos'}</option>`).join('');
-  from.value = meta.min_fecha||''; to.value = meta.max_fecha||'';
+  to.value = meta.max_fecha||'';
+  const _max = new Date(to.value || Date.now());
+  const _from = new Date(_max); _from.setDate(_from.getDate()-365);
+  from.value = _from.toISOString().slice(0,10);
 
   function fillTerms(){
     const mode=modeSel.value;
@@ -466,11 +483,12 @@ async function init(){
             {label:'Inventario Crítico', data:Array(labels.length).fill(sfty), pointRadius:0, borderDash:[4,2], fill:false}
           ]},
           options:{
-            responsive:true, maintainAspectRatio:false, animation:false,
+            responsive:true, maintainAspectRatio:false, animation:false, parsing:false, normalized:true, spanGaps:true,
             interaction:{mode:'nearest',intersect:false},
             scales:{ y:{beginAtZero:true,title:{display:true,text:'Cantidad'},ticks:{callback:v=>new Intl.NumberFormat().format(v)}}, x:{ticks:{maxRotation:0,autoSkipPadding:20}} },
             plugins:{
-              legend:{position:'bottom'},
+                decimation:{enabled:true,algorithm:'lttb',threshold:1000},
+                legend:{position:'bottom'},
               title:{display:true, text:graphTitle},
               tooltip:{callbacks:{label:(ctx)=>{ const v=ctx.parsed.y; return `${ctx.dataset.label}: ${Number.isFinite(v)? fmtInt(v):''}`; }}},
               annotation: { annotations: { arrival: { type:'line', xMin:arrivalLabel, xMax:arrivalLabel, borderColor:'rgba(160,160,160,0.8)', borderWidth:1, borderDash:[6,4], label:{ display:true, content:'Llegada pedido (t+45)', position:'start', backgroundColor:'rgba(0,0,0,0.0)', color:'#666', rotation:-90, xAdjust:-6, yAdjust:12 } } } }
@@ -545,9 +563,9 @@ function fixAfterRotate(){
   if (c && typeof c.resize === 'function'){ try{ c.resize(); }catch(_){} }
 }
 setVH();
-window.addEventListener('orientationchange', ()=> setTimeout(fixAfterRotate, 200));
-window.addEventListener('resize',             ()=> setTimeout(fixAfterRotate, 100));
-if (window.visualViewport){ window.visualViewport.addEventListener('resize', ()=> setTimeout(fixAfterRotate, 100)); }
+window.addEventListener('orientationchange', ()=> setTimeout(fixAfterRotate, 350));
+window.addEventListener('resize',             ()=> setTimeout(fixAfterRotate, 150));
+if (window.visualViewport){ window.visualViewport.addEventListener('resize', ()=> setTimeout(fixAfterRotate, 150)); }
 
 // Observa el contenedor por cambios reales de tamaño
 window.addEventListener('load', ()=>{
