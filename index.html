@@ -69,9 +69,7 @@
       .topbar .theme-select, .topbar .btn{
         width:100% !important; max-width:360px !important;
       }
-      .net{ display:none !important; }     /* ahorra espacio */
-      /* Si no quieres mostrar 'Instalar app' en móvil, descomenta: */
-      /* #installBtn{ display:none !important; } */
+      .net{ display:none !important; }
     }
 
     .container{padding:14px;max-width:1400px;margin:0 auto}
@@ -85,7 +83,8 @@
     [data-theme="dark"] select,[data-theme="dark"] input{background:#0b1324;color:#e5e7eb;border-color:#334155}
     button.primary{background:#0b5fff;color:#fff;border-color:#0b5fff;font-weight:700}
 
-    .kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:8px;margin-bottom:12px}
+    /* KPIs: ahora 5 columnas en desktop */
+    .kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-top:8px;margin-bottom:12px}
     @media (max-width:1024px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
     @media (max-width:520px){.kpis{grid-template-columns:1fr}}
     .kpi{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px;min-height:72px}
@@ -116,7 +115,13 @@
     .muted{color:var(--muted);font-size:12px}
     ul.formula{padding-left:18px}
 
-    /* === Estados del botón “Mostrar” === */
+    /* Tabla de proyección (scroll propio) */
+    .proj-table-wrap{ max-height:260px; overflow:auto; margin-top:8px; }
+    .proj-table-wrap table{ width:100%; border-collapse:collapse; font-size:12px; }
+    .proj-table-wrap th, .proj-table-wrap td{ border-bottom:1px solid var(--ring); padding:6px 8px; white-space:nowrap; }
+    .proj-table-wrap thead th{ position:sticky; top:0; background:var(--card); z-index:1; }
+
+    /* Estados del botón “Mostrar” (por si luego lo repones en filtros) */
     button.primary.is-loading{ opacity:.9; pointer-events:none; position:relative; }
     button.primary.is-loading::after{
       content:''; width:14px; height:14px;
@@ -127,35 +132,19 @@
     @keyframes spin{ to{ transform:translateY(-50%) rotate(360deg) } }
     button.primary.is-ok{ background:#16a34a; border-color:#16a34a; color:#fff; }
     button.primary.is-error{ background:#dc2626; border-color:#dc2626; color:#fff; }
-      /* --- FIX móvil: header estable y sin solapes cuando se renderiza el chart --- */
+
+    /* --- FIX móvil: header estable y sin solapes cuando se renderiza el chart --- */
     @media (max-width: 720px){
-      /* 1) en móvil el header deja de ser sticky para no superponerse tras el reflow */
       .topbar{
         position: static !important;
-        box-shadow: none;            /* opcional: menos “peso visual” en móvil */
-        overflow-anchor: none;       /* evita “anclaje” de scroll sobre el header */
+        box-shadow: none;
+        overflow-anchor: none;
       }
     }
-    
-    /* 2) tarjetas KPI con alto consistente (evita saltos de layout) */
-    .kpi{
-      min-height: 92px;              /* sube si lo prefieres más alto */
-    }
-    .kpi .v{
-      white-space: nowrap;           /* no rompas números grandes en 2 líneas */
-    }
-    
-    /* 3) el área del gráfico crea su propio stacking context y aísla el reflow */
-    .chart-wrap{
-      isolation: isolate;
-      position: relative;            /* asegura contexto propio de apilado */
-    }
-    
-    /* 4) por si alguna regla externa aplica radios o bordes al header */
-    .topbar{
-      border-radius: 0 !important;
-      width: 100% !important;
-    }
+    .kpi{ min-height: 92px; }
+    .kpi .v{ white-space: nowrap; }
+    .chart-wrap{ isolation: isolate; position: relative; }
+    .topbar{ border-radius: 0 !important; width: 100% !important; }
   </style>
 </head>
 <body>
@@ -196,7 +185,9 @@
       <div><button id="btnClear">Limpiar</button></div>
     </div>
 
+    <!-- KPIs arriba (incluye % Abastecimiento) -->
     <div class="kpis">
+      <div class="kpi"><div class="l">% Abastecimiento (4 meses)</div><div class="v" id="kpiCov">–</div></div>
       <div class="kpi"><div class="l">Inventario actual</div><div class="v" id="kpiInv">–</div><span class="muted" id="kpiInvDate">–</span></div>
       <div class="kpi"><div class="l">Punto de Reorden (KB_min + SS)</div><div class="v" id="kpiKb">–</div></div>
       <div class="kpi"><div class="l">Inv. Crítico (95%)</div><div class="v" id="kpiCrit">–</div></div>
@@ -207,7 +198,7 @@
       <div>
         <div class="card chart-wrap"><canvas id="chart"></canvas></div>
 
-        <!-- Tarjetero de fórmulas -->
+        <!-- Tarjetero + Tabla de Dinámica de Proyección -->
         <div class="card" id="formulas">
           <div class="muted">Fórmulas</div>
           <div class="formula-cards">
@@ -232,6 +223,16 @@
               <div class="fc-formula" id="f_order">Si Q>0: I'_{t+L} = Î_{t+L} + Q</div>
             </div>
           </div>
+
+          <br/>
+          <div class="muted">Dinámica de proyección (45 días)</div>
+          <div class="proj-table-wrap">
+            <table id="projTbl">
+              <thead><tr><th>Fecha</th><th>d̂ (consumo)</th><th>Î (sin pedido)</th><th>I′ (con pedido)</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+
           <br/>
           <div class="muted">Definiciones</div>
           <ul class="formula" id="defs">
@@ -390,17 +391,35 @@ function simulate(inv0, dHat, q=0, lead=45){
   return {base, withOrder};
 }
 
-// Tabla (más reciente primero)
+// Tabla diaria (más reciente primero)
 function fillTable(tbody, serie){
-  tbody.innerHTML=''; for(let i=serie.length-1;i>=0;i--){ const p=serie[i];
-    const tr=document.createElement('tr'); tr.innerHTML=`<td>${p.fecha}</td><td>${fmtInt(p.inventario)}</td>`; tbody.appendChild(tr);
+  tbody.innerHTML='';
+  for(let i=serie.length-1;i>=0;i--){
+    const p=serie[i];
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td>${p.fecha}</td><td>${fmtInt(p.inventario)}</td>`;
+    tbody.appendChild(tr);
+  }
+}
+
+// Tabla de proyección (t+1 … t+45)
+function fillProjTable(tbody, dates, dHat, base, withOrder, lead, Q){
+  tbody.innerHTML='';
+  for(let i=0;i<dates.length;i++){
+    const note = (Number(Q)>0 && i===lead-1) ? ` (+${fmtInt(Q)})` : '';
+    const tr=document.createElement('tr');
+    tr.innerHTML = `<td>${dates[i]}</td><td>${fmtInt(Math.round(dHat[i]||0))}</td><td>${fmtInt(Math.round(base[i]||0))}</td><td>${fmtInt(Math.round(withOrder[i]||0))}${note}</td>`;
+    tbody.appendChild(tr);
   }
 }
 
 // KPIs
 function setKPIs(invLast, rop, sfty, lastDateISO, I0){
-  $('kpiInv').textContent=fmtInt(invLast); $('kpiInvDate').textContent= lastDateISO? `al ${lastDateISO}`:'';
-  $('kpiKb').textContent=fmtInt(rop); $('kpiCrit').textContent=fmtInt(sfty); $('kpiI0').textContent=fmtInt(Math.round(I0));
+  $('kpiInv').textContent=fmtInt(invLast);
+  $('kpiInvDate').textContent= lastDateISO? `al ${lastDateISO}`:'';
+  $('kpiKb').textContent=fmtInt(rop);
+  $('kpiCrit').textContent=fmtInt(sfty);
+  $('kpiI0').textContent=fmtInt(Math.round(I0));
 }
 
 // Indicadores laterales (con cobertura)
@@ -417,7 +436,6 @@ function setFormulas(mu, sigma, kb, sfty, I0, rop){
   $('fc_rop').textContent = fmtInt(Math.round(rop));
   $('fc_ss').textContent  = fmtInt(Math.round(sfty));
   $('fc_i0').textContent  = fmtInt(Math.round(I0));
-
   $('f_kb').textContent   = `ROP = μ_D × L + SS = ${fmtInt(Math.round(mu))} × ${LEAD} + ${fmtInt(Math.round(sfty))} = ${fmtInt(Math.round(rop))}`;
   $('f_sfty').textContent = `SS = z × σ_D × √L = 1.65 × ${fmtInt(Math.round(sigma))} × √${LEAD} = ${fmtInt(Math.round(sfty))}`;
   $('f_proj1').textContent= `I₀ = SMA_15(inventario) = ${fmtInt(Math.round(I0))}`;
@@ -456,7 +474,8 @@ async function init(){
   const modeSel=$('mode'), termInp=$('term'), lbl=$('lbl-term'), termWrap=$('termWrap'),
         groupSel=$('group'), qty=$('qty'), from=$('from'), to=$('to'),
         btn=$('btn'), btnClear=$('btnClear'), refreshBtn=$('refreshBtn'),
-        tbody=document.querySelector('#tbl tbody'), ctx=$('chart').getContext('2d');
+        tbody=document.querySelector('#tbl tbody'),
+        projTbody=document.querySelector('#projTbl tbody');
 
   const meta = await safeFetchList();
   codes = meta.codigos||[]; sups = meta.suministros||[]; groups=[''].concat(meta.grupos||[]);
@@ -480,7 +499,6 @@ async function init(){
 
   async function run(){
     setBtnState(btn,'is-loading'); btn.disabled = true;
-
     try{
       const mode=modeSel.value, group=groupSel.value, Q=Number(qty.value||0);
       const params={}; const fromV=from.value, toV=to.value;
@@ -499,14 +517,18 @@ async function init(){
       }
 
       const invHist = serie.map(p=>Number(p.inventario));
-      const lastVal = invHist[invHist.length-1]; const lastDateStr = serie[serie.length-1].fecha;
+      const lastVal = invHist[invHist.length-1];
+      const lastDateStr = serie[serie.length-1].fecha;
 
       // Consumo (decrementos)
       const cons=[]; for(let i=1;i<invHist.length;i++) cons.push(Math.max(invHist[i-1]-invHist[i],0));
 
       // Pronóstico demanda
       let dHat = ses(cons, 45, 0.3);
-      if(USE_SEASONAL){ const seas=seasonalityWeekly(cons,45,lastDateStr); if(seas) dHat=dHat.map((v,i)=>Math.max(v*seas[i],0)); }
+      if(USE_SEASONAL){
+        const seas=seasonalityWeekly(cons,45,lastDateStr);
+        if(seas) dHat=dHat.map((v,i)=>Math.max(v*seas[i],0));
+      }
 
       // Nivel inicial
       const I0 = smaLast(invHist, 15);
@@ -514,8 +536,9 @@ async function init(){
       // Simulación
       const {base, withOrder} = simulate(I0, dHat, Q, data.lead||LEAD);
 
-      // Fechas
-      const lastDate=new Date(lastDateStr), future=[]; for(let i=1;i<=45;i++){ const d=new Date(lastDate); d.setDate(d.getDate()+i); future.push(d.toISOString().slice(0,10));}
+      // Fechas futuras
+      const lastDate=new Date(lastDateStr), future=[];
+      for(let i=1;i<=45;i++){ const d=new Date(lastDate); d.setDate(d.getDate()+i); future.push(d.toISOString().slice(0,10));}
       const labels = serie.map(p=>p.fecha).concat(future);
 
       const histData = invHist.concat(Array(future.length).fill(null));
@@ -526,16 +549,20 @@ async function init(){
       const sfty = Number(data.inventario_critico||0); // SS
       const rop = kb + sfty;                            // ROP
 
-      // Tabla + KPIs
+      // KPIs superiores + tabla diaria
       fillTable(tbody, serie);
       setKPIs(lastVal, rop, sfty, lastDateStr, I0);
 
-      // Indicadores laterales (con cobertura 4M)
+      // Indicadores laterales (con cobertura 4M) y KPI % arriba
       const {pct: covPct, note: covNote} = coverageFourMonths(lastVal, serie, data.mu_d||0);
+      $('kpiCov').textContent = fmtPct(covPct);
       setSideMetrics(data.min_value||0, data.min_date||'', data.max_value||0, data.max_date||'', data.avg_30||0, covPct, covNote);
 
       // Tarjetero fórmulas
       setFormulas(data.mu_d||0, data.sigma_d||0, kb, sfty, I0, rop);
+
+      // Tabla de proyección (45 días)
+      fillProjTable(projTbody, future, dHat, base, withOrder, data.lead||LEAD, Q);
 
       // Título con código + nombre
       let graphTitle = '';
@@ -587,7 +614,9 @@ async function init(){
   $('btnClear').addEventListener('click', ()=>{
     modeSel.value='Suministro'; fillTerms(); if(sups.length>0) termInp.value=sups[0];
     groupSel.value=''; $('qty').value=0; from.value=meta.min_fecha||''; to.value=meta.max_fecha||'';
-    document.querySelector('#tbl tbody').innerHTML=''; setKPIs(0,0,0,'',0);
+    document.querySelector('#tbl tbody').innerHTML='';
+    document.querySelector('#projTbl tbody').innerHTML='';
+    setKPIs(0,0,0,'',0); $('kpiCov').textContent='–';
     setSideMetrics(0,'',0,'',0,0,''); setFormulas(0,0,0,0,0,0);
     if(chartInstance){ chartInstance.destroy(); chartInstance=null; }
     setBtnState(btn,''); btn.disabled=false;
@@ -622,29 +651,24 @@ async function init(){
 
 window.addEventListener('load', init);
 if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js').catch(()=>{}); }
+
 // Reestablece estado visual del header después de renderizar/actualizar el gráfico
-  function normalizeHeader(){
-    const tb = document.querySelector('.topbar');
-    if (!tb) return;
-    // en móvil, forzamos a no-sticky por si alguna clase quedó aplicada
-    if (window.innerWidth <= 720){
-      tb.classList.remove('topbar--hidden');  // por si quedó oculto
-      tb.style.position = 'static';
-      tb.style.transform = 'none';
-    }
+function normalizeHeader(){
+  const tb = document.querySelector('.topbar');
+  if (!tb) return;
+  if (window.innerWidth <= 720){
+    tb.classList.remove('topbar--hidden');
+    tb.style.position = 'static';
+    tb.style.transform = 'none';
   }
-  // Llamada después de cada ejecución de 'run()'
-  const _oldRun = (typeof init === 'function') ? null : null; // no toques nada
-  // Engancha a la función run ya definida
-  (function(){
-    const BTN = document.getElementById('btn');
-    const REF = document.getElementById('refreshBtn');
-    const _safe = (fn)=> fn && fn.addEventListener && fn.addEventListener('click', ()=> setTimeout(normalizeHeader, 0));
-    _safe(BTN); _safe(REF);
-    // también al terminar de cargar
-    window.addEventListener('load', ()=> setTimeout(normalizeHeader, 0));
-  })();
-  
+}
+(function(){
+  const BTN = document.getElementById('btn');
+  const REF = document.getElementById('refreshBtn');
+  const _safe = (fn)=> fn && fn.addEventListener && fn.addEventListener('click', ()=> setTimeout(normalizeHeader, 0));
+  _safe(BTN); _safe(REF);
+  window.addEventListener('load', ()=> setTimeout(normalizeHeader, 0));
+})();
 </script>
 </body>
 </html>
