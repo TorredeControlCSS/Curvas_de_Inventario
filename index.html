@@ -7,11 +7,10 @@
   <link rel="icon" href="icons/icon-512.png">
   <link rel="manifest" href="manifest.json">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-  <!-- Plugin para línea vertical del día de llegada (t+45) -->
   <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
   <style>
     :root{ --bg:#0b1f3a; --bg2:#133a74; --card:#ffffff; --muted:#6b7280; --ring:#e5e7eb;
-           --text:#0f172a; --sub:#334155; --border:#e5e7eb; --canvas:#f6f7fb; }
+           --text:#0f172a; --sub:#334155; --border:#e5e7eb; --canvas:#f6f7fb; --vh:1vh; }
     @media (prefers-color-scheme: dark){
       :root{ --bg:#0a1120; --bg2:#0f2142; --card:#0f172a; --muted:#94a3b8; --ring:#1f2937;
              --text:#e5e7eb; --sub:#cbd5e1; --border:#334155; --canvas:#0b1220; }
@@ -24,7 +23,7 @@
     *{box-sizing:border-box}
     body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,sans-serif;margin:0;background:var(--canvas);color:var(--text)}
 
-    /* Topbar base (desktop) */
+    /* Topbar base */
     .topbar{
       background:linear-gradient(90deg,var(--bg),var(--bg2)); color:#fff;
       padding:12px 14px; display:flex; align-items:center; gap:12px;
@@ -41,38 +40,17 @@
     .theme-select{padding:6px 8px;border:1px solid rgba(255,255,255,.25);border-radius:10px;background:transparent;color:#fff; min-width:110px}
     .net{font-size:12px;opacity:.85;margin-left:4px}
 
-    /* === Móvil: header en columnas (logo, título, acciones) === */
+    /* Móvil: header en columnas */
     @media (max-width: 720px){
-      .topbar{
-        display:flex !important;
-        flex-direction:column !important;
-        align-items:center !important;
-        justify-content:center !important;
-        gap:8px !important;
-        padding:10px !important;
-      }
-      .topbar img{
-        width: clamp(56px, 18vw, 80px) !important;
-        height: clamp(56px, 18vw, 80px) !important;
-        margin:0 !important;
-      }
-      .topbar .title{
-        display:block !important;
-        text-align:center !important;
-        margin:0 !important;
-      }
-      .topbar .top-actions{
-        width:100% !important;
-        display:grid !important;
-        grid-template-columns:1fr !important; /* una sola columna */
-        gap:8px !important;
-        justify-items:center !important;
-      }
-      .topbar .theme-select, .topbar .btn{
-        width:100% !important; max-width:360px !important;
-      }
+      .topbar{ display:flex !important; flex-direction:column !important; align-items:center !important; justify-content:center !important; gap:8px !important; padding:10px !important; }
+      .topbar img{ width: clamp(56px, 18vw, 80px) !important; height: clamp(56px, 18vw, 80px) !important; margin:0 !important; }
+      .topbar .title{ display:block !important; text-align:center !important; margin:0 !important; }
+      .topbar .top-actions{ width:100% !important; display:grid !important; grid-template-columns:1fr !important; gap:8px !important; justify-items:center !important; }
+      .topbar .theme-select, .topbar .btn{ width:100% !important; max-width:360px !important; }
       .net{ display:none !important; }
+      .topbar{ position: static !important; box-shadow: none; overflow-anchor: none; }
     }
+    .topbar{ border-radius: 0 !important; width: 100% !important; }
 
     .container{padding:14px;max-width:1400px;margin:0 auto}
     .filters{display:grid;grid-template-columns:120px 1fr 1fr 1fr 140px 140px 130px 120px;gap:8px;align-items:end;margin-bottom:12px}
@@ -85,8 +63,8 @@
     [data-theme="dark"] select,[data-theme="dark"] input{background:#0b1324;color:#e5e7eb;border-color:#334155}
     button.primary{background:#0b5fff;color:#fff;border-color:#0b5fff;font-weight:700}
 
-    /* KPIs: 5 columnas en desktop */
-    .kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-top:8px;margin-bottom:12px}
+    /* KPIs */
+    .kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-top:8px;margin-bottom:12px; grid-auto-rows:minmax(92px,auto)}
     @media (max-width:1024px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
     @media (max-width:520px){.kpis{grid-template-columns:1fr}}
     .kpi{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px;min-height:92px}
@@ -96,7 +74,14 @@
 
     .row{display:grid;grid-template-columns:2fr 1fr;gap:12px}
     @media (max-width:1024px){.row{grid-template-columns:1fr}}
-    .chart-wrap{height:420px; isolation:isolate; position:relative}
+
+    /* === ALTURA ESTABLE DEL GRÁFICO (usa --vh) === */
+    .chart-wrap{
+      height: clamp(280px, calc(var(--vh) * 58), 520px);
+      isolation:isolate;
+      position:relative;
+    }
+    @media (min-width:1024px){ .chart-wrap{ height: 420px; } }
 
     .side{display:grid;gap:10px;align-content:start}
     .metric{display:flex;justify-content:space-between;gap:12px;font-weight:700}
@@ -117,43 +102,10 @@
     .muted{color:var(--muted);font-size:12px}
     ul.formula{padding-left:18px}
 
-    /* Tabla de proyección (scroll propio) */
     .proj-table-wrap{ max-height:260px; overflow:auto; margin-top:8px; }
     .proj-table-wrap table{ width:100%; border-collapse:collapse; font-size:12px; }
     .proj-table-wrap th, .proj-table-wrap td{ border-bottom:1px solid var(--ring); padding:6px 8px; white-space:nowrap; }
     .proj-table-wrap thead th{ position:sticky; top:0; background:var(--card); z-index:1; }
-
-    /* --- FIX móvil header estable --- */
-    @media (max-width: 720px){
-      .topbar{ position: static !important; box-shadow: none; overflow-anchor: none; }
-    }
-    .topbar{ border-radius: 0 !important; width: 100% !important; }
-
-    /* Botón estados (si lo usas) */
-    button.primary.is-loading{ opacity:.9; pointer-events:none; position:relative; }
-    button.primary.is-loading::after{ content:''; width:14px; height:14px; border:2px solid currentColor; border-right-color:transparent; border-radius:50%; position:absolute; right:10px; top:50%; transform:translateY(-50%); animation:spin .9s linear infinite; }
-    @keyframes spin{ to{ transform:translateY(-50%) rotate(360deg) } }
-    button.primary.is-ok{ background:#16a34a; border-color:#16a34a; color:#fff; }
-    button.primary.is-error{ background:#dc2626; border-color:#dc2626; color:#fff; }
-  /* === Altura responsive del gráfico + ajustes grid KPIs === */
-    .kpis{ grid-auto-rows: minmax(92px, auto); }
-    
-    /* Altura del gráfico según el alto de pantalla, evitando “saltos” al rotar */
-    .chart-wrap{
-      height: clamp(320px, 58vh, 560px);
-      height: clamp(320px, 58dvh, 560px);
-      height: clamp(320px, 58vh, 560px);
-      isolation: isolate;            /* ya lo tenías, lo mantenemos */
-      position: relative;
-    }
-    
-    @media (max-width: 720px){
-      .chart-wrap{
-        height: clamp(280px, 58vh, 520px);
-        height: clamp(280px, 58dvh, 520px);
-        height: clamp(280px, 58vh, 520px);
-      }
-    }
   </style>
 </head>
 <body>
@@ -194,7 +146,6 @@
       <div><button id="btnClear">Limpiar</button></div>
     </div>
 
-    <!-- KPIs (incluye % Abastecimiento) -->
     <div class="kpis">
       <div class="kpi"><div class="l">% Abastecimiento (4 meses)</div><div class="v" id="kpiCov">–</div></div>
       <div class="kpi"><div class="l">Inventario actual</div><div class="v" id="kpiInv">–</div><span class="muted" id="kpiInvDate">–</span></div>
@@ -207,7 +158,6 @@
       <div>
         <div class="card chart-wrap"><canvas id="chart"></canvas></div>
 
-        <!-- Tarjetero + Tabla de Dinámica de Proyección -->
         <div class="card" id="formulas">
           <div class="muted">Fórmulas</div>
           <div class="formula-cards">
@@ -290,10 +240,7 @@ const fmtInt = (n)=> Number(n||0).toLocaleString();
 const fmtPct = (x)=> (Number.isFinite(x)? (Math.round(x*10)/10).toLocaleString(undefined,{maximumFractionDigits:1})+'%' : '–');
 const $ = (id)=> document.getElementById(id);
 
-// Registrar plugin de anotación si está disponible
-if (window['chartjs-plugin-annotation']) {
-  Chart.register(window['chartjs-plugin-annotation']);
-}
+if (window['chartjs-plugin-annotation']) { Chart.register(window['chartjs-plugin-annotation']); }
 
 function setBtnState(el, state){ el.classList.remove('is-loading','is-ok','is-error'); if(state) el.classList.add(state); }
 
@@ -303,8 +250,7 @@ function setBtnState(el, state){ el.classList.remove('is-loading','is-ok','is-er
   document.documentElement.setAttribute('data-theme', saved);
   $('theme').value = saved;
   $('theme').addEventListener('change', e=>{
-    const val = e.target.value;
-    localStorage.setItem('theme', val);
+    const val = e.target.value; localStorage.setItem('theme', val);
     document.documentElement.setAttribute('data-theme', val);
   });
 })();
@@ -373,12 +319,11 @@ function simulate(inv0, dHat, q=0, lead=45){
 function fillTable(tbody, serie){ tbody.innerHTML=''; for(let i=serie.length-1;i>=0;i--){ const p=serie[i]; const tr=document.createElement('tr'); tr.innerHTML=`<td>${p.fecha}</td><td>${fmtInt(p.inventario)}</td>`; tbody.appendChild(tr); } }
 function fillProjTable(tbody, dates, dHat, base, withOrder, lead, Q){ tbody.innerHTML=''; for(let i=0;i<dates.length;i++){ const note = (Number(Q)>0 && i===lead-1) ? ` (+${fmtInt(Q)})` : ''; const tr=document.createElement('tr'); tr.innerHTML = `<td>${dates[i]}</td><td>${fmtInt(Math.round(dHat[i]||0))}</td><td>${fmtInt(Math.round(base[i]||0))}</td><td>${fmtInt(Math.round(withOrder[i]||0))}${note}</td>`; tbody.appendChild(tr); } }
 
-// KPIs
+// KPIs y fórmulas
 function setKPIs(invLast, rop, sfty, lastDateISO, I0){ $('kpiInv').textContent=fmtInt(invLast); $('kpiInvDate').textContent= lastDateISO? `al ${lastDateISO}`:''; $('kpiKb').textContent=fmtInt(rop); $('kpiCrit').textContent=fmtInt(sfty); $('kpiI0').textContent=fmtInt(Math.round(I0)); }
 function setSideMetrics(minV,minD,maxV,maxD,avg30,coveragePct,coverageNote){ $('mCoverage').textContent = fmtPct(coveragePct); $('mCoverageNote').textContent = coverageNote || ''; $('mMin').textContent=fmtInt(minV);  $('mMinDate').textContent= minD?`en ${minD}`:''; $('mMax').textContent=fmtInt(maxV);  $('mMaxDate').textContent= maxD?`en ${maxD}`:''; $('mAvg30').textContent=fmtInt(avg30); }
 function setFormulas(mu, sigma, kb, sfty, I0, rop, H){ $('fc_rop').textContent = fmtInt(Math.round(rop)); $('fc_ss').textContent  = fmtInt(Math.round(sfty)); $('fc_i0').textContent  = fmtInt(Math.round(I0)); $('f_kb').textContent   = `ROP = μ_D × L + SS = ${fmtInt(Math.round(mu))} × ${LEAD} + ${fmtInt(Math.round(sfty))} = ${fmtInt(Math.round(rop))}`; $('f_sfty').textContent = `SS = z × σ_D × √L = 1.65 × ${fmtInt(Math.round(sigma))} × √${LEAD} = ${fmtInt(Math.round(sfty))}`; $('f_proj1').textContent= `I₀ = SMA_15(inventario) = ${fmtInt(Math.round(I0))}`; $('f_proj2').textContent= `Î_{t+h} = max(Î_{t+h−1} − d̂_h, 0), h=1..${H}; d̂ por SES(α=0.3), estacionalidad semanal: ${USE_SEASONAL ? 'activa' : 'inactiva'}`; }
 
-// % Abastecimiento (4 meses = 16 semanas)
 function coverageFourMonths(invLast, serie, mu_d){
   const n = serie.length; const rates = [];
   for(let i=1;i<n;i++){ const prev = serie[i-1], cur = serie[i]; const invDec = Math.max(Number(prev.inventario) - Number(cur.inventario), 0); const d1 = new Date(prev.fecha), d2 = new Date(cur.fecha); const days = Math.max( (d2 - d1)/(1000*60*60*24), 1 ); const rate = invDec / days; if (Number.isFinite(rate)) rates.push(rate); }
@@ -386,7 +331,7 @@ function coverageFourMonths(invLast, serie, mu_d){
   const weeklyExpected = dailyExpected * 7; const needFor4M = weeklyExpected * 16; const pct = needFor4M > 0 ? (invLast / needFor4M) * 100 : 0; const note = `Consumo semanal esperado ≈ ${fmtInt(Math.round(weeklyExpected))}. Requerido 4 meses ≈ ${fmtInt(Math.round(needFor4M))}.`; return {pct, note};
 }
 
-// INIT
+// === INIT ===
 async function init(){
   const modeSel=$('mode'), termInp=$('term'), lbl=$('lbl-term'), termWrap=$('termWrap'),
         groupSel=$('group'), qty=$('qty'), from=$('from'), to=$('to'),
@@ -456,13 +401,11 @@ async function init(){
       setFormulas(data.mu_d||0, data.sigma_d||0, kb, sfty, I0, rop, H);
       fillProjTable(projTbody, future, dHat, base, withOrder, data.lead||LEAD, Q);
 
-      // Título
       let graphTitle = '';
       if (data.subject_code && data.subject_name) graphTitle = `${data.subject_code} — ${data.subject_name}`;
       else if (data.subject_code) graphTitle = `Código: ${data.subject_code}`;
       else graphTitle = data.subject_label || 'Serie seleccionada';
 
-      // Actualiza título de la tabla de proyección con H dinámico
       $('projTitle').textContent = `Dinámica de proyección (${H} días)`;
 
       const ctx = document.getElementById('chart').getContext('2d');
@@ -486,37 +429,13 @@ async function init(){
               legend:{position:'bottom'},
               title:{display:true, text:graphTitle},
               tooltip:{callbacks:{label:(ctx)=>{ const v=ctx.parsed.y; return `${ctx.dataset.label}: ${Number.isFinite(v)? fmtInt(v):''}`; }}},
-              // Línea vertical del día de llegada
-              annotation: {
-                annotations: {
-                  arrival: {
-                    type: 'line',
-                    xMin: arrivalLabel,
-                    xMax: arrivalLabel,
-                    borderColor: 'rgba(160,160,160,0.8)',
-                    borderWidth: 1,
-                    borderDash: [6,4],
-                    label: {
-                      display: true,
-                      content: 'Llegada pedido (t+45)',
-                      position: 'start',
-                      backgroundColor: 'rgba(0,0,0,0.0)',
-                      color: '#666',
-                      rotation: -90,
-                      xAdjust: -6,
-                      yAdjust: 12
-                    }
-                  }
-                }
-              }
+              annotation: { annotations: { arrival: { type:'line', xMin:arrivalLabel, xMax:arrivalLabel, borderColor:'rgba(160,160,160,0.8)', borderWidth:1, borderDash:[6,4], label:{ display:true, content:'Llegada pedido (t+45)', position:'start', backgroundColor:'rgba(0,0,0,0.0)', color:'#666', rotation:-90, xAdjust:-6, yAdjust:12 } } } }
             },
             elements:{ line:{tension:0.2} }
           }
         });
-        // ✅ Normaliza layout tras el primer render del gráfico (móvil)
         window.chartInstance = chartInstance;
-        setTimeout(fixAfterRotate, 0);
-        
+        requestAnimationFrame(fixAfterRotate);
       }else{
         chartInstance.data.labels=labels;
         chartInstance.data.datasets[0].data=histData;
@@ -526,15 +445,13 @@ async function init(){
         chartInstance.data.datasets[3].data=Array(labels.length).fill(rop);
         chartInstance.data.datasets[4].data=Array(labels.length).fill(sfty);
         chartInstance.options.plugins.title.text=graphTitle;
-        // actualizar anotación
         if (chartInstance.options.plugins.annotation) {
           chartInstance.options.plugins.annotation.annotations.arrival.xMin = arrivalLabel;
           chartInstance.options.plugins.annotation.annotations.arrival.xMax = arrivalLabel;
         }
         chartInstance.update();
-          // ✅ Normaliza layout tras actualizar el gráfico (móvil)
         window.chartInstance = chartInstance;
-        setTimeout(fixAfterRotate, 0);
+        requestAnimationFrame(fixAfterRotate);
       }
 
       setBtnState(btn,'is-ok'); setTimeout(()=>{ setBtnState(btn,''); btn.disabled=false; }, 900);
@@ -559,7 +476,7 @@ async function init(){
   await run();
 }
 
-// Ocultar header al bajar / mostrar al subir (móvil)
+// Header móvil: ocultar/mostrar en scroll
 (function(){
   const tb = document.querySelector('.topbar'); if (!tb) return; let lastY = window.scrollY, hidden = false;
   function onScroll(){ const y = window.scrollY; const isMobile = window.innerWidth <= 720; if (!isMobile){ if (hidden){ tb.classList.remove('topbar--hidden'); hidden=false; } lastY = y; return; } if (y > lastY + 12 && y > 60 && !hidden){ tb.classList.add('topbar--hidden'); hidden = true; } else if (y < lastY - 12 && hidden){ tb.classList.remove('topbar--hidden'); hidden = false; } lastY = y; }
@@ -570,36 +487,31 @@ async function init(){
 window.addEventListener('load', init);
 if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js').catch(()=>{}); }
 
-// Normalizar header tras render
 function normalizeHeader(){ const tb = document.querySelector('.topbar'); if (!tb) return; if (window.innerWidth <= 720){ tb.classList.remove('topbar--hidden'); tb.style.position = 'static'; tb.style.transform = 'none'; } }
 (function(){ const BTN = document.getElementById('btn'); const REF = document.getElementById('refreshBtn'); const _safe = (fn)=> fn && fn.addEventListener && fn.addEventListener('click', ()=> setTimeout(normalizeHeader, 0)); _safe(BTN); _safe(REF); window.addEventListener('load', ()=> setTimeout(normalizeHeader, 0)); })();
-/* === Ajuste tras rotación/redimensionamiento === */
-function _vh(px){
-  const h = (window.visualViewport?.height || window.innerHeight || 600);
-  return Math.max(280, Math.min(560, Math.round(h * 0.58)));
+
+// === FIX MÓVIL: actualiza --vh y fuerza resize del chart ===
+function setVH(){
+  const vh = (window.visualViewport?.height || window.innerHeight) * 0.01;
+  document.documentElement.style.setProperty('--vh', `${vh}px`);
 }
 function fixAfterRotate(){
-  // 1) asegurar header en estado correcto
-  normalizeHeader && normalizeHeader();
+  setVH();
+  const c = window.chartInstance || chartInstance;
+  if (c && typeof c.resize === 'function'){ try{ c.resize(); }catch(_){} }
+}
+setVH();
+window.addEventListener('orientationchange', ()=> setTimeout(fixAfterRotate, 200));
+window.addEventListener('resize',             ()=> setTimeout(fixAfterRotate, 100));
+if (window.visualViewport){ window.visualViewport.addEventListener('resize', ()=> setTimeout(fixAfterRotate, 100)); }
 
-  // 2) recalcular altura del contenedor del chart
+// Observa el contenedor por cambios reales de tamaño
+window.addEventListener('load', ()=>{
   const wrap = document.querySelector('.chart-wrap');
-  if (wrap){
-    wrap.style.height = _vh() + 'px';
-  }
-
-  // 3) avisar a Chart.js que cambió el tamaño real
-  if (chartInstance && typeof chartInstance.resize === 'function'){
-    try{ chartInstance.resize(); }catch(e){}
-  }
-}
-
-// Dispara el fix en eventos que cambian el viewport real
-window.addEventListener('orientationchange', () => setTimeout(fixAfterRotate, 250));
-window.addEventListener('resize',             () => setTimeout(fixAfterRotate, 150));
-if (window.visualViewport){
-  window.visualViewport.addEventListener('resize', () => setTimeout(fixAfterRotate, 150));
-}
+  if (!wrap || !('ResizeObserver' in window)) return;
+  const ro = new ResizeObserver(()=>{ const c = window.chartInstance || chartInstance; if (c && typeof c.resize === 'function') c.resize(); });
+  ro.observe(wrap);
+});
 </script>
 </body>
 </html>
