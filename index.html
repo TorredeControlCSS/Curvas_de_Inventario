@@ -135,6 +135,21 @@
     @keyframes spin{ to{ transform:translateY(-50%) rotate(360deg) } }
     button.primary.is-ok{ background:#16a34a; border-color:#16a34a; color:#fff; }
     button.primary.is-error{ background:#dc2626; border-color:#dc2626; color:#fff; }
+  /* === Altura responsive del gráfico + ajustes grid KPIs === */
+    .kpis{ grid-auto-rows: minmax(92px, auto); }
+    
+    /* Altura del gráfico según el alto de pantalla, evitando “saltos” al rotar */
+    .chart-wrap{
+      height: clamp(320px, 58vh, 560px);
+      isolation: isolate;            /* ya lo tenías, lo mantenemos */
+      position: relative;
+    }
+    
+    @media (max-width: 720px){
+      .chart-wrap{
+        height: clamp(280px, 58vh, 520px);
+      }
+    }
   </style>
 </head>
 <body>
@@ -494,6 +509,9 @@ async function init(){
             elements:{ line:{tension:0.2} }
           }
         });
+        // ✅ Normaliza layout tras el primer render del gráfico (móvil)
+        setTimeout(fixAfterRotate, 0);
+        
       }else{
         chartInstance.data.labels=labels;
         chartInstance.data.datasets[0].data=histData;
@@ -509,6 +527,8 @@ async function init(){
           chartInstance.options.plugins.annotation.annotations.arrival.xMax = arrivalLabel;
         }
         chartInstance.update();
+          // ✅ Normaliza layout tras actualizar el gráfico (móvil)
+        setTimeout(fixAfterRotate, 0);
       }
 
       setBtnState(btn,'is-ok'); setTimeout(()=>{ setBtnState(btn,''); btn.disabled=false; }, 900);
@@ -547,6 +567,33 @@ if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js').catc
 // Normalizar header tras render
 function normalizeHeader(){ const tb = document.querySelector('.topbar'); if (!tb) return; if (window.innerWidth <= 720){ tb.classList.remove('topbar--hidden'); tb.style.position = 'static'; tb.style.transform = 'none'; } }
 (function(){ const BTN = document.getElementById('btn'); const REF = document.getElementById('refreshBtn'); const _safe = (fn)=> fn && fn.addEventListener && fn.addEventListener('click', ()=> setTimeout(normalizeHeader, 0)); _safe(BTN); _safe(REF); window.addEventListener('load', ()=> setTimeout(normalizeHeader, 0)); })();
+/* === Ajuste tras rotación/redimensionamiento === */
+function _vh(px){
+  const h = (window.visualViewport?.height || window.innerHeight || 600);
+  return Math.max(280, Math.min(560, Math.round(h * 0.58)));
+}
+function fixAfterRotate(){
+  // 1) asegurar header en estado correcto
+  normalizeHeader && normalizeHeader();
+
+  // 2) recalcular altura del contenedor del chart
+  const wrap = document.querySelector('.chart-wrap');
+  if (wrap){
+    wrap.style.height = _vh() + 'px';
+  }
+
+  // 3) avisar a Chart.js que cambió el tamaño real
+  if (window.chartInstance && typeof window.chartInstance.resize === 'function'){
+    try{ window.chartInstance.resize(); }catch(e){}
+  }
+}
+
+// Dispara el fix en eventos que cambian el viewport real
+window.addEventListener('orientationchange', () => setTimeout(fixAfterRotate, 250));
+window.addEventListener('resize',             () => setTimeout(fixAfterRotate, 150));
+if (window.visualViewport){
+  window.visualViewport.addEventListener('resize', () => setTimeout(fixAfterRotate, 150));
+}
 </script>
 </body>
 </html>
