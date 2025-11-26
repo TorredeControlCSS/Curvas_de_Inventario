@@ -7,6 +7,8 @@
   <link rel="icon" href="icons/icon-512.png">
   <link rel="manifest" href="manifest.json">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <!-- Plugin para línea vertical del día de llegada (t+45) -->
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
   <style>
     :root{ --bg:#0b1f3a; --bg2:#133a74; --card:#ffffff; --muted:#6b7280; --ring:#e5e7eb;
            --text:#0f172a; --sub:#334155; --border:#e5e7eb; --canvas:#f6f7fb; }
@@ -83,18 +85,18 @@
     [data-theme="dark"] select,[data-theme="dark"] input{background:#0b1324;color:#e5e7eb;border-color:#334155}
     button.primary{background:#0b5fff;color:#fff;border-color:#0b5fff;font-weight:700}
 
-    /* KPIs: ahora 5 columnas en desktop */
+    /* KPIs: 5 columnas en desktop */
     .kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-top:8px;margin-bottom:12px}
     @media (max-width:1024px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
     @media (max-width:520px){.kpis{grid-template-columns:1fr}}
-    .kpi{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px;min-height:72px}
-    .kpi .v{font-size:clamp(18px, 5.2vw, 22px); font-weight:800; line-height:1.15; word-break:break-word}
+    .kpi{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px;min-height:92px}
+    .kpi .v{font-size:clamp(18px, 5.2vw, 22px); font-weight:800; line-height:1.15; white-space:nowrap}
     .kpi .l{font-size:12px;color:var(--sub)}
     .kpi .muted{display:block;margin-top:4px}
 
     .row{display:grid;grid-template-columns:2fr 1fr;gap:12px}
     @media (max-width:1024px){.row{grid-template-columns:1fr}}
-    .chart-wrap{height:420px}
+    .chart-wrap{height:420px; isolation:isolate; position:relative}
 
     .side{display:grid;gap:10px;align-content:start}
     .metric{display:flex;justify-content:space-between;gap:12px;font-weight:700}
@@ -121,30 +123,18 @@
     .proj-table-wrap th, .proj-table-wrap td{ border-bottom:1px solid var(--ring); padding:6px 8px; white-space:nowrap; }
     .proj-table-wrap thead th{ position:sticky; top:0; background:var(--card); z-index:1; }
 
-    /* Estados del botón “Mostrar” (por si luego lo repones en filtros) */
-    button.primary.is-loading{ opacity:.9; pointer-events:none; position:relative; }
-    button.primary.is-loading::after{
-      content:''; width:14px; height:14px;
-      border:2px solid currentColor; border-right-color:transparent;
-      border-radius:50%; position:absolute; right:10px; top:50%;
-      transform:translateY(-50%); animation:spin .9s linear infinite;
+    /* --- FIX móvil header estable --- */
+    @media (max-width: 720px){
+      .topbar{ position: static !important; box-shadow: none; overflow-anchor: none; }
     }
+    .topbar{ border-radius: 0 !important; width: 100% !important; }
+
+    /* Botón estados (si lo usas) */
+    button.primary.is-loading{ opacity:.9; pointer-events:none; position:relative; }
+    button.primary.is-loading::after{ content:''; width:14px; height:14px; border:2px solid currentColor; border-right-color:transparent; border-radius:50%; position:absolute; right:10px; top:50%; transform:translateY(-50%); animation:spin .9s linear infinite; }
     @keyframes spin{ to{ transform:translateY(-50%) rotate(360deg) } }
     button.primary.is-ok{ background:#16a34a; border-color:#16a34a; color:#fff; }
     button.primary.is-error{ background:#dc2626; border-color:#dc2626; color:#fff; }
-
-    /* --- FIX móvil: header estable y sin solapes cuando se renderiza el chart --- */
-    @media (max-width: 720px){
-      .topbar{
-        position: static !important;
-        box-shadow: none;
-        overflow-anchor: none;
-      }
-    }
-    .kpi{ min-height: 92px; }
-    .kpi .v{ white-space: nowrap; }
-    .chart-wrap{ isolation: isolate; position: relative; }
-    .topbar{ border-radius: 0 !important; width: 100% !important; }
   </style>
 </head>
 <body>
@@ -185,7 +175,7 @@
       <div><button id="btnClear">Limpiar</button></div>
     </div>
 
-    <!-- KPIs arriba (incluye % Abastecimiento) -->
+    <!-- KPIs (incluye % Abastecimiento) -->
     <div class="kpis">
       <div class="kpi"><div class="l">% Abastecimiento (4 meses)</div><div class="v" id="kpiCov">–</div></div>
       <div class="kpi"><div class="l">Inventario actual</div><div class="v" id="kpiInv">–</div><span class="muted" id="kpiInvDate">–</span></div>
@@ -225,7 +215,7 @@
           </div>
 
           <br/>
-          <div class="muted">Dinámica de proyección (45 días)</div>
+          <div class="muted" id="projTitle">Dinámica de proyección (45 días)</div>
           <div class="proj-table-wrap">
             <table id="projTbl">
               <thead><tr><th>Fecha</th><th>d̂ (consumo)</th><th>Î (sin pedido)</th><th>I′ (con pedido)</th></tr></thead>
@@ -268,8 +258,11 @@
   </div>
 
 <script>
+// === Config ===
 const API_BASE = 'https://script.google.com/macros/s/AKfycbwqqOM5YIaNDtSOczNTMJ51s-WVDOjqTqQbKwub44K9tScLM3itznTrbDLUuqbs599REg/exec';
 const LEAD = 45, TYPEAHEAD_LIMIT = 100, USE_SEASONAL = true;
+const EXTRA_AFTER_ORDER = 30; // días extra cuando hay Q>0
+const horizon = (Q)=> Number(Q) > 0 ? LEAD + EXTRA_AFTER_ORDER : LEAD;
 
 let chartInstance=null, deferredPrompt=null;
 let codes=[], sups=[], groups=[];
@@ -278,11 +271,12 @@ const fmtInt = (n)=> Number(n||0).toLocaleString();
 const fmtPct = (x)=> (Number.isFinite(x)? (Math.round(x*10)/10).toLocaleString(undefined,{maximumFractionDigits:1})+'%' : '–');
 const $ = (id)=> document.getElementById(id);
 
-// estado del botón "Mostrar"
-function setBtnState(el, state){
-  el.classList.remove('is-loading','is-ok','is-error');
-  if(state) el.classList.add(state);
+// Registrar plugin de anotación si está disponible
+if (window['chartjs-plugin-annotation']) {
+  Chart.register(window['chartjs-plugin-annotation']);
 }
+
+function setBtnState(el, state){ el.classList.remove('is-loading','is-ok','is-error'); if(state) el.classList.add(state); }
 
 // Tema
 (function(){
@@ -297,14 +291,8 @@ function setBtnState(el, state){
 })();
 
 // PWA install
-window.addEventListener('beforeinstallprompt', e=>{
-  e.preventDefault(); deferredPrompt=e; $('installBtn').classList.remove('hidden');
-});
-$('installBtn').addEventListener('click', async ()=>{
-  if (!deferredPrompt) return;
-  deferredPrompt.prompt(); await deferredPrompt.userChoice;
-  $('installBtn').classList.add('hidden'); deferredPrompt=null;
-});
+window.addEventListener('beforeinstallprompt', e=>{ e.preventDefault(); deferredPrompt=e; $('installBtn').classList.remove('hidden'); });
+$('installBtn').addEventListener('click', async ()=>{ if (!deferredPrompt) return; deferredPrompt.prompt(); await deferredPrompt.userChoice; $('installBtn').classList.add('hidden'); deferredPrompt=null; });
 window.addEventListener('appinstalled', ()=> $('installBtn').classList.add('hidden'));
 
 // Red
@@ -315,33 +303,16 @@ if (!navigator.onLine) setNet('Sin conexión');
 
 // Fetch robusto
 async function fetchRetry(url, opts={}, retries=3, backoff=800){
-  try{
-    const r = await fetch(url, {...opts, cache:'no-store'});
-    if (!r.ok) throw new Error("HTTP " + r.status);
-    return r;
-  }catch(e){
-    if (retries<=0) throw e;
-    await new Promise(res=>setTimeout(res, backoff));
-    return fetchRetry(url, opts, retries-1, backoff*1.8);
-  }
+  try{ const r = await fetch(url, {...opts, cache:'no-store'}); if (!r.ok) throw new Error('HTTP '+r.status); return r; }
+  catch(e){ if (retries<=0) throw e; await new Promise(res=>setTimeout(res, backoff)); return fetchRetry(url, opts, retries-1, backoff*1.8); }
 }
 async function fetchJSON(url){ const r = await fetchRetry(url); return r.json(); }
 
 async function safeFetchList(){
-  try{
-    const data = await fetchJSON(API_BASE + '?list=true&ts=' + Date.now());
-    localStorage.setItem('metaCache', JSON.stringify({t:Date.now(), data}));
-    return data;
-  }catch(e){
-    const c = localStorage.getItem('metaCache');
-    if (c){ console.warn('Usando metaCache', e); setNet('Sin conexión (caché)'); return JSON.parse(c).data; }
-    throw e;
-  }
+  try{ const data = await fetchJSON(API_BASE + '?list=true&ts=' + Date.now()); localStorage.setItem('metaCache', JSON.stringify({t:Date.now(), data})); return data; }
+  catch(e){ const c = localStorage.getItem('metaCache'); if (c){ console.warn('Usando metaCache', e); setNet('Sin conexión (caché)'); return JSON.parse(c).data; } throw e; }
 }
-async function safeFetchSerie(params){
-  const p = new URLSearchParams(params); p.set('ts', Date.now());
-  return fetchJSON(API_BASE + '?' + p.toString());
-}
+async function safeFetchSerie(params){ const p = new URLSearchParams(params); p.set('ts', Date.now()); return fetchJSON(API_BASE + '?' + p.toString()); }
 
 // Typeahead
 function fillDatalist(arr, q=''){
@@ -356,33 +327,21 @@ function fillDatalist(arr, q=''){
   dl.innerHTML = suggestions.map(v => `<option value="${v}"></option>`).join('');
 }
 
-// Stats
+// Stats helpers
 const mean = (a)=> a.length ? a.reduce((x,y)=>x+Number(y||0),0)/a.length : 0;
 function smaLast(arr, k){
-  const n=arr.length; if(!n) return 0;
-  const slice = arr.slice(Math.max(0,n-k)).map(Number).filter(Number.isFinite);
-  if (!slice.length) return 0;
-  if (slice.length>=3){ const s=[...slice].sort((a,b)=>a-b); s.shift(); s.pop(); return mean(s); }
-  return mean(slice);
+  const n=arr.length; if(!n) return 0; const slice = arr.slice(Math.max(0,n-k)).map(Number).filter(Number.isFinite);
+  if (!slice.length) return 0; if (slice.length>=3){ const s=[...slice].sort((a,b)=>a-b); s.shift(); s.pop(); return mean(s); } return mean(slice);
 }
 function seasonalityWeekly(cons, H, lastDateISO){
-  const n=cons.length; if(n<14) return null;
-  const lastDate=new Date(lastDateISO), weekdayLast=lastDate.getDay();
+  const n=cons.length; if(n<14) return null; const lastDate=new Date(lastDateISO), weekdayLast=lastDate.getDay();
   const wkIdx=new Array(n); for(let i=n-1,w=weekdayLast;i>=0;i--,w=(w-1+7)%7) wkIdx[i]=w;
   const sums=Array(7).fill(0), cnt=Array(7).fill(0);
   for(let i=0;i<n;i++){ const w=wkIdx[i]; sums[w]+=Number(cons[i]||0); cnt[w]+=1; }
-  const avgW = sums.map((s,i)=> cnt[i]? s/cnt[i]:0);
-  const grand = mean(avgW.filter(v=>v>0)) || 1;
-  const factors = avgW.map(v=> v>0 ? v/grand : 1);
-  const startW=(weekdayLast+1)%7, season=new Array(H);
-  for(let h=0;h<H;h++) season[h]=factors[(startW+h)%7]||1;
-  return season;
+  const avgW = sums.map((s,i)=> cnt[i]? s/cnt[i]:0); const grand = mean(avgW.filter(v=>v>0)) || 1; const factors = avgW.map(v=> v>0 ? v/grand : 1);
+  const startW=(weekdayLast+1)%7, season=new Array(H); for(let h=0;h<H;h++) season[h]=factors[(startW+h)%7]||1; return season;
 }
-function ses(cons, H, alpha=0.3){
-  if(!cons.length) return Array(H).fill(0);
-  let s=cons[0]; for(let i=1;i<cons.length;i++) s = alpha*cons[i]+(1-alpha)*s;
-  return Array(H).fill(s);
-}
+function ses(cons, H, alpha=0.3){ if(!cons.length) return Array(H).fill(0); let s=cons[0]; for(let i=1;i<cons.length;i++) s = alpha*cons[i]+(1-alpha)*s; return Array(H).fill(s); }
 function simulate(inv0, dHat, q=0, lead=45){
   const H=dHat.length, base=new Array(H), withOrder=new Array(H);
   for(let h=0;h<H;h++) base[h]= h? Math.max(base[h-1]-dHat[h],0) : Math.max(inv0-dHat[0],0);
@@ -391,82 +350,21 @@ function simulate(inv0, dHat, q=0, lead=45){
   return {base, withOrder};
 }
 
-// Tabla diaria (más reciente primero)
-function fillTable(tbody, serie){
-  tbody.innerHTML='';
-  for(let i=serie.length-1;i>=0;i--){
-    const p=serie[i];
-    const tr=document.createElement('tr');
-    tr.innerHTML=`<td>${p.fecha}</td><td>${fmtInt(p.inventario)}</td>`;
-    tbody.appendChild(tr);
-  }
-}
-
-// Tabla de proyección (t+1 … t+45)
-function fillProjTable(tbody, dates, dHat, base, withOrder, lead, Q){
-  tbody.innerHTML='';
-  for(let i=0;i<dates.length;i++){
-    const note = (Number(Q)>0 && i===lead-1) ? ` (+${fmtInt(Q)})` : '';
-    const tr=document.createElement('tr');
-    tr.innerHTML = `<td>${dates[i]}</td><td>${fmtInt(Math.round(dHat[i]||0))}</td><td>${fmtInt(Math.round(base[i]||0))}</td><td>${fmtInt(Math.round(withOrder[i]||0))}${note}</td>`;
-    tbody.appendChild(tr);
-  }
-}
+// Tablas
+function fillTable(tbody, serie){ tbody.innerHTML=''; for(let i=serie.length-1;i>=0;i--){ const p=serie[i]; const tr=document.createElement('tr'); tr.innerHTML=`<td>${p.fecha}</td><td>${fmtInt(p.inventario)}</td>`; tbody.appendChild(tr); } }
+function fillProjTable(tbody, dates, dHat, base, withOrder, lead, Q){ tbody.innerHTML=''; for(let i=0;i<dates.length;i++){ const note = (Number(Q)>0 && i===lead-1) ? ` (+${fmtInt(Q)})` : ''; const tr=document.createElement('tr'); tr.innerHTML = `<td>${dates[i]}</td><td>${fmtInt(Math.round(dHat[i]||0))}</td><td>${fmtInt(Math.round(base[i]||0))}</td><td>${fmtInt(Math.round(withOrder[i]||0))}${note}</td>`; tbody.appendChild(tr); } }
 
 // KPIs
-function setKPIs(invLast, rop, sfty, lastDateISO, I0){
-  $('kpiInv').textContent=fmtInt(invLast);
-  $('kpiInvDate').textContent= lastDateISO? `al ${lastDateISO}`:'';
-  $('kpiKb').textContent=fmtInt(rop);
-  $('kpiCrit').textContent=fmtInt(sfty);
-  $('kpiI0').textContent=fmtInt(Math.round(I0));
-}
-
-// Indicadores laterales (con cobertura)
-function setSideMetrics(minV,minD,maxV,maxD,avg30,coveragePct,coverageNote){
-  $('mCoverage').textContent = fmtPct(coveragePct);
-  $('mCoverageNote').textContent = coverageNote || '';
-  $('mMin').textContent=fmtInt(minV);  $('mMinDate').textContent= minD?`en ${minD}`:'';
-  $('mMax').textContent=fmtInt(maxV);  $('mMaxDate').textContent= maxD?`en ${maxD}`:'';
-  $('mAvg30').textContent=fmtInt(avg30);
-}
-
-// Tarjetero (resultados y fórmulas)
-function setFormulas(mu, sigma, kb, sfty, I0, rop){
-  $('fc_rop').textContent = fmtInt(Math.round(rop));
-  $('fc_ss').textContent  = fmtInt(Math.round(sfty));
-  $('fc_i0').textContent  = fmtInt(Math.round(I0));
-  $('f_kb').textContent   = `ROP = μ_D × L + SS = ${fmtInt(Math.round(mu))} × ${LEAD} + ${fmtInt(Math.round(sfty))} = ${fmtInt(Math.round(rop))}`;
-  $('f_sfty').textContent = `SS = z × σ_D × √L = 1.65 × ${fmtInt(Math.round(sigma))} × √${LEAD} = ${fmtInt(Math.round(sfty))}`;
-  $('f_proj1').textContent= `I₀ = SMA_15(inventario) = ${fmtInt(Math.round(I0))}`;
-  $('f_proj2').textContent= `Î_{t+h} = max(Î_{t+h−1} − d̂_h, 0), h=1..45; d̂ por SES(α=0.3), estacionalidad semanal: ${USE_SEASONAL ? 'activa' : 'inactiva'}`;
-}
+function setKPIs(invLast, rop, sfty, lastDateISO, I0){ $('kpiInv').textContent=fmtInt(invLast); $('kpiInvDate').textContent= lastDateISO? `al ${lastDateISO}`:''; $('kpiKb').textContent=fmtInt(rop); $('kpiCrit').textContent=fmtInt(sfty); $('kpiI0').textContent=fmtInt(Math.round(I0)); }
+function setSideMetrics(minV,minD,maxV,maxD,avg30,coveragePct,coverageNote){ $('mCoverage').textContent = fmtPct(coveragePct); $('mCoverageNote').textContent = coverageNote || ''; $('mMin').textContent=fmtInt(minV);  $('mMinDate').textContent= minD?`en ${minD}`:''; $('mMax').textContent=fmtInt(maxV);  $('mMaxDate').textContent= maxD?`en ${maxD}`:''; $('mAvg30').textContent=fmtInt(avg30); }
+function setFormulas(mu, sigma, kb, sfty, I0, rop, H){ $('fc_rop').textContent = fmtInt(Math.round(rop)); $('fc_ss').textContent  = fmtInt(Math.round(sfty)); $('fc_i0').textContent  = fmtInt(Math.round(I0)); $('f_kb').textContent   = `ROP = μ_D × L + SS = ${fmtInt(Math.round(mu))} × ${LEAD} + ${fmtInt(Math.round(sfty))} = ${fmtInt(Math.round(rop))}`; $('f_sfty').textContent = `SS = z × σ_D × √L = 1.65 × ${fmtInt(Math.round(sigma))} × √${LEAD} = ${fmtInt(Math.round(sfty))}`; $('f_proj1').textContent= `I₀ = SMA_15(inventario) = ${fmtInt(Math.round(I0))}`; $('f_proj2').textContent= `Î_{t+h} = max(Î_{t+h−1} − d̂_h, 0), h=1..${H}; d̂ por SES(α=0.3), estacionalidad semanal: ${USE_SEASONAL ? 'activa' : 'inactiva'}`; }
 
 // % Abastecimiento (4 meses = 16 semanas)
 function coverageFourMonths(invLast, serie, mu_d){
-  const n = serie.length;
-  const rates = [];
-  for(let i=1;i<n;i++){
-    const prev = serie[i-1], cur = serie[i];
-    const invDec = Math.max(Number(prev.inventario) - Number(cur.inventario), 0);
-    const d1 = new Date(prev.fecha), d2 = new Date(cur.fecha);
-    const days = Math.max( (d2 - d1)/(1000*60*60*24), 1 );
-    const rate = invDec / days;
-    if (Number.isFinite(rate)) rates.push(rate);
-  }
-  let dailyExpected;
-  if (rates.length >= 8){
-    const recent = rates.slice(-Math.min(rates.length, 56));
-    if (recent.length >= 5){ const s=[...recent].sort((a,b)=>a-b); s.shift(); s.pop(); dailyExpected = mean(s); }
-    else { dailyExpected = mean(recent); }
-  } else {
-    dailyExpected = Number(mu_d||0);
-  }
-  const weeklyExpected = dailyExpected * 7;
-  const needFor4M = weeklyExpected * 16;
-  const pct = needFor4M > 0 ? (invLast / needFor4M) * 100 : 0;
-  const note = `Consumo semanal esperado ≈ ${fmtInt(Math.round(weeklyExpected))}. Requerido 4 meses ≈ ${fmtInt(Math.round(needFor4M))}.`;
-  return {pct, note};
+  const n = serie.length; const rates = [];
+  for(let i=1;i<n;i++){ const prev = serie[i-1], cur = serie[i]; const invDec = Math.max(Number(prev.inventario) - Number(cur.inventario), 0); const d1 = new Date(prev.fecha), d2 = new Date(cur.fecha); const days = Math.max( (d2 - d1)/(1000*60*60*24), 1 ); const rate = invDec / days; if (Number.isFinite(rate)) rates.push(rate); }
+  let dailyExpected; if (rates.length >= 8){ const recent = rates.slice(-Math.min(rates.length, 56)); if (recent.length >= 5){ const s=[...recent].sort((a,b)=>a-b); s.shift(); s.pop(); dailyExpected = s.reduce((a,b)=>a+b,0)/s.length; } else dailyExpected = recent.reduce((a,b)=>a+b,0)/recent.length; } else dailyExpected = Number(mu_d||0);
+  const weeklyExpected = dailyExpected * 7; const needFor4M = weeklyExpected * 16; const pct = needFor4M > 0 ? (invLast / needFor4M) * 100 : 0; const note = `Consumo semanal esperado ≈ ${fmtInt(Math.round(weeklyExpected))}. Requerido 4 meses ≈ ${fmtInt(Math.round(needFor4M))}.`; return {pct, note};
 }
 
 // INIT
@@ -489,10 +387,7 @@ async function init(){
     else { termWrap.classList.add('hidden'); termInp.value=''; }
   }
   modeSel.addEventListener('change', fillTerms);
-  termInp.addEventListener('input', e=>{
-    const arr = (modeSel.value==='Código')? codes : sups;
-    fillDatalist(arr, e.target.value||'');
-  });
+  termInp.addEventListener('input', e=>{ const arr = (modeSel.value==='Código')? codes : sups; fillDatalist(arr, e.target.value||''); });
 
   // Por defecto: Suministro + primer valor
   modeSel.value='Suministro'; fillTerms(); if (sups.length>0) termInp.value = sups[0];
@@ -501,6 +396,7 @@ async function init(){
     setBtnState(btn,'is-loading'); btn.disabled = true;
     try{
       const mode=modeSel.value, group=groupSel.value, Q=Number(qty.value||0);
+      const H = horizon(Q);
       const params={}; const fromV=from.value, toV=to.value;
       if(mode==='Código') params.codigo=termInp.value;
       if(mode==='Suministro') params.suministro=termInp.value;
@@ -510,35 +406,17 @@ async function init(){
 
       const data = await safeFetchSerie(params);
       const serie = data.serie||[];
-      if(!serie.length){
-        alert('Sin datos para esa selección/filtro.');
-        setBtnState(btn,'is-error'); setTimeout(()=>{ setBtnState(btn,''); btn.disabled=false; }, 900);
-        return;
-      }
+      if(!serie.length){ alert('Sin datos para esa selección/filtro.'); setBtnState(btn,'is-error'); setTimeout(()=>{ setBtnState(btn,''); btn.disabled=false; }, 900); return; }
 
       const invHist = serie.map(p=>Number(p.inventario));
-      const lastVal = invHist[invHist.length-1];
-      const lastDateStr = serie[serie.length-1].fecha;
+      const lastVal = invHist[invHist.length-1]; const lastDateStr = serie[serie.length-1].fecha;
 
-      // Consumo (decrementos)
       const cons=[]; for(let i=1;i<invHist.length;i++) cons.push(Math.max(invHist[i-1]-invHist[i],0));
-
-      // Pronóstico demanda
-      let dHat = ses(cons, 45, 0.3);
-      if(USE_SEASONAL){
-        const seas=seasonalityWeekly(cons,45,lastDateStr);
-        if(seas) dHat=dHat.map((v,i)=>Math.max(v*seas[i],0));
-      }
-
-      // Nivel inicial
+      let dHat = ses(cons, H, 0.3); if(USE_SEASONAL){ const seas=seasonalityWeekly(cons,H,lastDateStr); if(seas) dHat=dHat.map((v,i)=>Math.max(v*seas[i],0)); }
       const I0 = smaLast(invHist, 15);
-
-      // Simulación
       const {base, withOrder} = simulate(I0, dHat, Q, data.lead||LEAD);
 
-      // Fechas futuras
-      const lastDate=new Date(lastDateStr), future=[];
-      for(let i=1;i<=45;i++){ const d=new Date(lastDate); d.setDate(d.getDate()+i); future.push(d.toISOString().slice(0,10));}
+      const lastDate=new Date(lastDateStr), future=[]; for(let i=1;i<=H;i++){ const d=new Date(lastDate); d.setDate(d.getDate()+i); future.push(d.toISOString().slice(0,10));}
       const labels = serie.map(p=>p.fecha).concat(future);
 
       const histData = invHist.concat(Array(future.length).fill(null));
@@ -549,34 +427,34 @@ async function init(){
       const sfty = Number(data.inventario_critico||0); // SS
       const rop = kb + sfty;                            // ROP
 
-      // KPIs superiores + tabla diaria
       fillTable(tbody, serie);
       setKPIs(lastVal, rop, sfty, lastDateStr, I0);
 
-      // Indicadores laterales (con cobertura 4M) y KPI % arriba
       const {pct: covPct, note: covNote} = coverageFourMonths(lastVal, serie, data.mu_d||0);
       $('kpiCov').textContent = fmtPct(covPct);
       setSideMetrics(data.min_value||0, data.min_date||'', data.max_value||0, data.max_date||'', data.avg_30||0, covPct, covNote);
 
-      // Tarjetero fórmulas
-      setFormulas(data.mu_d||0, data.sigma_d||0, kb, sfty, I0, rop);
-
-      // Tabla de proyección (45 días)
+      setFormulas(data.mu_d||0, data.sigma_d||0, kb, sfty, I0, rop, H);
       fillProjTable(projTbody, future, dHat, base, withOrder, data.lead||LEAD, Q);
 
-      // Título con código + nombre
+      // Título
       let graphTitle = '';
       if (data.subject_code && data.subject_name) graphTitle = `${data.subject_code} — ${data.subject_name}`;
       else if (data.subject_code) graphTitle = `Código: ${data.subject_code}`;
       else graphTitle = data.subject_label || 'Serie seleccionada';
 
+      // Actualiza título de la tabla de proyección con H dinámico
+      $('projTitle').textContent = `Dinámica de proyección (${H} días)`;
+
       const ctx = document.getElementById('chart').getContext('2d');
+      const arrivalLabel = future[Math.min((data.lead||LEAD)-1, future.length-1)];
+
       if(!chartInstance){
         chartInstance = new Chart(ctx, {
           type:'line',
           data:{ labels, datasets:[
             {label:'Inventario histórico', data:histData, fill:true, pointRadius:0},
-            {label:'Proyección 45 días', data:projData, fill:true, pointRadius:0},
+            {label:`Proyección ${H} días`, data:projData, fill:true, pointRadius:0},
             {label:'Proyección + pedido', data:projPlusData, fill:true, pointRadius:0},
             {label:'Punto de Reorden (KB_min+SS)', data:Array(labels.length).fill(rop), pointRadius:0, borderDash:[4,4], fill:false},
             {label:'Inventario Crítico', data:Array(labels.length).fill(sfty), pointRadius:0, borderDash:[4,2], fill:false}
@@ -585,19 +463,51 @@ async function init(){
             responsive:true, maintainAspectRatio:false, animation:false,
             interaction:{mode:'nearest',intersect:false},
             scales:{ y:{beginAtZero:true,title:{display:true,text:'Cantidad'},ticks:{callback:v=>new Intl.NumberFormat().format(v)}}, x:{ticks:{maxRotation:0,autoSkipPadding:20}} },
-            plugins:{ legend:{position:'bottom'}, title:{display:true, text:graphTitle},
-              tooltip:{callbacks:{label:(ctx)=>{ const v=ctx.parsed.y; return `${ctx.dataset.label}: ${Number.isFinite(v)? fmtInt(v):''}`; }}} },
+            plugins:{
+              legend:{position:'bottom'},
+              title:{display:true, text:graphTitle},
+              tooltip:{callbacks:{label:(ctx)=>{ const v=ctx.parsed.y; return `${ctx.dataset.label}: ${Number.isFinite(v)? fmtInt(v):''}`; }}},
+              // Línea vertical del día de llegada
+              annotation: {
+                annotations: {
+                  arrival: {
+                    type: 'line',
+                    xMin: arrivalLabel,
+                    xMax: arrivalLabel,
+                    borderColor: 'rgba(160,160,160,0.8)',
+                    borderWidth: 1,
+                    borderDash: [6,4],
+                    label: {
+                      display: true,
+                      content: 'Llegada pedido (t+45)',
+                      position: 'start',
+                      backgroundColor: 'rgba(0,0,0,0.0)',
+                      color: '#666',
+                      rotation: -90,
+                      xAdjust: -6,
+                      yAdjust: 12
+                    }
+                  }
+                }
+              }
+            },
             elements:{ line:{tension:0.2} }
           }
         });
       }else{
         chartInstance.data.labels=labels;
         chartInstance.data.datasets[0].data=histData;
+        chartInstance.data.datasets[1].label=`Proyección ${H} días`;
         chartInstance.data.datasets[1].data=projData;
         chartInstance.data.datasets[2].data=projPlusData;
         chartInstance.data.datasets[3].data=Array(labels.length).fill(rop);
         chartInstance.data.datasets[4].data=Array(labels.length).fill(sfty);
         chartInstance.options.plugins.title.text=graphTitle;
+        // actualizar anotación
+        if (chartInstance.options.plugins.annotation) {
+          chartInstance.options.plugins.annotation.annotations.arrival.xMin = arrivalLabel;
+          chartInstance.options.plugins.annotation.annotations.arrival.xMax = arrivalLabel;
+        }
         chartInstance.update();
       }
 
@@ -614,37 +524,19 @@ async function init(){
   $('btnClear').addEventListener('click', ()=>{
     modeSel.value='Suministro'; fillTerms(); if(sups.length>0) termInp.value=sups[0];
     groupSel.value=''; $('qty').value=0; from.value=meta.min_fecha||''; to.value=meta.max_fecha||'';
-    document.querySelector('#tbl tbody').innerHTML='';
-    document.querySelector('#projTbl tbody').innerHTML='';
-    setKPIs(0,0,0,'',0); $('kpiCov').textContent='–';
-    setSideMetrics(0,'',0,'',0,0,''); setFormulas(0,0,0,0,0,0);
+    document.querySelector('#tbl tbody').innerHTML=''; document.querySelector('#projTbl tbody').innerHTML='';
+    setKPIs(0,0,0,'',0); $('kpiCov').textContent='–'; setSideMetrics(0,'',0,'',0,0,''); setFormulas(0,0,0,0,0,0,LEAD);
     if(chartInstance){ chartInstance.destroy(); chartInstance=null; }
-    setBtnState(btn,''); btn.disabled=false;
+    setBtnState(btn,''); btn.disabled=false; $('projTitle').textContent = 'Dinámica de proyección (45 días)';
   });
 
   await run();
 }
 
-// Oculta header al bajar y muestra al subir (solo móvil)
+// Ocultar header al bajar / mostrar al subir (móvil)
 (function(){
-  const tb = document.querySelector('.topbar');
-  if (!tb) return;
-  let lastY = window.scrollY, hidden = false;
-
-  function onScroll(){
-    const y = window.scrollY;
-    const isMobile = window.innerWidth <= 720;
-    if (!isMobile){
-      if (hidden){ tb.classList.remove('topbar--hidden'); hidden=false; }
-      lastY = y; return;
-    }
-    if (y > lastY + 12 && y > 60 && !hidden){
-      tb.classList.add('topbar--hidden'); hidden = true;
-    } else if (y < lastY - 12 && hidden){
-      tb.classList.remove('topbar--hidden'); hidden = false;
-    }
-    lastY = y;
-  }
+  const tb = document.querySelector('.topbar'); if (!tb) return; let lastY = window.scrollY, hidden = false;
+  function onScroll(){ const y = window.scrollY; const isMobile = window.innerWidth <= 720; if (!isMobile){ if (hidden){ tb.classList.remove('topbar--hidden'); hidden=false; } lastY = y; return; } if (y > lastY + 12 && y > 60 && !hidden){ tb.classList.add('topbar--hidden'); hidden = true; } else if (y < lastY - 12 && hidden){ tb.classList.remove('topbar--hidden'); hidden = false; } lastY = y; }
   window.addEventListener('scroll', onScroll, {passive:true});
   window.addEventListener('resize', ()=>{ tb.classList.remove('topbar--hidden'); hidden=false; lastY=window.scrollY; });
 })();
@@ -652,23 +544,9 @@ async function init(){
 window.addEventListener('load', init);
 if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js').catch(()=>{}); }
 
-// Reestablece estado visual del header después de renderizar/actualizar el gráfico
-function normalizeHeader(){
-  const tb = document.querySelector('.topbar');
-  if (!tb) return;
-  if (window.innerWidth <= 720){
-    tb.classList.remove('topbar--hidden');
-    tb.style.position = 'static';
-    tb.style.transform = 'none';
-  }
-}
-(function(){
-  const BTN = document.getElementById('btn');
-  const REF = document.getElementById('refreshBtn');
-  const _safe = (fn)=> fn && fn.addEventListener && fn.addEventListener('click', ()=> setTimeout(normalizeHeader, 0));
-  _safe(BTN); _safe(REF);
-  window.addEventListener('load', ()=> setTimeout(normalizeHeader, 0));
-})();
+// Normalizar header tras render
+function normalizeHeader(){ const tb = document.querySelector('.topbar'); if (!tb) return; if (window.innerWidth <= 720){ tb.classList.remove('topbar--hidden'); tb.style.position = 'static'; tb.style.transform = 'none'; } }
+(function(){ const BTN = document.getElementById('btn'); const REF = document.getElementById('refreshBtn'); const _safe = (fn)=> fn && fn.addEventListener && fn.addEventListener('click', ()=> setTimeout(normalizeHeader, 0)); _safe(BTN); _safe(REF); window.addEventListener('load', ()=> setTimeout(normalizeHeader, 0)); })();
 </script>
 </body>
 </html>
