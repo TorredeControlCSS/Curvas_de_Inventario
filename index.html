@@ -106,6 +106,50 @@
     .proj-table-wrap table{ width:100%; border-collapse:collapse; font-size:12px; }
     .proj-table-wrap th, .proj-table-wrap td{ border-bottom:1px solid var(--ring); padding:6px 8px; white-space:nowrap; }
     .proj-table-wrap thead th{ position:sticky; top:0; background:var(--card); z-index:1; }
+  
+    /* --- Feedback del botón "Mostrar" --- */
+    button.primary{
+      position: relative;
+      transition: background-color .18s ease, border-color .18s ease, box-shadow .18s ease;
+    }
+    
+    /* Cargando */
+    button.primary.is-loading{
+      background:#6b7280;        /* gris */
+      border-color:#6b7280;
+      color:#fff;
+      pointer-events:none;
+    }
+    button.primary.is-loading::after{
+      content:"";
+      position:absolute; right:12px; top:50%; transform:translateY(-50%);
+      width:14px; height:14px; border-radius:50%;
+      border:2px solid rgba(255,255,255,.35);
+      border-top-color:#fff;
+      animation: spin .8s linear infinite;
+    }
+    @keyframes spin { to { transform: translateY(-50%) rotate(360deg); } }
+    
+    /* OK (verde) */
+    button.primary.is-ok{
+      background:#16a34a;
+      border-color:#16a34a;
+      color:#fff;
+    }
+    
+    /* Error (rojo) */
+    button.primary.is-error{
+      background:#dc2626;
+      border-color:#dc2626;
+      color:#fff;
+    }
+    
+    /* Estado disabled visual consistente */
+    button.primary:disabled{
+      opacity:.85;
+      cursor:not-allowed;
+    }
+    
   </style>
 </head>
 <body>
