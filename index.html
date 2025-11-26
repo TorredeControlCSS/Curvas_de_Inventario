@@ -27,8 +27,7 @@
       background:linear-gradient(90deg,var(--bg),var(--bg2)); color:#fff;
       padding:12px 14px; display:flex; align-items:center; gap:12px;
       box-shadow:0 2px 10px rgba(0,0,0,.2); position:sticky; top:0; z-index:10;
-      flex-wrap:wrap;
-      justify-content: space-between;
+      flex-wrap:wrap; justify-content:space-between;
     }
     .topbar img{width: clamp(40px, 6vw, 56px); height: clamp(40px, 6vw, 56px); border-radius:12px; flex:0 0 auto;}
     .title{font-size:16px;font-weight:700;letter-spacing:.3px;flex:1 1 auto;min-width:200px;}
@@ -39,47 +38,26 @@
     .theme-select{padding:6px 8px;border:1px solid rgba(255,255,255,.25);border-radius:10px;background:transparent;color:#fff; min-width:110px}
     .net{font-size:12px;opacity:.85;margin-left:4px}
 
-    /* Mobile general */
+    /* Header móvil compacto (una fila, logo centrado, acciones a la derecha) */
     @media (max-width: 720px){
-      .title{order:2;flex-basis:100%;text-align:center;margin-top:4px}
-      .top-actions{order:3;width:100%;display:grid;grid-template-columns:1fr 1fr;gap:8px}
-      .theme-select{grid-column:1 / -1; width:auto; justify-self:center}
-      #installBtn,#refreshBtn{width:100%}
-    }
-    @media (max-width: 420px){
-      .top-actions{grid-template-columns:1fr}
-    }
-
-    /* === Compact Header para PWA móvil (una fila, logo centrado, acciones a la derecha) === */
-    @media (display-mode: standalone) and (max-width: 720px){
-      .topbar{
-        display:grid;
-        grid-template-columns: 1fr auto 1fr; /* [vacío] [logo] [acciones] */
-        align-items:center;
-        padding:6px 10px;
-        gap:8px;
-        flex-wrap:nowrap;
-        justify-content:initial;
+      .topbar.mobile-compact{
+        display:grid !important;
+        grid-template-columns:1fr auto 1fr;
+        align-items:center; justify-content:initial; gap:8px;
+        padding:6px 10px; flex-wrap:nowrap;
       }
-      .topbar img{
+      .topbar.mobile-compact img{
         grid-column:2; justify-self:center;
-        width: clamp(44px, 18vw, 72px); height: clamp(44px, 18vw, 72px);
-        margin:0;
+        width: clamp(44px, 18vw, 72px); height: clamp(44px, 18vw, 72px); margin:0;
       }
-      .title{ display:none; }                 /* ocultamos título para ganar alto */
-      .top-actions{
-        grid-column:3; justify-self:end;
-        display:flex; align-items:center; gap:6px; flex-wrap:nowrap;
+      .topbar.mobile-compact .title{ display:none; }
+      .topbar.mobile-compact .top-actions{
+        grid-column:3; justify-self:end; display:flex; align-items:center; gap:6px; flex-wrap:nowrap;
       }
-      .btn{ padding:6px 8px; border-radius:10px; }
-      #installBtn{ display:none !important; } /* en PWA no tiene sentido mostrar instalar */
-      .theme-select{ display:inline-block !important; min-width:96px; } /* compacto, pero seguimos usando el selector */
-      .net{ display:none; }
-    }
-    @media (display-mode: standalone) and (orientation: landscape){
-      .topbar{ padding:4px 8px; }
-      .topbar img{ width: clamp(36px, 10vw, 56px); height: clamp(36px, 10vw, 56px); }
-      .btn{ padding:4px 8px; }
+      .topbar.mobile-compact .theme-select{ min-width:96px; }
+      .topbar.mobile-compact .btn{ padding:6px 8px; }
+      .topbar.mobile-compact .net{ display:none; }
+      .topbar.mobile-compact #installBtn{ display:none !important; }
     }
     @media (min-width: 1280px){
       .topbar img{ width:64px; height:64px; }
@@ -126,10 +104,25 @@
     .fc-formula{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:12px; color:var(--sub)}
     .muted{color:var(--muted);font-size:12px}
     ul.formula{padding-left:18px}
+
+    /* === Estados del botón “Mostrar” === */
+    button.primary.is-loading{
+      opacity:.9; pointer-events:none; position:relative;
+    }
+    button.primary.is-loading::after{
+      content:''; width:14px; height:14px;
+      border:2px solid currentColor; border-right-color:transparent;
+      border-radius:50%; position:absolute; right:10px; top:50%;
+      transform:translateY(-50%); animation:spin .9s linear infinite;
+    }
+    @keyframes spin{ to{ transform:translateY(-50%) rotate(360deg) } }
+    button.primary.is-ok{ background:#16a34a; border-color:#16a34a; color:#fff; }
+    button.primary.is-error{ background:#dc2626; border-color:#dc2626; color:#fff; }
   </style>
 </head>
 <body>
-  <div class="topbar">
+  <!-- nota: añadimos la clase mobile-compact -->
+  <div class="topbar mobile-compact">
     <img src="icons/icon-512.png" alt="Logo">
     <div class="title">Curvas de Inventario — CEDIS PANAMA CSS</div>
     <div class="top-actions">
@@ -247,7 +240,13 @@ const fmtInt = (n)=> Number(n||0).toLocaleString();
 const fmtPct = (x)=> (Number.isFinite(x)? (Math.round(x*10)/10).toLocaleString(undefined,{maximumFractionDigits:1})+'%' : '–');
 const $ = (id)=> document.getElementById(id);
 
-// Tema (mantiene selector Sistema/Claro/Oscuro)
+// helper: estado visual del botón Mostrar
+function setBtnState(el, state){
+  el.classList.remove('is-loading','is-ok','is-error');
+  if(state) el.classList.add(state);
+}
+
+// Tema
 (function(){
   const saved = localStorage.getItem('theme') || 'system';
   document.documentElement.setAttribute('data-theme', saved);
@@ -443,92 +442,108 @@ async function init(){
   modeSel.value='Suministro'; fillTerms(); if (sups.length>0) termInp.value = sups[0];
 
   async function run(){
-    const mode=modeSel.value, group=groupSel.value, Q=Number(qty.value||0);
-    const params={}; const fromV=from.value, toV=to.value;
-    if(mode==='Código') params.codigo=termInp.value;
-    if(mode==='Suministro') params.suministro=termInp.value;
-    if(group && mode!=='Grupo') params.grupo=group;
-    if(mode==='Grupo') params.grupo=group;
-    if(fromV) params.from=fromV; if(toV) params.to=toV;
+    // estado: cargando
+    setBtnState(btn,'is-loading'); btn.disabled = true;
 
-    const data = await safeFetchSerie(params);
-    const serie = data.serie||[];
-    if(!serie.length){ alert('Sin datos para esa selección/filtro.'); return; }
+    try{
+      const mode=modeSel.value, group=groupSel.value, Q=Number(qty.value||0);
+      const params={}; const fromV=from.value, toV=to.value;
+      if(mode==='Código') params.codigo=termInp.value;
+      if(mode==='Suministro') params.suministro=termInp.value;
+      if(group && mode!=='Grupo') params.grupo=group;
+      if(mode==='Grupo') params.grupo=group;
+      if(fromV) params.from=fromV; if(toV) params.to=toV;
 
-    const invHist = serie.map(p=>Number(p.inventario));
-    const lastVal = invHist[invHist.length-1]; const lastDateStr = serie[serie.length-1].fecha;
+      const data = await safeFetchSerie(params);
+      const serie = data.serie||[];
+      if(!serie.length){
+        alert('Sin datos para esa selección/filtro.');
+        setBtnState(btn,'is-error'); setTimeout(()=>{ setBtnState(btn,''); btn.disabled=false; }, 900);
+        return;
+      }
 
-    // Consumo (decrementos)
-    const cons=[]; for(let i=1;i<invHist.length;i++) cons.push(Math.max(invHist[i-1]-invHist[i],0));
+      const invHist = serie.map(p=>Number(p.inventario));
+      const lastVal = invHist[invHist.length-1]; const lastDateStr = serie[serie.length-1].fecha;
 
-    // Pronóstico demanda
-    let dHat = ses(cons, 45, 0.3);
-    if(USE_SEASONAL){ const seas=seasonalityWeekly(cons,45,lastDateStr); if(seas) dHat=dHat.map((v,i)=>Math.max(v*seas[i],0)); }
+      // Consumo (decrementos)
+      const cons=[]; for(let i=1;i<invHist.length;i++) cons.push(Math.max(invHist[i-1]-invHist[i],0));
 
-    // Nivel inicial
-    const I0 = smaLast(invHist, 15);
+      // Pronóstico demanda
+      let dHat = ses(cons, 45, 0.3);
+      if(USE_SEASONAL){ const seas=seasonalityWeekly(cons,45,lastDateStr); if(seas) dHat=dHat.map((v,i)=>Math.max(v*seas[i],0)); }
 
-    // Simulación
-    const {base, withOrder} = simulate(I0, dHat, Q, data.lead||LEAD);
+      // Nivel inicial
+      const I0 = smaLast(invHist, 15);
 
-    // Fechas
-    const lastDate=new Date(lastDateStr), future=[]; for(let i=1;i<=45;i++){ const d=new Date(lastDate); d.setDate(d.getDate()+i); future.push(d.toISOString().slice(0,10));}
-    const labels = serie.map(p=>p.fecha).concat(future);
+      // Simulación
+      const {base, withOrder} = simulate(I0, dHat, Q, data.lead||LEAD);
 
-    const histData = invHist.concat(Array(future.length).fill(null));
-    const projData = Array(serie.length).fill(null).concat(base);
-    const projPlusData = Array(serie.length).fill(null).concat(withOrder);
+      // Fechas
+      const lastDate=new Date(lastDateStr), future=[]; for(let i=1;i<=45;i++){ const d=new Date(lastDate); d.setDate(d.getDate()+i); future.push(d.toISOString().slice(0,10));}
+      const labels = serie.map(p=>p.fecha).concat(future);
 
-    const kb = Number(data.kb_min||0);               // μ_D × L
-    const sfty = Number(data.inventario_critico||0); // SS
-    const rop = kb + sfty;                            // ROP
+      const histData = invHist.concat(Array(future.length).fill(null));
+      const projData = Array(serie.length).fill(null).concat(base);
+      const projPlusData = Array(serie.length).fill(null).concat(withOrder);
 
-    // Tabla + KPIs
-    fillTable(tbody, serie);
-    setKPIs(lastVal, rop, sfty, lastDateStr, I0);
+      const kb = Number(data.kb_min||0);               // μ_D × L
+      const sfty = Number(data.inventario_critico||0); // SS
+      const rop = kb + sfty;                            // ROP
 
-    // Indicadores laterales (con cobertura 4M)
-    const {pct: covPct, note: covNote} = coverageFourMonths(lastVal, serie, data.mu_d||0);
-    setSideMetrics(data.min_value||0, data.min_date||'', data.max_value||0, data.max_date||'', data.avg_30||0, covPct, covNote);
+      // Tabla + KPIs
+      fillTable(tbody, serie);
+      setKPIs(lastVal, rop, sfty, lastDateStr, I0);
 
-    // Tarjetero fórmulas
-    setFormulas(data.mu_d||0, data.sigma_d||0, kb, sfty, I0, rop);
+      // Indicadores laterales (con cobertura 4M)
+      const {pct: covPct, note: covNote} = coverageFourMonths(lastVal, serie, data.mu_d||0);
+      setSideMetrics(data.min_value||0, data.min_date||'', data.max_value||0, data.max_date||'', data.avg_30||0, covPct, covNote);
 
-    // Título con código + nombre
-    let graphTitle = '';
-    if (data.subject_code && data.subject_name) graphTitle = `${data.subject_code} — ${data.subject_name}`;
-    else if (data.subject_code) graphTitle = `Código: ${data.subject_code}`;
-    else graphTitle = data.subject_label || 'Serie seleccionada';
+      // Tarjetero fórmulas
+      setFormulas(data.mu_d||0, data.sigma_d||0, kb, sfty, I0, rop);
 
-    const ctx = document.getElementById('chart').getContext('2d');
-    if(!chartInstance){
-      chartInstance = new Chart(ctx, {
-        type:'line',
-        data:{ labels, datasets:[
-          {label:'Inventario histórico', data:histData, fill:true, pointRadius:0},
-          {label:'Proyección 45 días', data:projData, fill:true, pointRadius:0},
-          {label:'Proyección + pedido', data:projPlusData, fill:true, pointRadius:0},
-          {label:'Punto de Reorden (KB_min+SS)', data:Array(labels.length).fill(rop), pointRadius:0, borderDash:[4,4], fill:false},
-          {label:'Inventario Crítico', data:Array(labels.length).fill(sfty), pointRadius:0, borderDash:[4,2], fill:false}
-        ]},
-        options:{
-          responsive:true, maintainAspectRatio:false, animation:false,
-          interaction:{mode:'nearest',intersect:false},
-          scales:{ y:{beginAtZero:true,title:{display:true,text:'Cantidad'},ticks:{callback:v=>new Intl.NumberFormat().format(v)}}, x:{ticks:{maxRotation:0,autoSkipPadding:20}} },
-          plugins:{ legend:{position:'bottom'}, title:{display:true, text:graphTitle},
-            tooltip:{callbacks:{label:(ctx)=>{ const v=ctx.parsed.y; return `${ctx.dataset.label}: ${Number.isFinite(v)? fmtInt(v):''}`; }}} },
-          elements:{ line:{tension:0.2} }
-        }
-      });
-    }else{
-      chartInstance.data.labels=labels;
-      chartInstance.data.datasets[0].data=histData;
-      chartInstance.data.datasets[1].data=projData;
-      chartInstance.data.datasets[2].data=projPlusData;
-      chartInstance.data.datasets[3].data=Array(labels.length).fill(rop);
-      chartInstance.data.datasets[4].data=Array(labels.length).fill(sfty);
-      chartInstance.options.plugins.title.text=graphTitle;
-      chartInstance.update();
+      // Título con código + nombre
+      let graphTitle = '';
+      if (data.subject_code && data.subject_name) graphTitle = `${data.subject_code} — ${data.subject_name}`;
+      else if (data.subject_code) graphTitle = `Código: ${data.subject_code}`;
+      else graphTitle = data.subject_label || 'Serie seleccionada';
+
+      const ctx = document.getElementById('chart').getContext('2d');
+      if(!chartInstance){
+        chartInstance = new Chart(ctx, {
+          type:'line',
+          data:{ labels, datasets:[
+            {label:'Inventario histórico', data:histData, fill:true, pointRadius:0},
+            {label:'Proyección 45 días', data:projData, fill:true, pointRadius:0},
+            {label:'Proyección + pedido', data:projPlusData, fill:true, pointRadius:0},
+            {label:'Punto de Reorden (KB_min+SS)', data:Array(labels.length).fill(rop), pointRadius:0, borderDash:[4,4], fill:false},
+            {label:'Inventario Crítico', data:Array(labels.length).fill(sfty), pointRadius:0, borderDash:[4,2], fill:false}
+          ]},
+          options:{
+            responsive:true, maintainAspectRatio:false, animation:false,
+            interaction:{mode:'nearest',intersect:false},
+            scales:{ y:{beginAtZero:true,title:{display:true,text:'Cantidad'},ticks:{callback:v=>new Intl.NumberFormat().format(v)}}, x:{ticks:{maxRotation:0,autoSkipPadding:20}} },
+            plugins:{ legend:{position:'bottom'}, title:{display:true, text:graphTitle},
+              tooltip:{callbacks:{label:(ctx)=>{ const v=ctx.parsed.y; return `${ctx.dataset.label}: ${Number.isFinite(v)? fmtInt(v):''}`; }}} },
+            elements:{ line:{tension:0.2} }
+          }
+        });
+      }else{
+        chartInstance.data.labels=labels;
+        chartInstance.data.datasets[0].data=histData;
+        chartInstance.data.datasets[1].data=projData;
+        chartInstance.data.datasets[2].data=projPlusData;
+        chartInstance.data.datasets[3].data=Array(labels.length).fill(rop);
+        chartInstance.data.datasets[4].data=Array(labels.length).fill(sfty);
+        chartInstance.options.plugins.title.text=graphTitle;
+        chartInstance.update();
+      }
+
+      // OK visual
+      setBtnState(btn,'is-ok'); setTimeout(()=>{ setBtnState(btn,''); btn.disabled=false; }, 900);
+
+    }catch(e){
+      console.error(e);
+      setBtnState(btn,'is-error'); setTimeout(()=>{ setBtnState(btn,''); btn.disabled=false; }, 1200);
     }
   }
 
@@ -540,6 +555,7 @@ async function init(){
     document.querySelector('#tbl tbody').innerHTML=''; setKPIs(0,0,0,'',0);
     setSideMetrics(0,'',0,'',0,0,''); setFormulas(0,0,0,0,0,0);
     if(chartInstance){ chartInstance.destroy(); chartInstance=null; }
+    setBtnState(btn,''); btn.disabled=false; // reset visual del botón
   });
 
   await run();
