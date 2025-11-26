@@ -73,6 +73,8 @@
     .kpi .muted{display:block;margin-top:4px}
 
     .row{display:grid;grid-template-columns:2fr 1fr;gap:12px}
+    .row > *{min-width:0}
+
     @media (max-width:1024px){.row{grid-template-columns:1fr}}
 
     /* === ALTURA ESTABLE DEL GRÁFICO (usa --vh) === */
@@ -80,7 +82,9 @@
       height: clamp(280px, calc(var(--vh) * 58), 520px);
       isolation:isolate;
       position:relative;
+      width:100%;
     }
+    canvas#chart{display:block;width:100% !important;height:100% !important;}
     @media (min-width:1024px){ .chart-wrap{ height: 420px; } }
 
     .side{display:grid;gap:10px;align-content:start}
@@ -150,11 +154,6 @@
       cursor:not-allowed;
     }
     
-  
-    /* Fix overflow in grid and canvas scaling */
-    .row > * { min-width: 0; }
-    .chart-wrap { width: 100%; }
-    canvas#chart { display:block; width:100% !important; height:100% !important; }
   </style>
 </head>
 <body>
@@ -331,8 +330,7 @@ async function safeFetchSerie(params){
   const key = 'serie:' + p.toString();
   const cached = localStorage.getItem(key);
   if (cached){ try { return JSON.parse(cached); } catch(_){} }
-  const r = await fetch(API_BASE + '?' + p.toString());
-  const json = await r.json();
+  const json = await fetchJSON(API_BASE + '?' + p.toString());
   try { localStorage.setItem(key, JSON.stringify(json)); } catch(_){}
   return json;
 }
@@ -400,10 +398,10 @@ async function init(){
   const meta = await safeFetchList();
   codes = meta.codigos||[]; sups = meta.suministros||[]; groups=[''].concat(meta.grupos||[]);
   $('group').innerHTML = groups.map(g => `<option value="${g}">${g||'Todos'}</option>`).join('');
+  const maxd = meta.max_fecha ? new Date(meta.max_fecha) : null;
+  if (maxd){ const fromDefault = new Date(maxd); fromDefault.setDate(fromDefault.getDate()-365); from.value = fromDefault.toISOString().slice(0,10); }
+  else { from.value = meta.min_fecha||''; }
   to.value = meta.max_fecha||'';
-  const _max = new Date(to.value || Date.now());
-  const _from = new Date(_max); _from.setDate(_from.getDate()-365);
-  from.value = _from.toISOString().slice(0,10);
 
   function fillTerms(){
     const mode=modeSel.value;
@@ -473,6 +471,7 @@ async function init(){
       const arrivalLabel = future[Math.min((data.lead||LEAD)-1, future.length-1)];
 
       if(!chartInstance){
+        const ex = Chart.getChart('chart'); if (ex) { try{ ex.destroy(); }catch(_){ } }
         chartInstance = new Chart(ctx, {
           type:'line',
           data:{ labels, datasets:[
@@ -483,12 +482,11 @@ async function init(){
             {label:'Inventario Crítico', data:Array(labels.length).fill(sfty), pointRadius:0, borderDash:[4,2], fill:false}
           ]},
           options:{
-            responsive:true, maintainAspectRatio:false, animation:false, parsing:false, normalized:true, spanGaps:true,
+            responsive:true, maintainAspectRatio:false, animation:false,
             interaction:{mode:'nearest',intersect:false},
             scales:{ y:{beginAtZero:true,title:{display:true,text:'Cantidad'},ticks:{callback:v=>new Intl.NumberFormat().format(v)}}, x:{ticks:{maxRotation:0,autoSkipPadding:20}} },
             plugins:{
-                decimation:{enabled:true,algorithm:'lttb',threshold:1000},
-                legend:{position:'bottom'},
+              legend:{position:'bottom'},
               title:{display:true, text:graphTitle},
               tooltip:{callbacks:{label:(ctx)=>{ const v=ctx.parsed.y; return `${ctx.dataset.label}: ${Number.isFinite(v)? fmtInt(v):''}`; }}},
               annotation: { annotations: { arrival: { type:'line', xMin:arrivalLabel, xMax:arrivalLabel, borderColor:'rgba(160,160,160,0.8)', borderWidth:1, borderDash:[6,4], label:{ display:true, content:'Llegada pedido (t+45)', position:'start', backgroundColor:'rgba(0,0,0,0.0)', color:'#666', rotation:-90, xAdjust:-6, yAdjust:12 } } } }
