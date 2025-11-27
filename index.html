@@ -156,10 +156,10 @@
   .chart-wrap{ width:100%; }
   canvas#chart{ display:block; width:100% !important; height:100% !important; }
   .input-clear{ position:relative; }
-  .input-clear > input{ padding-right:-65px; }
+  .input-clear > input{ padding-right: 40px; }
   
   .input-clear > .clear-btn{
-    position: absolute; right: -65px; top: 50%; transform: translateY(-50%);
+    position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
     border: 0; background:transparent; font-size:18px; line-height: 1;
     cursor: pointer; opacity: .6;
   }
@@ -532,11 +532,7 @@ const SMA_WINDOW = 15;
 const tail = invHist.slice(-SMA_WINDOW).filter(Number.isFinite);
 const sma15 = tail.length
   ? tail.reduce((a,b)=> a+b, 0) / tail.length
-  : lastVal
-const I0 = lastVal;
-const { base, withOrder } = simulate(I0, dHat, Q, data.lead || LEAD);
-      
-// Consumo por día evitando sesgo por stockout (solo si prev ≥ 0.8 × SS)
+  : lastVal// Consumo por día evitando sesgo por stockout (solo si prev ≥ 0.8 × SS)
 const cons = [];
 const ss = Number(data.inventario_critico||0);
 for (let i=1;i<invHist.length;i++){
@@ -661,7 +657,7 @@ if (document.getElementById('mZeroDate')) document.getElementById('mZeroDate').t
               legend:{position:'bottom'},
               title:{display:true, text:graphTitle},
               tooltip:{callbacks:{label:(ctx)=>{ const v=ctx.parsed.y; return `${ctx.dataset.label}: ${Number.isFinite(v)? fmtInt(v):''}`; }}},
-              annotation: { annotations: { arrival: { type:'line', xMin:arrivalLabel, xMax:arrivalLabel, borderColor:'rgba(160,160,160,0.8)', borderWidth:1, borderDash:[6,4], label:{ display:true, content:'Llegada pedido (t+45)', position:'start', backgroundColor:'rgba(0,0,0,0.0)', color:'#666', rotation:-90, xAdjust:-6, yAdjust:12 } } } }
+              annotation: { annotations: { arrival: { type:'line', xMin:arrivalLabel, xMax:arrivalLabel, borderColor:'rgba(160,160,160,0.8)', borderWidth:1, borderDash:[6,4], label:{ display:true, content:`Llegada pedido (+${(data.lead||LEAD)})`, position:'start', backgroundColor:'rgba(0,0,0,0.0)', color:'#666', rotation:-90, xAdjust:-6, yAdjust:12 } } } }
             },
             elements:{ line:{tension:0.2} }
           }
