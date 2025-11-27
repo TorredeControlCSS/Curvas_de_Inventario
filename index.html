@@ -73,8 +73,6 @@
     .kpi .muted{display:block;margin-top:4px}
 
     .row{display:grid;grid-template-columns:2fr 1fr;gap:12px}
-    .row > *{min-width:0}
-
     @media (max-width:1024px){.row{grid-template-columns:1fr}}
 
     /* === ALTURA ESTABLE DEL GRÁFICO (usa --vh) === */
@@ -82,9 +80,7 @@
       height: clamp(280px, calc(var(--vh) * 58), 520px);
       isolation:isolate;
       position:relative;
-      width:100%;
     }
-    canvas#chart{display:block;width:100% !important;height:100% !important;}
     @media (min-width:1024px){ .chart-wrap{ height: 420px; } }
 
     .side{display:grid;gap:10px;align-content:start}
@@ -154,6 +150,15 @@
       cursor:not-allowed;
     }
     
+  
+  /* Botón limpiar en input de término */
+  #termWrap{ position:relative; }
+  #termClear{ position:absolute; right:8px; top: 38px; border:0; background:transparent; font-size:18px; line-height:1; cursor:pointer; opacity:.6; }
+  #termClear:hover{ opacity:1; }
+  .row > * { min-width: 0; }
+  .chart-wrap{ width:100%; }
+  canvas#chart{ display:block; width:100% !important; height:100% !important; }
+
   </style>
 </head>
 <body>
@@ -180,14 +185,14 @@
       </div>
       <div id="termWrap">
         <label id="lbl-term">Suministro</label>
-        <input id="term" list="termOptions" placeholder="Escribe para buscar..." autocomplete="off">
+        <input id="term" list="termOptions" placeholder="Escribe para buscar..." autocomplete="off"><button id="termClear" type="button" aria-label="Limpiar" class="clear-btn">×</button>
         <datalist id="termOptions"></datalist>
       </div>
       <div>
         <label>Grupo</label>
         <select id="group"><option value="">Todos</option></select>
       </div>
-      <div><label>Pedido (+45d)</label><input id="qty" type="number" min="0" step="100" value="0"></div>
+      <div><label>Pedido (+45d)</label><input id="qty" type="number" min="0" step="100" value="0" inputmode="numeric" enterkeyhint="done"></div>
       <div><label>Desde</label><input id="from" type="date"></div>
       <div><label>Hasta</label><input id="to" type="date"></div>
       <div><button id="btn" class="primary">Mostrar</button></div>
@@ -264,11 +269,13 @@
           <div class="metric"><span>Máximo histórico</span><span id="mMax">–</span></div>
           <small id="mMaxDate" class="muted"></small>
           <div class="metric"><span>Promedio 30 días</span><span id="mAvg30">–</span></div>
+          <div class="metric"><span>Stock = 0 (est.)</span><span id="mZero">–</span></div>
+          <small id="mZeroDate" class="muted"></small>
         </div>
 
         <div class="card table-wrap">
           <div class="muted">Tabla diaria</div>
-          <table id="tbl"><thead><tr><th>Fecha</th><th>Cantidad</th></tr></thead><tbody></tbody></table>
+          <table id="tbl"><thead><tr><th>Fecha</th><th>Cantidad</th><th>Δ</th></tr></thead><tbody></tbody></table>
         </div>
       </div>
     </div>
@@ -325,15 +332,7 @@ async function safeFetchList(){
   try{ const data = await fetchJSON(API_BASE + '?list=true&ts=' + Date.now()); localStorage.setItem('metaCache', JSON.stringify({t:Date.now(), data})); return data; }
   catch(e){ const c = localStorage.getItem('metaCache'); if (c){ console.warn('Usando metaCache', e); setNet('Sin conexión (caché)'); return JSON.parse(c).data; } throw e; }
 }
-async function safeFetchSerie(params){
-  const p = new URLSearchParams(params);
-  const key = 'serie:' + p.toString();
-  const cached = localStorage.getItem(key);
-  if (cached){ try { return JSON.parse(cached); } catch(_){} }
-  const json = await fetchJSON(API_BASE + '?' + p.toString());
-  try { localStorage.setItem(key, JSON.stringify(json)); } catch(_){}
-  return json;
-}
+async function safeFetchSerie(params){ const p = new URLSearchParams(params); p.set('ts', Date.now()); return fetchJSON(API_BASE + '?' + p.toString()); }
 
 // Typeahead
 function fillDatalist(arr, q=''){
@@ -372,7 +371,19 @@ function simulate(inv0, dHat, q=0, lead=45){
 }
 
 // Tablas
-function fillTable(tbody, serie){ tbody.innerHTML=''; for(let i=serie.length-1;i>=0;i--){ const p=serie[i]; const tr=document.createElement('tr'); tr.innerHTML=`<td>${p.fecha}</td><td>${fmtInt(p.inventario)}</td>`; tbody.appendChild(tr); } }
+function fillTable(tbody, serie){
+  tbody.innerHTML='';
+  let prev = null;
+  for(let i=0;i<serie.length;i++){
+    const p = serie[i];
+    const inv = Number(p.inventario);
+    const delta = (prev===null || !Number.isFinite(prev)) ? '–' : fmtInt(prev - inv);
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${p.fecha}</td><td>${fmtInt(inv)}</td><td>${delta}</td>`;
+    tbody.appendChild(tr);
+    prev = inv;
+  }
+}</td><td>${fmtInt(p.inventario)}</td>`; tbody.appendChild(tr); } }
 function fillProjTable(tbody, dates, dHat, base, withOrder, lead, Q){ tbody.innerHTML=''; for(let i=0;i<dates.length;i++){ const note = (Number(Q)>0 && i===lead-1) ? ` (+${fmtInt(Q)})` : ''; const tr=document.createElement('tr'); tr.innerHTML = `<td>${dates[i]}</td><td>${fmtInt(Math.round(dHat[i]||0))}</td><td>${fmtInt(Math.round(base[i]||0))}</td><td>${fmtInt(Math.round(withOrder[i]||0))}${note}</td>`; tbody.appendChild(tr); } }
 
 // KPIs y fórmulas
@@ -398,10 +409,7 @@ async function init(){
   const meta = await safeFetchList();
   codes = meta.codigos||[]; sups = meta.suministros||[]; groups=[''].concat(meta.grupos||[]);
   $('group').innerHTML = groups.map(g => `<option value="${g}">${g||'Todos'}</option>`).join('');
-  const maxd = meta.max_fecha ? new Date(meta.max_fecha) : null;
-  if (maxd){ const fromDefault = new Date(maxd); fromDefault.setDate(fromDefault.getDate()-365); from.value = fromDefault.toISOString().slice(0,10); }
-  else { from.value = meta.min_fecha||''; }
-  to.value = meta.max_fecha||'';
+  from.value = meta.min_fecha||''; to.value = meta.max_fecha||'';
 
   function fillTerms(){
     const mode=modeSel.value;
@@ -415,7 +423,16 @@ async function init(){
   // Por defecto: Suministro + primer valor
   modeSel.value='Suministro'; fillTerms(); if (sups.length>0) termInp.value = sups[0];
 
-  async function run(){
+  
+  // Botón para limpiar el término y enfocar
+  const termClearBtn = $('termClear');
+  if (termClearBtn){
+    termClearBtn.addEventListener('click', ()=>{ termInp.value=''; termInp.focus(); fillDatalist([], ''); });
+  }
+  // Ocultar teclado numérico al confirmar
+  qty.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); qty.blur(); } });
+  qty.addEventListener('change', ()=>{ qty.blur(); });
+async function run(){
     setBtnState(btn,'is-loading'); btn.disabled = true;
     try{
       const mode=modeSel.value, group=groupSel.value, Q=Number(qty.value||0);
@@ -436,7 +453,7 @@ async function init(){
 
       const cons=[]; for(let i=1;i<invHist.length;i++) cons.push(Math.max(invHist[i-1]-invHist[i],0));
       let dHat = ses(cons, H, 0.3); if(USE_SEASONAL){ const seas=seasonalityWeekly(cons,H,lastDateStr); if(seas) dHat=dHat.map((v,i)=>Math.max(v*seas[i],0)); }
-      const I0 = smaLast(invHist, 15);
+      const I0 = lastVal;
       const {base, withOrder} = simulate(I0, dHat, Q, data.lead||LEAD);
 
       const lastDate=new Date(lastDateStr), future=[]; for(let i=1;i<=H;i++){ const d=new Date(lastDate); d.setDate(d.getDate()+i); future.push(d.toISOString().slice(0,10));}
@@ -445,6 +462,26 @@ async function init(){
       const histData = invHist.concat(Array(future.length).fill(null));
       const projData = Array(serie.length).fill(null).concat(base);
       const projPlusData = Array(serie.length).fill(null).concat(withOrder);
+
+      
+      // === ETA de stock = 0 (usamos trayectoria base) ===
+      let zeroDateStr = '';
+      if (base && base.length) {
+        const idxZero = base.findIndex((v)=> Number(v||0) === 0);
+        if (idxZero >= 0) {
+          zeroDateStr = future[idxZero] || '';
+        } else {
+          // no llega a 0 en el horizonte: aproximar con velocidad media
+          const daily = mean(cons) || 0;
+          if (daily > 0) {
+            const days = Math.ceil(lastVal / daily);
+            const d = new Date(lastDateStr); d.setDate(d.getDate()+days);
+            zeroDateStr = d.toISOString().slice(0,10);
+          }
+        }
+      }
+      if ($('mZero')) $('mZero').textContent = zeroDateStr ? zeroDateStr : '—';
+      if ($('mZeroDate')) $('mZeroDate').textContent = zeroDateStr ? 'Fecha estimada en que el stock llegaría a 0.' : '';
 
       const kb = Number(data.kb_min||0);               // μ_D × L
       const sfty = Number(data.inventario_critico||0); // SS
@@ -471,7 +508,6 @@ async function init(){
       const arrivalLabel = future[Math.min((data.lead||LEAD)-1, future.length-1)];
 
       if(!chartInstance){
-        const ex = Chart.getChart('chart'); if (ex) { try{ ex.destroy(); }catch(_){ } }
         chartInstance = new Chart(ctx, {
           type:'line',
           data:{ labels, datasets:[
@@ -561,9 +597,9 @@ function fixAfterRotate(){
   if (c && typeof c.resize === 'function'){ try{ c.resize(); }catch(_){} }
 }
 setVH();
-window.addEventListener('orientationchange', ()=> setTimeout(fixAfterRotate, 350));
-window.addEventListener('resize',             ()=> setTimeout(fixAfterRotate, 150));
-if (window.visualViewport){ window.visualViewport.addEventListener('resize', ()=> setTimeout(fixAfterRotate, 150)); }
+window.addEventListener('orientationchange', ()=> setTimeout(fixAfterRotate, 200));
+window.addEventListener('resize',             ()=> setTimeout(fixAfterRotate, 100));
+if (window.visualViewport){ window.visualViewport.addEventListener('resize', ()=> setTimeout(fixAfterRotate, 100)); }
 
 // Observa el contenedor por cambios reales de tamaño
 window.addEventListener('load', ()=>{
