@@ -156,6 +156,7 @@
   .chart-wrap{ width:100%; }
   canvas#chart{ display:block; width:100% !important; height:100% !important; }
   .input-clear{ position:relative; }
+  .input-clear > input{ padding-right:28px; }
   
   .input-clear > .clear-btn{
     position: absolute; right: 28px; top: 50%; transform: translateY(-50%);
@@ -379,12 +380,22 @@ function simulate(inv0, dHat, q=0, lead=45){
 function fillTable(tbody, serie){
   tbody.innerHTML='';
   let prev = null;
-  for(let i=0;i<serie.length;i++){
+  for (let i=0;i<serie.length;i++){
     const p = serie[i];
     const inv = Number(p.inventario);
     const delta = (prev===null || !Number.isFinite(prev)) ? '–' : fmtInt(prev - inv);
     const tr = document.createElement('tr');
     tr.innerHTML = `<td>${p.fecha}</td><td>${fmtInt(inv)}</td><td>${delta}</td>`;
+    tbody.appendChild(tr);
+    prev = inv;
+  }
+  if (!tbody.children.length && serie.length){
+    const p = serie[serie.length-1];
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${p.fecha}</td><td>${fmtInt(Number(p.inventario))}</td><td>–</td>`;
+    tbody.appendChild(tr);
+  }
+}</td><td>${fmtInt(inv)}</td><td>${delta}</td>`;
     tbody.appendChild(tr);
     prev = inv;
   }
@@ -459,15 +470,22 @@ const invHist = serie.map(p => Number(p.inventario));
 const lastVal = invHist[invHist.length - 1];
 const lastDateStr = serie[serie.length - 1].fecha;
 
-// Consumo por día (no negativo)
-const consAll = [];
-for (let i=1; i<invHist.length; i++) consAll.push(Math.max(invHist[i-1]-invHist[i], 0));
 
-// Usar últimas 8 semanas para estimar consumo
+// Consumo por día evitando sesgo por stockout (solo si prev ≥ 0.8 × SS)
+const cons = [];
+const ss = Number(data.inventario_critico||0);
+for (let i=1;i<invHist.length;i++){
+  const prev = invHist[i-1], cur = invHist[i];
+  const delta = Math.max(prev - cur, 0);
+  const enoughStock = prev >= ss * 0.8;
+  cons.push(enoughStock ? delta : NaN);
+}
+
+// Ventana reciente fija: 8 semanas (56 días)
 const WIN_DAYS = 56;
-const consWin = consAll.slice(-WIN_DAYS).map(Number).filter(Number.isFinite);
+const consWin = cons.slice(-WIN_DAYS).map(Number).filter(Number.isFinite);
 
-// SES sobre la ventana
+// Suavizado exponencial simple (α=0.3) sobre la ventana
 function sesWindow(cons, H, alpha = 0.3) {
   if (!cons.length) return Array(H).fill(0);
   let s = cons[0];
@@ -496,9 +514,15 @@ if (USE_SEASONAL){
   if (seas) dHat = dHat.map((v,i)=> Math.max(v * seas[i], 0));
 }
 
+// Piso mínimo con mu_d para no colapsar a 0 cuando hubo stockout prolongado
+const muDaily = Number(data.mu_d||0);
+const MIN_FACTOR = 0.6; // 60% del promedio diario backend
+if (muDaily > 0) dHat = dHat.map(v => Math.max(v, muDaily * MIN_FACTOR));
+
 // Proyección arranca en el último inventario real
 const I0 = lastVal;
 const { base, withOrder } = simulate(I0, dHat, Q, data.lead || LEAD);
+
 
 // Fechas futuras y datasets
 const lastDate = new Date(lastDateStr), future = [];
