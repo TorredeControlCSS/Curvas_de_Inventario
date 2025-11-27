@@ -156,8 +156,7 @@
   .chart-wrap{ width:100%; }
   canvas#chart{ display:block; width:100% !important; height:100% !important; }
   .input-clear{ position:relative; }
-  .input-clear > input{ padding-right: 40px; }
-  
+    
   .input-clear > .clear-btn{
     position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
     border: 0; background:transparent; font-size:18px; line-height: 1;
@@ -191,7 +190,9 @@
       </div>
       <div id="termWrap">
         <label id="lbl-term">Suministro</label>
-        <div class="input-clear"><input id="term" list="termOptions" placeholder="Escribe para buscar..." autocomplete="off"><button id="termClear" type="button" aria-label="Limpiar" class="clear-btn">×</button></div>
+        <div class="input-clear">
+          <input id="term" list="termOptions" placeholder="Escribe para buscar..." autocomplete="off">
+        </div>
         <datalist id="termOptions"></datalist>
       </div>
       <div>
@@ -469,6 +470,19 @@ async function init(){
         btn=$('btn'), btnClear=$('btnClear'), refreshBtn=$('refreshBtn'),
         tbody=document.querySelector('#tbl tbody'),
         projTbody=document.querySelector('#projTbl tbody');
+        // --- Auto-limpiar y ejecutar con Enter/cambio ---
+        if (termInp){
+          termInp.addEventListener('focus', ()=>{
+            termInp.value='';
+            if (typeof fillDatalist === 'function') fillDatalist([], '');
+          });
+          termInp.addEventListener('keydown', (e)=>{
+            if (e.key === 'Enter'){ e.preventDefault(); termInp.blur(); run(); }
+          });
+          termInp.addEventListener('change', ()=>{
+            if (termInp.value && termInp.value.trim().length > 0){ run(); }
+          });
+        }
 
   const meta = await safeFetchList();
   codes = meta.codigos||[]; sups = meta.suministros||[]; groups=[''].concat(meta.grupos||[]);
@@ -487,10 +501,6 @@ async function init(){
   // Por defecto: Suministro + primer valor
   modeSel.value='Suministro'; fillTerms(); if (sups.length>0) termInp.value = sups[0];
 
-  
-  // Botón limpiar término
-  const termClearBtn = $('termClear');
-  if (termClearBtn){ termClearBtn.addEventListener('click', ()=>{ termInp.value=''; termInp.focus(); fillDatalist([], ''); }); }
   // Ocultar teclado numérico al confirmar
   qty.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); qty.blur(); } });
   qty.addEventListener('change', ()=>{ qty.blur(); });
