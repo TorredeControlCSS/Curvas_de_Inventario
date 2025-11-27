@@ -202,7 +202,7 @@
     <div class="kpis">
       <div class="kpi"><div class="l">% Abastecimiento (4 meses)</div><div class="v" id="kpiCov">–</div></div>
       <div class="kpi"><div class="l">Inventario actual</div><div class="v" id="kpiInv">–</div><span class="muted" id="kpiInvDate">–</span></div>
-      <div class="kpi"><div class="l">Punto de Reorden (KB_min + SS)</div><div class="v" id="kpiKb">–</div></div>
+      <div class="kpi"><div class="l">Punto de Reorden (CTD + SS)</div><div class="v" id="kpiKb">–</div></div>
       <div class="kpi"><div class="l">Inv. Crítico (95%)</div><div class="v" id="kpiCrit">–</div></div>
       <div class="kpi"><div class="l">SMA_15 Inventario (nivel inicial)</div><div class="v" id="kpiI0">–</div></div>
     </div>
@@ -215,7 +215,7 @@
           <div class="muted">Fórmulas</div>
           <div class="formula-cards">
             <div class="formula-card">
-              <div class="fc-title">Punto de Reorden (ROP = KB_min + SS)</div>
+              <div class="fc-title">Punto de Reorden (ROP = CTD + SS)</div>
               <div class="fc-value" id="fc_rop">–</div>
               <div class="fc-formula" id="f_kb">ROP = μ_D × L + SS = ?</div>
             </div>
@@ -254,7 +254,7 @@
             <li><b>z</b>: 95% ⇒ 1.65.</li>
             <li><b>I₀</b>: SMA_15 del inventario.</li>
             <li><b>d̂_h</b>: demanda por SES (α=0.3), con estacionalidad semanal si aplica.</li>
-            <li><b>ROP</b>: Punto de Reorden = KB_min + SS.</li>
+            <li><b>ROP</b>: Punto de Reorden = CTD + SS.</li>
           </ul>
         </div>
       </div>
@@ -383,7 +383,7 @@ function fillTable(tbody, serie){
     tbody.appendChild(tr);
     prev = inv;
   }
-}</td><td>${fmtInt(p.inventario)}</td>`; tbody.appendChild(tr); } }
+}
 function fillProjTable(tbody, dates, dHat, base, withOrder, lead, Q){ tbody.innerHTML=''; for(let i=0;i<dates.length;i++){ const note = (Number(Q)>0 && i===lead-1) ? ` (+${fmtInt(Q)})` : ''; const tr=document.createElement('tr'); tr.innerHTML = `<td>${dates[i]}</td><td>${fmtInt(Math.round(dHat[i]||0))}</td><td>${fmtInt(Math.round(base[i]||0))}</td><td>${fmtInt(Math.round(withOrder[i]||0))}${note}</td>`; tbody.appendChild(tr); } }
 
 // KPIs y fórmulas
@@ -514,7 +514,7 @@ async function run(){
             {label:'Inventario histórico', data:histData, fill:true, pointRadius:0},
             {label:`Proyección ${H} días`, data:projData, fill:true, pointRadius:0},
             {label:'Proyección + pedido', data:projPlusData, fill:true, pointRadius:0},
-            {label:'Punto de Reorden (KB_min+SS)', data:Array(labels.length).fill(rop), pointRadius:0, borderDash:[4,4], fill:false},
+            {label:'Punto de Reorden (CTD+SS)', data:Array(labels.length).fill(rop), pointRadius:0, borderDash:[4,4], fill:false},
             {label:'Inventario Crítico', data:Array(labels.length).fill(sfty), pointRadius:0, borderDash:[4,2], fill:false}
           ]},
           options:{
