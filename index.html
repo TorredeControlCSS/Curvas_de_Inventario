@@ -610,7 +610,16 @@ if (document.getElementById('mZeroDate')) document.getElementById('mZeroDate').t
       fillTable(tbody, serie);
       setKPIs(lastVal, rop, sfty, lastDateStr, I0);
 
-      const {pct: covPct, note: covNote} = coverageFourMonths(lastVal, serie, data.mu_d||0);
+      // Cobertura 4 meses consistente con la proyección (usa d̂)
+      const dailyExpected = dHat.length
+        ? dHat.reduce((a,b)=>a + Number(b||0), 0) / dHat.length
+        : Number(data.mu_d||0);
+      
+      const weeklyExpected = dailyExpected * 7;
+      const needFor4M = weeklyExpected * 4 * 4.345; // ~4 meses
+      const covPct = needFor4M ? Math.min((lastVal / needFor4M) * 100, 999) : 0;
+      const covNote = `Consumo semanal esperado ≈ ${fmtInt(Math.round(weeklyExpected))}. Requerido 4 meses ≈ ${fmtInt(Math.round(needFor4M))}.`;
+      
       $('kpiCov').textContent = fmtPct(covPct);
       setSideMetrics(data.min_value||0, data.min_date||'', data.max_value||0, data.max_date||'', data.avg_30||0, covPct, covNote);
 
