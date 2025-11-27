@@ -155,14 +155,14 @@
   .row > * { min-width: 0; }
   .chart-wrap{ width:100%; }
   canvas#chart{ display:block; width:100% !important; height:100% !important; }
-  #termWrap{ position: relative; }
-  #term{ padding-right: 28px; }
-  #termClear{
+  .input-clear{ position:relative; }
+  
+  .input-clear > .clear-btn{
     position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
     border: 0; background: transparent; font-size: 18px; line-height: 1;
     cursor: pointer; opacity: .6;
   }
-  #termClear:hover{ opacity: 1; }
+  .input-clear > .clear-btn:hover{ opacity: 1; }
 
   </style>
 </head>
@@ -190,7 +190,7 @@
       </div>
       <div id="termWrap">
         <label id="lbl-term">Suministro</label>
-        <input id="term" list="termOptions" placeholder="Escribe para buscar..." autocomplete="off"><button id="termClear" type="button" aria-label="Limpiar" class="clear-btn">×</button>
+        <div class="input-clear"><input id="term" list="termOptions" placeholder="Escribe para buscar..." autocomplete="off"><button id="termClear" type="button" aria-label="Limpiar" class="clear-btn">×</button></div>
         <datalist id="termOptions"></datalist>
       </div>
       <div>
@@ -386,7 +386,7 @@ function fillTable(tbody, serie){
     tbody.appendChild(tr);
     prev = inv;
   }
-}</td><td>${fmtInt(p.inventario)}</td>`; tbody.appendChild(tr); } }
+}
 function fillProjTable(tbody, dates, dHat, base, withOrder, lead, Q){ tbody.innerHTML=''; for(let i=0;i<dates.length;i++){ const note = (Number(Q)>0 && i===lead-1) ? ` (+${fmtInt(Q)})` : ''; const tr=document.createElement('tr'); tr.innerHTML = `<td>${dates[i]}</td><td>${fmtInt(Math.round(dHat[i]||0))}</td><td>${fmtInt(Math.round(base[i]||0))}</td><td>${fmtInt(Math.round(withOrder[i]||0))}${note}</td>`; tbody.appendChild(tr); } }
 
 // KPIs y fórmulas
