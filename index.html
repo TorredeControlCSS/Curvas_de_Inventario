@@ -436,7 +436,6 @@ function setFormulas(mu, sigma, kb, sfty, I0, rop, H){
   if ($('f_proj2')) $('f_proj2').textContent = `Si Q>0: I'_{t+h} = I'_{t+h} + Q`;
   if ($('f_order')) $('f_order').textContent = `Llegada pedido (+${LEAD})`;
 }
-× ${LEAD} + ${fmtInt(Math.round(sfty))} = ${fmtInt(Math.round(rop))}`; $('f_sfty').textContent = `SS = z × σ_D × √L = 1.65 × ${fmtInt(Math.round(sigma))} × √${LEAD} = ${fmtInt(Math.round(sfty))}`; $('f_proj1').textContent= `I₀ = SMA_15(inventario) = ${fmtInt(Math.round(I0))}`; $('f_proj2').textContent= `Î_{t+h} = max(Î_{t+h−1} − d̂_h, 0), h=1..${H}; d̂ por SES(α=0.3), estacionalidad semanal: ${USE_SEASONAL ? 'activa' : 'inactiva'}`; }
 
 function coverageFourMonths(invLast, serie, mu_d){
   const n = serie.length;
