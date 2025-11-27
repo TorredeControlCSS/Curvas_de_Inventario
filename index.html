@@ -526,13 +526,16 @@ async function run(){
       
 const invHist = serie.map(p => Number(p.inventario));
 const lastVal = invHist[invHist.length - 1];
+const lastDateStr = serie[serie.length - 1]?.fecha || '';      
 // === SMA_15 para KPI ===
 const SMA_WINDOW = 15;
 const tail = invHist.slice(-SMA_WINDOW).filter(Number.isFinite);
 const sma15 = tail.length
   ? tail.reduce((a,b)=> a+b, 0) / tail.length
   : lastVal
-
+const I0 = lastVal;
+const { base, withOrder } = simulate(I0, dHat, Q, data.lead || LEAD);
+      
 // Consumo por día evitando sesgo por stockout (solo si prev ≥ 0.8 × SS)
 const cons = [];
 const ss = Number(data.inventario_critico||0);
