@@ -85,7 +85,7 @@
 
     .side{display:grid;gap:10px;align-content:start}
     .metric{display:flex;justify-content:space-between;gap:12px;font-weight:700}
-    .metric span:last-child{max-width:50%;text-align:right;word-break:break-word}
+    .metric span:-child{max-width:50%;text-align:right;word-break:break-word}
     .table-wrap{max-height:420px;overflow:auto}
     table{width:100%;border-collapse:collapse;font-size:12px}
     th,td{border-bottom:1px solid var(--ring);padding:8px 10px;text-align:left;white-space:nowrap}
@@ -526,8 +526,12 @@ async function run(){
       
 const invHist = serie.map(p => Number(p.inventario));
 const lastVal = invHist[invHist.length - 1];
-const lastDateStr = serie[serie.length - 1].fecha;
-
+// === SMA_15 para KPI ===
+const SMA_WINDOW = 15;
+const tail = invHist.slice(-SMA_WINDOW).filter(Number.isFinite);
+const sma15 = tail.length
+  ? tail.reduce((a,b)=> a+b, 0) / tail.length
+  : lastVal
 
 // Consumo por día evitando sesgo por stockout (solo si prev ≥ 0.8 × SS)
 const cons = [];
@@ -608,7 +612,7 @@ if (document.getElementById('mZeroDate')) document.getElementById('mZeroDate').t
       const rop = kb + sfty;                            // ROP
 
       fillTable(tbody, serie);
-      setKPIs(lastVal, rop, sfty, lastDateStr, I0);
+      setKPIs(lastVal, rop, sfty, lastDateStr, sma15);
 
       // Cobertura 4 meses consistente con la proyección (usa d̂)
       const dailyExpected = dHat.length
@@ -623,7 +627,7 @@ if (document.getElementById('mZeroDate')) document.getElementById('mZeroDate').t
       $('kpiCov').textContent = fmtPct(covPct);
       setSideMetrics(data.min_value||0, data.min_date||'', data.max_value||0, data.max_date||'', data.avg_30||0, covPct, covNote);
 
-      setFormulas(data.mu_d||0, data.sigma_d||0, kb, sfty, I0, rop, H);
+      setFormulas(data.mu_d||0, data.sigma_d||0, kb, sfty, sma15, rop, H);
       fillProjTable(projTbody, future, dHat, base, withOrder, data.lead||LEAD, Q);
 
       let graphTitle = '';
