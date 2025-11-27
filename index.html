@@ -387,8 +387,20 @@ function fillTable(tbody, serie){
     tbody.appendChild(tr);
     prev = inv;
   }
-}</td><td>${fmtInt(p.inventario)}</td>`; tbody.appendChild(tr); } }
-function fillProjTable(tbody, dates, dHat, base, withOrder, lead, Q){ tbody.innerHTML=''; for(let i=0;i<dates.length;i++){ const note = (Number(Q)>0 && i===lead-1) ? ` (+${fmtInt(Q)})` : ''; const tr=document.createElement('tr'); tr.innerHTML = `<td>${dates[i]}</td><td>${fmtInt(Math.round(dHat[i]||0))}</td><td>${fmtInt(Math.round(base[i]||0))}</td><td>${fmtInt(Math.round(withOrder[i]||0))}${note}</td>`; tbody.appendChild(tr); } }
+}
+function fillProjTable(tbody, dates, dHat, base, withOrder, lead, Q){
+  tbody.innerHTML='';
+  for (let i=0;i<dates.length;i++){
+    const note = (i === (lead-1)) ? ' ← llegada pedido (+45)' : '';
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      `<td>${dates[i]}</td>` +
+      `<td>${fmtInt(Math.round(dHat[i]||0))}</td>` +
+      `<td>${fmtInt(Math.round(base[i]||0))}</td>` +
+      `<td>${fmtInt(Math.round(withOrder[i]||0))}${note}</td>`;
+    tbody.appendChild(tr);
+  }
+}
 
 // KPIs y fórmulas
 function setKPIs(invLast, rop, sfty, lastDateISO, I0){ $('kpiInv').textContent=fmtInt(invLast); $('kpiInvDate').textContent= lastDateISO? `al ${lastDateISO}`:''; $('kpiKb').textContent=fmtInt(rop); $('kpiCrit').textContent=fmtInt(sfty); $('kpiI0').textContent=fmtInt(Math.round(I0)); }
@@ -428,10 +440,9 @@ async function init(){
   modeSel.value='Suministro'; fillTerms(); if (sups.length>0) termInp.value = sups[0];
 
   
-  // Botón limpiar término
+  // Botón limpiar y Enter en término
   const termClearBtn = $('termClear');
   if (termClearBtn){ termClearBtn.addEventListener('click', ()=>{ termInp.value=''; termInp.focus(); fillDatalist([], ''); }); }
-  // Enter en término ejecuta búsqueda y también al elegir del datalist
   termInp.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); termInp.blur(); run(); } });
   termInp.addEventListener('change', ()=>{ if(termInp.value && termInp.value.trim().length>0){ run(); } });
   // Ocultar teclado numérico al confirmar
@@ -469,7 +480,7 @@ for (let i=1;i<invHist.length;i++){
 const WIN_DAYS = 56;
 const consWin = cons.slice(-WIN_DAYS).map(Number).filter(Number.isFinite);
 
-// SES
+// SES(α=0.3) sobre ventana
 function sesWindow(cons,H,alpha=0.3){ if(!cons.length) return Array(H).fill(0); let s=cons[0]; for(let i=1;i<cons.length;i++) s=alpha*cons[i]+(1-alpha)*s; return Array(H).fill(s); }
 let dHat = sesWindow(consWin, H, 0.3);
 
@@ -498,7 +509,7 @@ const muDaily = Number(data.mu_d||0);
 const MIN_FACTOR = 0.6;
 if (muDaily>0) dHat = dHat.map(v => Math.max(v, muDaily*MIN_FACTOR));
 
-// Proyección arranca en último real
+// Proyección anclada en último real
 const I0 = lastVal;
 const { base, withOrder } = simulate(I0, dHat, Q, data.lead || LEAD);
 
