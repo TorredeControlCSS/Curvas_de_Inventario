@@ -461,9 +461,6 @@ function coverageFourMonths(invLast, serie, mu_d){
   const note = `Consumo semanal esperado ≈ ${fmtInt(Math.round(weeklyExpected))}. Requerido 4 meses ≈ ${fmtInt(Math.round(needFor4M))}.`;
   return { pct, note };
 }
-let dailyExpected; if (rates.length >= 8){ const recent = rates.slice(-Math.min(rates.length, 56)); if (recent.length >= 5){ const s=[...recent].sort((a,b)=>a-b); s.shift(); s.pop(); dailyExpected = s.reduce((a,b)=>a+b,0)/s.length; } else dailyExpected = recent.reduce((a,b)=>a+b,0)/recent.length; } else dailyExpected = Number(mu_d||0);
-  const weeklyExpected = dailyExpected * 7; const needFor4M = weeklyExpected * 16; const pct = needFor4M > 0 ? (invLast / needFor4M) * 100 : 0; const note = `Consumo semanal esperado ≈ ${fmtInt(Math.round(weeklyExpected))}. Requerido 4 meses ≈ ${fmtInt(Math.round(needFor4M))}.`; return {pct, note};
-}
 
 // === INIT ===
 async function init(){
