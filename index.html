@@ -395,22 +395,75 @@ function fillTable(tbody, serie){
     tr.innerHTML = `<td>${p.fecha}</td><td>${fmtInt(Number(p.inventario))}</td><td>–</td>`;
     tbody.appendChild(tr);
   }
-}</td><td>${fmtInt(inv)}</td><td>${delta}</td>`;
+}
+}
+function fillProjTable(tbody, dates, dHat, base, withOrder, lead, Q){
+  tbody.innerHTML='';
+  for (let i=0;i<dates.length;i++){
+    const note = (i === (lead-1)) ? ' ← llegada pedido (+45)' : '';
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      `<td>${dates[i]}</td>` +
+      `<td>${fmtInt(Math.round(dHat[i]||0))}</td>` +
+      `<td>${fmtInt(Math.round(base[i]||0))}</td>` +
+      `<td>${fmtInt(Math.round(withOrder[i]||0))}${note}</td>`;
     tbody.appendChild(tr);
-    prev = inv;
   }
 }
-function fillProjTable(tbody, dates, dHat, base, withOrder, lead, Q){ tbody.innerHTML=''; for(let i=0;i<dates.length;i++){ const note = (Number(Q)>0 && i===lead-1) ? ` (+${fmtInt(Q)})` : ''; const tr=document.createElement('tr'); tr.innerHTML = `<td>${dates[i]}</td><td>${fmtInt(Math.round(dHat[i]||0))}</td><td>${fmtInt(Math.round(base[i]||0))}</td><td>${fmtInt(Math.round(withOrder[i]||0))}${note}</td>`; tbody.appendChild(tr); } }
-
 // KPIs y fórmulas
-function setKPIs(invLast, rop, sfty, lastDateISO, I0){ $('kpiInv').textContent=fmtInt(invLast); $('kpiInvDate').textContent= lastDateISO? `al ${lastDateISO}`:''; $('kpiKb').textContent=fmtInt(rop); $('kpiCrit').textContent=fmtInt(sfty); $('kpiI0').textContent=fmtInt(Math.round(I0)); }
-function setSideMetrics(minV,minD,maxV,maxD,avg30,coveragePct,coverageNote){ $('mCoverage').textContent = fmtPct(coveragePct); $('mCoverageNote').textContent = coverageNote || ''; $('mMin').textContent=fmtInt(minV);  $('mMinDate').textContent= minD?`en ${minD}`:''; $('mMax').textContent=fmtInt(maxV);  $('mMaxDate').textContent= maxD?`en ${maxD}`:''; $('mAvg30').textContent=fmtInt(avg30); }
-function setFormulas(mu, sigma, kb, sfty, I0, rop, H){ $('fc_rop').textContent = fmtInt(Math.round(rop)); $('fc_ss').textContent  = fmtInt(Math.round(sfty)); $('fc_i0').textContent  = fmtInt(Math.round(I0)); $('f_kb').textContent   = `ROP = μ_D × L + SS = ${fmtInt(Math.round(mu))} × ${LEAD} + ${fmtInt(Math.round(sfty))} = ${fmtInt(Math.round(rop))}`; $('f_sfty').textContent = `SS = z × σ_D × √L = 1.65 × ${fmtInt(Math.round(sigma))} × √${LEAD} = ${fmtInt(Math.round(sfty))}`; $('f_proj1').textContent= `I₀ = SMA_15(inventario) = ${fmtInt(Math.round(I0))}`; $('f_proj2').textContent= `Î_{t+h} = max(Î_{t+h−1} − d̂_h, 0), h=1..${H}; d̂ por SES(α=0.3), estacionalidad semanal: ${USE_SEASONAL ? 'activa' : 'inactiva'}`; }
+function setKPIs(invLast, rop, sfty, lastDateISO, I0){
+  if ($('kpiInv'))     $('kpiInv').textContent = fmtInt(Math.round(invLast||0));
+  if ($('kpiInvDate')) $('kpiInvDate').textContent = lastDateISO ? `al ${lastDateISO}` : '';
+  if ($('kpiKb'))      $('kpiKb').textContent = fmtInt(Math.round(rop||0));
+  if ($('kpiCrit'))    $('kpiCrit').textContent = fmtInt(Math.round(sfty||0));
+  if ($('kpiI0'))      $('kpiI0').textContent = fmtInt(Math.round(I0||0));
+}
+function setSideMetrics(minV,minD,maxV,maxD,avg30,coveragePct,coverageNote){
+  if ($('mCoverage'))     $('mCoverage').textContent = fmtPct(coveragePct||0);
+  if ($('mCoverageNote')) $('mCoverageNote').textContent = coverageNote || '';
+  if ($('mMin'))          $('mMin').textContent = fmtInt(Math.round(minV||0));
+  if ($('mMinDate'))      $('mMinDate').textContent = minD ? `en ${minD}` : '';
+  if ($('mMax'))          $('mMax').textContent = fmtInt(Math.round(maxV||0));
+  if ($('mMaxDate'))      $('mMaxDate').textContent = maxD ? `en ${maxD}` : '';
+  if ($('mAvg30'))        $('mAvg30').textContent = fmtInt(Math.round(avg30||0));
+}
+function setFormulas(mu, sigma, kb, sfty, I0, rop, H){
+  if ($('fc_rop')) $('fc_rop').textContent = fmtInt(Math.round(rop||0));
+  if ($('f_kb'))   $('f_kb').textContent   = `ROP = μ_D × L + SS = ${fmtInt(Math.round(kb||0))} + ${fmtInt(Math.round(sfty||0))} = ${fmtInt(Math.round(rop||0))}`;
+  if ($('fc_ss'))  $('fc_ss').textContent  = fmtInt(Math.round(sfty||0));
+  if ($('f_sfty')) $('f_sfty').textContent = `SS = z × σ_D × √L = 1.65 × ${fmtInt(Math.round(Number(sigma||0)))} × √${LEAD} = ${fmtInt(Math.round(sfty||0))}`;
+  if ($('fc_i0'))  $('fc_i0').textContent  = fmtInt(Math.round(I0||0));
+  if ($('f_proj1')) $('f_proj1').textContent = `I_{t+h} = max(I_{t+h-1} − d̂_h, 0), h=1..${H}; d̂ por SES(α=0.3), estacionalidad semanal: ${USE_SEASONAL ? 'activa' : 'inactiva'}`;
+  if ($('f_proj2')) $('f_proj2').textContent = `Si Q>0: I'_{t+h} = I'_{t+h} + Q`;
+  if ($('f_order')) $('f_order').textContent = `Llegada pedido (+${LEAD})`;
+}
+× ${LEAD} + ${fmtInt(Math.round(sfty))} = ${fmtInt(Math.round(rop))}`; $('f_sfty').textContent = `SS = z × σ_D × √L = 1.65 × ${fmtInt(Math.round(sigma))} × √${LEAD} = ${fmtInt(Math.round(sfty))}`; $('f_proj1').textContent= `I₀ = SMA_15(inventario) = ${fmtInt(Math.round(I0))}`; $('f_proj2').textContent= `Î_{t+h} = max(Î_{t+h−1} − d̂_h, 0), h=1..${H}; d̂ por SES(α=0.3), estacionalidad semanal: ${USE_SEASONAL ? 'activa' : 'inactiva'}`; }
 
 function coverageFourMonths(invLast, serie, mu_d){
-  const n = serie.length; const rates = [];
-  for(let i=1;i<n;i++){ const prev = serie[i-1], cur = serie[i]; const invDec = Math.max(Number(prev.inventario) - Number(cur.inventario), 0); const d1 = new Date(prev.fecha), d2 = new Date(cur.fecha); const days = Math.max( (d2 - d1)/(1000*60*60*24), 1 ); const rate = invDec / days; if (Number.isFinite(rate)) rates.push(rate); }
-  let dailyExpected; if (rates.length >= 8){ const recent = rates.slice(-Math.min(rates.length, 56)); if (recent.length >= 5){ const s=[...recent].sort((a,b)=>a-b); s.shift(); s.pop(); dailyExpected = s.reduce((a,b)=>a+b,0)/s.length; } else dailyExpected = recent.reduce((a,b)=>a+b,0)/recent.length; } else dailyExpected = Number(mu_d||0);
+  const n = serie.length;
+  const rates = [];
+  for(let i=1;i<n;i++){
+    const prev = Number(serie[i-1].inventario||0);
+    const cur  = Number(serie[i].inventario||0);
+    const days = (new Date(serie[i].fecha) - new Date(serie[i-1].fecha)) / 86400000 || 1;
+    const invDec = Math.max(prev - cur, 0);
+    const rate = invDec / days;
+    if (Number.isFinite(rate)) rates.push(rate);
+  }
+  let dailyExpected;
+  if (rates.length >= 8){
+    const recent = rates.slice(-56); // ~8 semanas
+    dailyExpected = recent.reduce((a,b)=>a+b,0)/(recent.length||1);
+  } else {
+    dailyExpected = Number(mu_d||0);
+  }
+  const weeklyExpected = dailyExpected * 7;
+  const needFor4M = weeklyExpected * 4 * 4.345; // ~4 meses
+  const pct = needFor4M ? Math.min((invLast/needFor4M)*100, 999) : 0;
+  const note = `Consumo semanal esperado ≈ ${fmtInt(Math.round(weeklyExpected))}. Requerido 4 meses ≈ ${fmtInt(Math.round(needFor4M))}.`;
+  return { pct, note };
+}
+let dailyExpected; if (rates.length >= 8){ const recent = rates.slice(-Math.min(rates.length, 56)); if (recent.length >= 5){ const s=[...recent].sort((a,b)=>a-b); s.shift(); s.pop(); dailyExpected = s.reduce((a,b)=>a+b,0)/s.length; } else dailyExpected = recent.reduce((a,b)=>a+b,0)/recent.length; } else dailyExpected = Number(mu_d||0);
   const weeklyExpected = dailyExpected * 7; const needFor4M = weeklyExpected * 16; const pct = needFor4M > 0 ? (invLast / needFor4M) * 100 : 0; const note = `Consumo semanal esperado ≈ ${fmtInt(Math.round(weeklyExpected))}. Requerido 4 meses ≈ ${fmtInt(Math.round(needFor4M))}.`; return {pct, note};
 }
 
