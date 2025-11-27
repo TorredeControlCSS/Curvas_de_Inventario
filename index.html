@@ -597,9 +597,9 @@ function fixAfterRotate(){
   if (c && typeof c.resize === 'function'){ try{ c.resize(); }catch(_){} }
 }
 setVH();
-window.addEventListener('orientationchange', ()=> setTimeout(fixAfterRotate, 200));
-window.addEventListener('resize',             ()=> setTimeout(fixAfterRotate, 100));
-if (window.visualViewport){ window.visualViewport.addEventListener('resize', ()=> setTimeout(fixAfterRotate, 100)); }
+window.addEventListener('orientationchange', ()=> setTimeout(fixAfterRotate, 350));
+window.addEventListener('resize',             ()=> setTimeout(fixAfterRotate, 150));
+if (window.visualViewport){ window.visualViewport.addEventListener('resize', ()=> setTimeout(fixAfterRotate, 150)); }
 
 // Observa el contenedor por cambios reales de tamaño
 window.addEventListener('load', ()=>{
