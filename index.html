@@ -188,7 +188,7 @@
         <label>Buscar por</label>
         <select id="mode"><option>Código</option><option selected>Suministro</option><option>Grupo</option></select>
       </div>
-      <div id="">
+      <div id="termWrap">
         <label id="lbl-term">Suministro</label>
         <div class="input-clear"><input id="term" list="termOptions" placeholder="Escribe para buscar..." autocomplete="off"><button id="termClear" type="button" aria-label="Limpiar" class="clear-btn">×</button></div>
         <datalist id="termOptions"></datalist>
@@ -274,6 +274,8 @@
           <div class="metric"><span>Máximo histórico</span><span id="mMax">–</span></div>
           <small id="mMaxDate" class="muted"></small>
           <div class="metric"><span>Promedio 30 días</span><span id="mAvg30">–</span></div>
+          <div class="metric"><span>Stock = 0 (est.)</span><span id="mZero">–</span></div>
+          <small id="mZeroDate" class="muted"></small>
         </div>
 
         <div class="card table-wrap">
@@ -403,7 +405,7 @@ function coverageFourMonths(invLast, serie, mu_d){
 
 // === INIT ===
 async function init(){
-  const modeSel=$('mode'), termInp=$('term'), lbl=$('lbl-term'), =$(''),
+  const modeSel=$('mode'), termInp=$('term'), lbl=$('lbl-term'), termWrap=$('termWrap'),
         groupSel=$('group'), qty=$('qty'), from=$('from'), to=$('to'),
         btn=$('btn'), btnClear=$('btnClear'), refreshBtn=$('refreshBtn'),
         tbody=document.querySelector('#tbl tbody'),
@@ -506,6 +508,17 @@ const labels = serie.map(p=>p.fecha).concat(future);
 const histData     = invHist.concat(Array(future.length).fill(null));
 const projData     = Array(serie.length).fill(null).concat(base);
 const projPlusData = Array(serie.length).fill(null).concat(withOrder);
+
+// === ETA de stock = 0 usando SOLO la proyección visible (coherente con la gráfica) ===
+let zeroDateStr = '';
+if (base && base.length) {
+  const idxZero = base.findIndex(v => Number(v || 0) <= 0);
+  if (idxZero >= 0) zeroDateStr = future[idxZero] || '';
+}
+if (document.getElementById('mZero')) document.getElementById('mZero').textContent = zeroDateStr ? zeroDateStr : 'No llega a 0 en horizonte';
+if (document.getElementById('mZeroDate')) document.getElementById('mZeroDate').textContent = zeroDateStr
+  ? 'Fecha estimada en que el stock llegaría a 0.'
+  : 'No alcanza 0 dentro del horizonte mostrado.';
 
 
       const kb = Number(data.kb_min||0);               // μ_D × L
