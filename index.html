@@ -510,7 +510,17 @@ async function run(){
       if(fromV) params.from=fromV; if(toV) params.to=toV;
 
       const data = await safeFetchSerie(params);
-      const serie = data.serie||[];
+      let serie = data.serie||[];
+      // --- Normalización de la serie (garantiza último punto, orden y unicidad por fecha) ---
+      serie = (serie||[])
+        .filter(p => p && p.fecha && Number.isFinite(Number(p.inventario)))
+        .sort((a,b) => a.fecha.localeCompare(b.fecha));
+      
+      // si vienen varias filas por la misma fecha, nos quedamos con la última
+      const byDate = new Map();
+      for (const p of serie) byDate.set(p.fecha, p);
+      serie = Array.from(byDate.values()).sort((a,b)=> a.fecha.localeCompare(b.fecha));
+      
       if(!serie.length){ alert('Sin datos para esa selección/filtro.'); setBtnState(btn,'is-error'); setTimeout(()=>{ setBtnState(btn,''); btn.disabled=false; }, 900); return; }
 
       
