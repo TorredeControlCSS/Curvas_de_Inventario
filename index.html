@@ -380,18 +380,27 @@ function simulate(inv0, dHat, q=0, lead=45){
 // Tablas
 function fillTable(tbody, serie){
   tbody.innerHTML='';
-  let prev = null;
-  for (let i=0;i<serie.length;i++){
-    const p = serie[i];
-    const inv = Number(p.inventario);
-    const delta = (prev===null || !Number.isFinite(prev)) ? '–' : fmtInt(prev - inv);
+
+  // 1) Orden descendente (más reciente -> más antiguo)
+  const arr = (serie||[]).slice().sort((a,b)=> b.fecha.localeCompare(a.fecha));
+
+  // 2) Δ correcto en orden descendente:
+  //    Δ = inventario(día anterior cronológico) - inventario(día actual)
+  //    En descendente, el "día anterior cronológico" es el siguiente elemento (i+1).
+  for (let i=0;i<arr.length;i++){
+    const curr = arr[i];
+    const inv = Number(curr.inventario);
+    const prevChron = (i+1 < arr.length) ? Number(arr[i+1].inventario) : NaN;
+    const delta = Number.isFinite(prevChron) ? fmtInt(prevChron - inv) : '–';
+
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${p.fecha}</td><td>${fmtInt(inv)}</td><td>${delta}</td>`;
+    tr.innerHTML = `<td>${curr.fecha}</td><td>${fmtInt(inv)}</td><td>${delta}</td>`;
     tbody.appendChild(tr);
-    prev = inv;
   }
-  if (!tbody.children.length && serie.length){
-    const p = serie[serie.length-1];
+
+  // Fallback por si llegara una sola fila (mantiene tu comportamiento actual)
+  if (!tbody.children.length && arr.length){
+    const p = arr[0];
     const tr = document.createElement('tr');
     tr.innerHTML = `<td>${p.fecha}</td><td>${fmtInt(Number(p.inventario))}</td><td>–</td>`;
     tbody.appendChild(tr);
