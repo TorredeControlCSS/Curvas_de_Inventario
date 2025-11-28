@@ -760,5 +760,57 @@ window.addEventListener('load', ()=>{
   ro.observe(wrap);
 });
 </script>
+<!-- Toast de actualización: pegar al final del <body> -->
+<div id="updateToast" style="position:fixed; left:50%; transform:translateX(-50%); bottom:16px; z-index:9999; display:none; max-width:92vw; box-shadow:0 6px 20px rgba(0,0,0,.2); border-radius:12px; padding:12px 14px; background:#111; color:#fff; font:14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;">
+  <span style="margin-right:12px;">Hay una nueva versión disponible</span>
+  <button id="updateToastBtn" style="border:0; padding:8px 12px; border-radius:10px; background:#0b5fff; color:white; cursor:pointer;">Actualizar</button>
+</div>
+
+<script>
+(function () {
+  if (!('serviceWorker' in navigator)) return;
+
+  // Registra con rutas relativas al subpath
+  navigator.serviceWorker.register('./sw.js', { scope: './' }).then((reg) => {
+    const toast = document.getElementById('updateToast');
+    const btn   = document.getElementById('updateToastBtn');
+
+    function showToast() {
+      if (toast) toast.style.display = 'flex';
+    }
+
+    // Si ya hay uno esperando (pasa al volver a abrir)
+    if (reg.waiting) showToast();
+
+    // Detecta nuevas instalaciones
+    reg.addEventListener('updatefound', () => {
+      const sw = reg.installing;
+      if (!sw) return;
+      sw.addEventListener('statechange', () => {
+        if (sw.state === 'installed' && navigator.serviceWorker.controller) {
+          showToast();
+        }
+      });
+    });
+
+    // Botón "Actualizar" => pedir activar y recargar cuando tome control
+    btn?.addEventListener('click', () => {
+      reg.waiting?.postMessage('SKIP_WAITING');
+    });
+
+    // Recarga una sola vez al tomar control la nueva versión
+    let refreshing = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (refreshing) return;
+      refreshing = true;
+      location.reload();
+    });
+
+    // Buscar updates ahora y cada hora
+    reg.update();
+    setInterval(() => reg.update(), 60 * 60 * 1000);
+  }).catch(console.error);
+})();
+</script>  
 </body>
 </html>
