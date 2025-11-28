@@ -578,9 +578,14 @@ const cons = [];
 const ss = Number(data.inventario_critico||0);
 for (let i=1;i<invHist.length;i++){
   const prev = invHist[i-1], cur = invHist[i];
-  const delta = Math.max(prev - cur, 0);
+  const delta = Math.max(prev - cur, 0);                    // solo salidas
+  // días entre lecturas (por si hay huecos); fallback a 1
+  const d1 = new Date(serie[i-1].fecha), d2 = new Date(serie[i].fecha);
+  const days = Math.max( (d2 - d1) / 86400000, 1);
+  const rate = delta / days;                                // consumo diario promedio en ese tramo
   const enoughStock = prev >= ss * 0.8;
-  cons.push(enoughStock ? delta : NaN);
+  // IMPORTANTE: excluir ceros (días con reposición o sin caída) para evitar sesgo a la baja en la mediana
+  cons.push(enoughStock && rate > 0 ? rate : NaN);
 }
 
 // Ventana reciente fija: 8 semanas (56 días)
