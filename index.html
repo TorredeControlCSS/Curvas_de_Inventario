@@ -355,6 +355,18 @@ function fillDatalist(arr, q=''){
 }
 
 // Stats helpers
+// --- Robust stats (mediana y MAD) para consumo diario (últimos 90 días) ---
+function robustStatsDaily(arr, windowDays=90){
+  const vals = (arr||[]).slice(-windowDays).map(Number).filter(Number.isFinite).sort((a,b)=>a-b);
+  if (!vals.length) return {mu:0, sigma:0, mad:0, n:0};
+  const n = vals.length;
+  const median = vals[Math.floor(n/2)];
+  const dev = vals.map(v => Math.abs(v - median)).sort((a,b)=>a-b);
+  const mad = dev[Math.floor(dev.length/2)] || 0;
+  const sigma = 1.4826 * mad;
+  return {mu: median, sigma, mad, n};
+}
+
 const mean = (a)=> a.length ? a.reduce((x,y)=>x+Number(y||0),0)/a.length : 0;
 function smaLast(arr, k){
   const n=arr.length; if(!n) return 0; const slice = arr.slice(Math.max(0,n-k)).map(Number).filter(Number.isFinite);
@@ -635,12 +647,27 @@ if (document.getElementById('mZeroDate')) document.getElementById('mZeroDate').t
   : 'No alcanza 0 dentro del horizonte mostrado.';
 
 
-      const kb = Number(data.kb_min||0);               // μ_D × L
-      const sfty = Number(data.inventario_critico||0); // SS
-      const rop = kb + sfty;                            // ROP
+      let kb = Number(data.kb_min||0);               // μ_D × L
+      let sfty = Number(data.inventario_critico||0); // SS
+      let rop = kb + sfty;                            // ROP
+      let muForUI = Number(data.mu_d||0), sigmaForUI = Number(data.sigma_d||0);
 
       fillTable(tbody, serie);
       setKPIs(invActual, rop, sfty, globalMaxDate || lastDateStr, sma15);
+      // === Si estamos en modo Grupo: recalcular μ_D y σ_D del GRUPO desde la serie agregada ===
+      if (mode === 'Grupo') {
+        const stats90 = robustStatsDaily(cons, 90);
+        const muLocal    = stats90.mu || 0;              // mediana de consumo diario (últimos 90 días)
+        const sigmaLocal = stats90.sigma || 0;           // 1.4826 × MAD
+        const z = 1.65;
+        kb   = muLocal * (data.lead || LEAD);
+        sfty = z * sigmaLocal * Math.sqrt(data.lead || LEAD);
+        rop  = kb + sfty;
+        // valores que mostramos en tarjetas de fórmulas
+        muForUI = muLocal;
+        sigmaForUI = sigmaLocal;
+      }
+
 
       // Cobertura 4 meses consistente con la proyección (usa d̂)
       const dailyExpected = dHat.length
@@ -655,7 +682,7 @@ if (document.getElementById('mZeroDate')) document.getElementById('mZeroDate').t
       $('kpiCov').textContent = fmtPct(covPct);
       setSideMetrics(data.min_value||0, data.min_date||'', data.max_value||0, data.max_date||'', data.avg_30||0, covPct, covNote);
 
-      setFormulas(data.mu_d||0, data.sigma_d||0, kb, sfty, sma15, rop, H);
+      setFormulas(muForUI, sigmaForUI, kb, sfty, sma15, rop, H);
       fillProjTable(projTbody, future, dHat, base, withOrder, data.lead||LEAD, Q);
 
       let graphTitle = '';
