@@ -1,12 +1,13 @@
 {
   "name": "Curvas de Inventario",
   "short_name": "Inventario",
-  "start_url": ".",
+  "start_url": "/Curvas_de_Inventario/",
+  "scope": "/Curvas_de_Inventario/",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#0b5fff",
   "icons": [
-    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" }
+    { "src": "/Curvas_de_Inventario/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/Curvas_de_Inventario/icons/icon-512.png", "sizes": "512x512", "type": "image/png" }
   ]
 }
