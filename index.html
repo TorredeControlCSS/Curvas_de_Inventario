@@ -656,6 +656,7 @@ if (document.getElementById('mZeroDate')) document.getElementById('mZeroDate').t
       setKPIs(invActual, rop, sfty, globalMaxDate || lastDateStr, sma15);
       // === Si estamos en modo Grupo: recalcular μ_D y σ_D del GRUPO desde la serie agregada ===
       if (mode === 'Grupo') {
+        const prevRop = rop, prevSfty = sfty;
         const stats90 = robustStatsDaily(cons, 90);
         const muLocal    = stats90.mu || 0;              // mediana de consumo diario (últimos 90 días)
         const sigmaLocal = stats90.sigma || 0;           // 1.4826 × MAD
@@ -666,6 +667,8 @@ if (document.getElementById('mZeroDate')) document.getElementById('mZeroDate').t
         // valores que mostramos en tarjetas de fórmulas
         muForUI = muLocal;
         sigmaForUI = sigmaLocal;
+        // Actualiza KPIs con los valores del grupo
+        setKPIs(invActual, rop, sfty, globalMaxDate || lastDateStr, sma15);
       }
 
 
