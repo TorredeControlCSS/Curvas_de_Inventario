@@ -543,7 +543,17 @@ async function run(){
       if(!serie.length){ alert('Sin datos para esa selección/filtro.'); setBtnState(btn,'is-error'); setTimeout(()=>{ setBtnState(btn,''); btn.disabled=false; }, 900); return; }
 
       
+// Históricos
 const invHist = serie.map(p => Number(p.inventario));
+
+// === Inventario "actual" al último día del CONSOLIDADO ===
+const globalMaxDate = (meta && meta.max_fecha) ? String(meta.max_fecha) : '';
+// reconstruir un Map por fecha (ya deduplicado arriba)
+const mapByDate = new Map(serie.map(p => [p.fecha, p]));
+const pointAtGlobal = mapByDate.get(globalMaxDate);
+const invActual = pointAtGlobal ? Number(pointAtGlobal.inventario) || 0 : 0;
+
+// Último punto REAL de la serie del producto (para otras métricas que no dependen del día global)
 const lastVal = invHist[invHist.length - 1];
 const lastDateStr = serie[serie.length - 1]?.fecha || '';      
 // === SMA_15 para KPI ===
@@ -630,7 +640,7 @@ if (document.getElementById('mZeroDate')) document.getElementById('mZeroDate').t
       const rop = kb + sfty;                            // ROP
 
       fillTable(tbody, serie);
-      setKPIs(lastVal, rop, sfty, lastDateStr, sma15);
+      setKPIs(invActual, rop, sfty, globalMaxDate || lastDateStr, sma15);
 
       // Cobertura 4 meses consistente con la proyección (usa d̂)
       const dailyExpected = dHat.length
@@ -639,7 +649,7 @@ if (document.getElementById('mZeroDate')) document.getElementById('mZeroDate').t
       
       const weeklyExpected = dailyExpected * 7;
       const needFor4M = weeklyExpected * 4 * 4.345; // ~4 meses
-      const covPct = needFor4M ? Math.min((lastVal / needFor4M) * 100, 999) : 0;
+      const covPct = needFor4M ? Math.min((invActual / needFor4M) * 100, 999) : 0;
       const covNote = `Consumo semanal esperado ≈ ${fmtInt(Math.round(weeklyExpected))}. Requerido 4 meses ≈ ${fmtInt(Math.round(needFor4M))}.`;
       
       $('kpiCov').textContent = fmtPct(covPct);
