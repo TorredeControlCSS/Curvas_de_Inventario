@@ -523,8 +523,8 @@ async function init(){
   modeSel.value='Suministro'; fillTerms(); if (sups.length>0) termInp.value = sups[0];
 
   // Ocultar teclado numérico al confirmar
-  qty.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); qty.blur(); } });
-  qty.addEventListener('change', ()=>{ qty.blur(); });
+  qty.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); qty.blur(); run(); } });
+  qty.addEventListener('change', ()=>{ run(); });
   // Enter en término ejecuta búsqueda y también al elegir del datalist
   termInp.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); termInp.blur(); run(); } });
   termInp.addEventListener('change', ()=>{ if(termInp.value && termInp.value.trim().length>0){ run(); } });
