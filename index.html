@@ -900,7 +900,47 @@ window.addEventListener('load', ()=>{
     const area = document.getElementById('reportArea');
     if (!area) return;
 
-    // Evitar scroll interno en tablas para capturarlas completas
+    // 1) Tomamos los datos del suministro actual para usar en cabecera y nombre
+    const termInput = document.getElementById('term');
+    const modeSel   = document.getElementById('mode');
+    let subjectLabel = '';
+
+    if (modeSel && termInput) {
+      const mode = modeSel.value;
+      const term = (termInput.value || '').trim();
+      if (mode === 'Suministro' && term) {
+        subjectLabel = term;
+      } else if (mode === 'Código' && term) {
+        subjectLabel = `Código: ${term}`;
+      } else if (mode === 'Grupo') {
+        const groupSel = document.getElementById('group');
+        const g = groupSel ? (groupSel.value || '').trim() : '';
+        subjectLabel = g ? `Grupo: ${g}` : 'Grupo';
+      }
+    }
+
+    // 2) Texto para el encabezado del informe
+    const today = new Date().toISOString().slice(0,10);
+    const headerTitle = 'Curvas de Inventario — CEDIS PANAMÁ CSS';
+    const headerSub   = subjectLabel ? `Suministro: ${subjectLabel}` : 'Suministro seleccionado';
+    const headerDate  = `Fecha de generación: ${today}`;
+
+    // 3) Cargar el logo una sola vez
+    let logoImg = null;
+    try {
+      const logoUrl = 'icons/icon-512.png'; // tu favicon / logo existente
+      logoImg = new Image();
+      logoImg.crossOrigin = 'anonymous';
+      logoImg.src = logoUrl;
+      await new Promise((res, rej) => {
+        logoImg.onload = () => res();
+        logoImg.onerror = () => res(); // no rompemos si falla el logo
+      });
+    } catch (_) {
+      logoImg = null;
+    }
+
+    // 4) Evitar scroll interno en tablas para capturarlas completas
     const projWrap = document.querySelector('.proj-table-wrap');
     const tblWrap  = document.querySelector('.table-wrap');
     const oldProjMaxH = projWrap ? projWrap.style.maxHeight : '';
@@ -912,19 +952,25 @@ window.addEventListener('load', ()=>{
     try {
       await new Promise(r => setTimeout(r, 150)); // esperar que se rehaga el layout
 
+      // 5) Captura más ligera: menor escala
       const canvas = await html2canvas(area, {
-        scale: 2,
+        scale: 1.2,        // antes 2; reduce mucho el tamaño
         useCORS: true,
-        scrollY: -window.scrollY
+        scrollY: -window.scrollY,
+        backgroundColor: '#ffffff'
       });
 
-      const imgData = canvas.toDataURL('image/png');
+      // Convertimos a JPEG con calidad media (0.6) para reducir tamaño
+      const jpegQuality = 0.6;
       const { jsPDF } = window.jspdf;
       const pdf = new jsPDF('p', 'mm', 'a4');
 
       const pageWidth  = pdf.internal.pageSize.getWidth();
       const pageHeight = pdf.internal.pageSize.getHeight();
       const margin = 10;
+
+      const contentTopOffset = 35; // dejamos espacio para encabezado con logo/texto
+      const usableHeight = pageHeight - contentTopOffset - margin;
 
       const imgWidth  = pageWidth - 2 * margin;
       const imgHeight = (canvas.height * imgWidth) / canvas.width;
@@ -933,8 +979,53 @@ window.addEventListener('load', ()=>{
       let sY = 0;
       const pxPerMm = canvas.height / imgHeight; // px/mm en la imagen completa
 
+      // Función que pinta encabezado institucional
+      function drawHeader() {
+        // Fondo ligero de encabezado
+        pdf.setFillColor(15, 23, 42); // azul oscuro
+        pdf.rect(0, 0, pageWidth, 22, 'F');
+
+        // Logo (si existe)
+        let logoPlacedWidth = 0;
+        if (logoImg && logoImg.width && logoImg.height) {
+          const logoTargetHeight = 14;
+          const ratio = logoImg.width / logoImg.height;
+          const logoTargetWidth  = logoTargetHeight * ratio;
+          const logoX = margin;
+          const logoY = 4;
+          try {
+            const logoCanvas = document.createElement('canvas');
+            logoCanvas.width  = logoImg.width;
+            logoCanvas.height = logoImg.height;
+            const lctx = logoCanvas.getContext('2d');
+            lctx.drawImage(logoImg, 0, 0);
+            const logoDataUrl = logoCanvas.toDataURL('image/png');
+            pdf.addImage(logoDataUrl, 'PNG', logoX, logoY, logoTargetWidth, logoTargetHeight);
+            logoPlacedWidth = logoTargetWidth + 4;
+          } catch (_) {}
+        }
+
+        // Texto del encabezado
+        pdf.setTextColor(255, 255, 255);
+        pdf.setFontSize(11);
+        pdf.text(headerTitle, margin + logoPlacedWidth + 1, 8);
+
+        pdf.setFontSize(9);
+        pdf.text(headerSub, margin + logoPlacedWidth + 1, 13);
+        pdf.text(headerDate, margin + logoPlacedWidth + 1, 18);
+      }
+
+      let firstPage = true;
+
       while (remainingHeight > 0) {
-        const sliceHeightMm = Math.min(remainingHeight, pageHeight - 2 * margin);
+        if (!firstPage) {
+          pdf.addPage();
+        }
+
+        // Dibujamos encabezado en cada página
+        drawHeader();
+
+        const sliceHeightMm = Math.min(remainingHeight, usableHeight);
         const sliceHeightPx = sliceHeightMm * pxPerMm;
 
         const sliceCanvas = document.createElement('canvas');
@@ -950,19 +1041,23 @@ window.addEventListener('load', ()=>{
           canvas.width, sliceHeightPx
         );
 
-        const sliceData = sliceCanvas.toDataURL('image/png');
-        pdf.addImage(sliceData, 'PNG', margin, margin, imgWidth, sliceHeightMm);
+        const sliceData = sliceCanvas.toDataURL('image/jpeg', jpegQuality);
+        pdf.addImage(sliceData, 'JPEG', margin, contentTopOffset, imgWidth, sliceHeightMm);
 
         remainingHeight -= sliceHeightMm;
         sY += sliceHeightPx;
-
-        if (remainingHeight > 0) {
-          pdf.addPage();
-        }
+        firstPage = false;
       }
 
-      const today = new Date().toISOString().slice(0,10);
-      pdf.save(`Curvas_de_Inventario_${today}.pdf`);
+      // Nombre de archivo incluyendo el suministro (limpiando caracteres raros)
+      let safeSubject = subjectLabel
+        .replace(/[\\\/:*?"<>|]/g, '_')
+        .replace(/\s+/g, '_')
+        .slice(0, 60);
+
+      if (!safeSubject) safeSubject = 'Suministro';
+
+      pdf.save(`Curvas_de_Inventario_${safeSubject}_${today}.pdf`);
     } catch (e) {
       console.error('Error generando PDF', e);
       alert('Ocurrió un problema al generar el PDF.');
