@@ -8,6 +8,11 @@
   <link rel="manifest" href="manifest.json">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
+
+  <!-- Librerías para exportar a PDF -->
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+
   <style>
     :root{ --bg:#0b1f3a; --bg2:#133a74; --card:#ffffff; --muted:#6b7280; --ring:#e5e7eb;
            --text:#0f172a; --sub:#334155; --border:#e5e7eb; --canvas:#f6f7fb; --vh:1vh; }
@@ -106,13 +111,13 @@
     .proj-table-wrap table{ width:100%; border-collapse:collapse; font-size:12px; }
     .proj-table-wrap th, .proj-table-wrap td{ border-bottom:1px solid var(--ring); padding:6px 8px; white-space:nowrap; }
     .proj-table-wrap thead th{ position:sticky; top:0; background:var(--card); z-index:1; }
-  
+
     /* --- Feedback del botón "Mostrar" --- */
     button.primary{
       position: relative;
       transition: background-color .18s ease, border-color .18s ease, box-shadow .18s ease;
     }
-    
+
     /* Cargando */
     button.primary.is-loading{
       background:#6b7280;        /* gris */
@@ -129,40 +134,39 @@
       animation: spin .8s linear infinite;
     }
     @keyframes spin { to { transform: translateY(-50%) rotate(360deg); } }
-    
+
     /* OK (verde) */
     button.primary.is-ok{
       background:#16a34a;
       border-color:#16a34a;
       color:#fff;
     }
-    
+
     /* Error (rojo) */
     button.primary.is-error{
       background:#dc2626;
       border-color:#dc2626;
       color:#fff;
     }
-    
+
     /* Estado disabled visual consistente */
     button.primary:disabled{
       opacity:.85;
       cursor:not-allowed;
     }
-    
-  
-  /* ---- UX tweaks ---- */
-  .row > * { min-width: 0; }
-  .chart-wrap{ width:100%; }
-  canvas#chart{ display:block; width:100% !important; height:100% !important; }
-  .input-clear{ position:relative; }
-    
-  .input-clear > .clear-btn{
-    position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
-    border: 0; background:transparent; font-size:18px; line-height: 1;
-    cursor: pointer; opacity: .6;
-  }
-  .input-clear > .clear-btn:hover{ opacity: 1; }
+
+    /* ---- UX tweaks ---- */
+    .row > * { min-width: 0; }
+    .chart-wrap{ width:100%; }
+    canvas#chart{ display:block; width:100% !important; height:100% !important; }
+    .input-clear{ position:relative; }
+
+    .input-clear > .clear-btn{
+      position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+      border: 0; background:transparent; font-size:18px; line-height: 1;
+      cursor: pointer; opacity: .6;
+    }
+    .input-clear > .clear-btn:hover{ opacity: 1; }
 
   </style>
 </head>
@@ -178,11 +182,14 @@
       </select>
       <span id="net" class="net"></span>
       <button id="refreshBtn" class="btn ghost">Actualizar</button>
+      <!-- Nuevo botón para descargar PDF -->
+      <button id="exportPdfBtn" class="btn">Descargar PDF</button>
       <button id="installBtn" class="btn install hidden">Instalar app</button>
     </div>
   </div>
 
-  <div class="container">
+  <!-- Marcamos el área que formará parte del informe en PDF -->
+  <div class="container" id="reportArea">
     <div class="card filters">
       <div>
         <label>Buscar por</label>
@@ -528,7 +535,8 @@ async function init(){
   // Enter en término ejecuta búsqueda y también al elegir del datalist
   termInp.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); termInp.blur(); run(); } });
   termInp.addEventListener('change', ()=>{ if(termInp.value && termInp.value.trim().length>0){ run(); } });
-async function run(){
+
+  async function run(){
     setBtnState(btn,'is-loading'); btn.disabled = true;
     try{
       const mode=modeSel.value, group=groupSel.value, Q=Number(qty.value||0);
@@ -546,111 +554,110 @@ async function run(){
       serie = (serie||[])
         .filter(p => p && p.fecha && Number.isFinite(Number(p.inventario)))
         .sort((a,b) => a.fecha.localeCompare(b.fecha));
-      
+
       // si vienen varias filas por la misma fecha, nos quedamos con la última
       const byDate = new Map();
       for (const p of serie) byDate.set(p.fecha, p);
       serie = Array.from(byDate.values()).sort((a,b)=> a.fecha.localeCompare(b.fecha));
-      
+
       if(!serie.length){ alert('Sin datos para esa selección/filtro.'); setBtnState(btn,'is-error'); setTimeout(()=>{ setBtnState(btn,''); btn.disabled=false; }, 900); return; }
 
-      
-// Históricos
-const invHist = serie.map(p => Number(p.inventario));
+      // Históricos
+      const invHist = serie.map(p => Number(p.inventario));
 
-// === Inventario "actual" al último día del CONSOLIDADO ===
-const globalMaxDate = (meta && meta.max_fecha) ? String(meta.max_fecha) : '';
-// reconstruir un Map por fecha (ya deduplicado arriba)
-const mapByDate = new Map(serie.map(p => [p.fecha, p]));
-const pointAtGlobal = mapByDate.get(globalMaxDate);
-const invActual = pointAtGlobal ? Number(pointAtGlobal.inventario) || 0 : 0;
+      // === Inventario "actual" al último día del CONSOLIDADO ===
+      const globalMaxDate = (meta && meta.max_fecha) ? String(meta.max_fecha) : '';
+      // reconstruir un Map por fecha (ya deduplicado arriba)
+      const mapByDate = new Map(serie.map(p => [p.fecha, p]));
+      const pointAtGlobal = mapByDate.get(globalMaxDate);
+      const invActual = pointAtGlobal ? Number(pointAtGlobal.inventario) || 0 : 0;
 
-// Último punto REAL de la serie del producto (para otras métricas que no dependen del día global)
-const lastVal = invHist[invHist.length - 1];
-const lastDateStr = serie[serie.length - 1]?.fecha || '';      
-// === SMA_15 para KPI ===
-const SMA_WINDOW = 15;
-const tail = invHist.slice(-SMA_WINDOW).filter(Number.isFinite);
-const sma15 = tail.length
-  ? tail.reduce((a,b)=> a+b, 0) / tail.length
-  : lastVal// Consumo por día evitando sesgo por stockout (solo si prev ≥ 0.8 × SS)
-const cons = [];
-const ss = Number(data.inventario_critico||0);
-for (let i=1;i<invHist.length;i++){
-  const prev = invHist[i-1], cur = invHist[i];
-  const delta = Math.max(prev - cur, 0);                    // solo salidas
-  // días entre lecturas (por si hay huecos); fallback a 1
-  const d1 = new Date(serie[i-1].fecha), d2 = new Date(serie[i].fecha);
-  const days = Math.max( (d2 - d1) / 86400000, 1);
-  const rate = delta / days;                                // consumo diario promedio en ese tramo
-  const enoughStock = prev >= ss * 0.8;
-  // IMPORTANTE: excluir ceros (días con reposición o sin caída) para evitar sesgo a la baja en la mediana
-  cons.push(enoughStock && rate > 0 ? rate : NaN);
-}
+      // Último punto REAL de la serie del producto (para otras métricas que no dependen del día global)
+      const lastVal = invHist[invHist.length - 1];
+      const lastDateStr = serie[serie.length - 1]?.fecha || '';
+      // === SMA_15 para KPI ===
+      const SMA_WINDOW = 15;
+      const tail = invHist.slice(-SMA_WINDOW).filter(Number.isFinite);
+      const sma15 = tail.length
+        ? tail.reduce((a,b)=> a+b, 0) / tail.length
+        : lastVal;
 
-// Ventana reciente fija: 8 semanas (56 días)
-const WIN_DAYS = 56;
-const consWin = cons.slice(-WIN_DAYS).map(Number).filter(Number.isFinite);
+      // Consumo por día evitando sesgo por stockout (solo si prev ≥ 0.8 × SS)
+      const cons = [];
+      const ss = Number(data.inventario_critico||0);
+      for (let i=1;i<invHist.length;i++){
+        const prev = invHist[i-1], cur = invHist[i];
+        const delta = Math.max(prev - cur, 0);                    // solo salidas
+        // días entre lecturas (por si hay huecos); fallback a 1
+        const d1 = new Date(serie[i-1].fecha), d2 = new Date(serie[i].fecha);
+        const days = Math.max( (d2 - d1) / 86400000, 1);
+        const rate = delta / days;                                // consumo diario promedio en ese tramo
+        const enoughStock = prev >= ss * 0.8;
+        // IMPORTANTE: excluir ceros (días con reposición o sin caída) para evitar sesgo a la baja en la mediana
+        cons.push(enoughStock && rate > 0 ? rate : NaN);
+      }
 
-// Suavizado exponencial simple (α=0.3) sobre la ventana
-function sesWindow(cons, H, alpha = 0.3) {
-  if (!cons.length) return Array(H).fill(0);
-  let s = cons[0];
-  for (let i=1; i<cons.length; i++) s = alpha*cons[i] + (1-alpha)*s;
-  return Array(H).fill(s);
-}
-let dHat = sesWindow(consWin, H, 0.3);
+      // Ventana reciente fija: 8 semanas (56 días)
+      const WIN_DAYS = 56;
+      const consWin = cons.slice(-WIN_DAYS).map(Number).filter(Number.isFinite);
 
-// Estacionalidad semanal sobre la misma ventana
-function seasonalityWeeklyWin(cons, H, lastDateISO){
-  const n = cons.length; if (n < 14) return null;
-  const lastDate = new Date(lastDateISO), weekdayLast = lastDate.getDay();
-  const wkIdx = new Array(n); for (let i=n-1,w=weekdayLast;i>=0;i--,w=(w-1+7)%7) wkIdx[i]=w;
-  const sums = Array(7).fill(0), cnt = Array(7).fill(0);
-  for (let i=0;i<n;i++){ const w=wkIdx[i]; sums[w]+=Number(cons[i]||0); cnt[w]+=1; }
-  const avgW = sums.map((s,i)=> cnt[i]? s/cnt[i]:0);
-  const grand = avgW.reduce((a,b)=>a+b,0) / (avgW.filter(v=>v>0).length || 1);
-  if (!Number.isFinite(grand) || grand <= 0) return null;
-  const factors = avgW.map(v=> v>0 ? v/grand : 1);
-  const startW = (weekdayLast+1)%7, season = new Array(H);
-  for (let h=0; h<H; h++) season[h] = factors[(startW+h)%7] || 1;
-  return season;
-}
-if (USE_SEASONAL){
-  const seas = seasonalityWeeklyWin(consWin, H, lastDateStr);
-  if (seas) dHat = dHat.map((v,i)=> Math.max(v * seas[i], 0));
-}
+      // Suavizado exponencial simple (α=0.3) sobre la ventana
+      function sesWindow(cons, H, alpha = 0.3) {
+        if (!cons.length) return Array(H).fill(0);
+        let s = cons[0];
+        for (let i=1; i<cons.length; i++) s = alpha*cons[i] + (1-alpha)*s;
+        return Array(H).fill(s);
+      }
+      let dHat = sesWindow(consWin, H, 0.3);
 
-// Piso mínimo con mu_d para no colapsar a 0 cuando hubo stockout prolongado
-const muDaily = Number(data.mu_d||0);
-const MIN_FACTOR = 0.6; // 60% del promedio diario backend
-if (muDaily > 0) dHat = dHat.map(v => Math.max(v, muDaily * MIN_FACTOR));
+      // Estacionalidad semanal sobre la misma ventana
+      function seasonalityWeeklyWin(cons, H, lastDateISO){
+        const n = cons.length; if (n < 14) return null;
+        const lastDate = new Date(lastDateISO), weekdayLast = lastDate.getDay();
+        const wkIdx = new Array(n); for (let i=n-1,w=weekdayLast;i>=0;i--,w=(w-1+7)%7) wkIdx[i]=w;
+        const sums = Array(7).fill(0), cnt = Array(7).fill(0);
+        for (let i=0;i<n;i++){ const w=wkIdx[i]; sums[w]+=Number(cons[i]||0); cnt[w]+=1; }
+        const avgW = sums.map((s,i)=> cnt[i]? s/cnt[i]:0);
+        const grand = avgW.reduce((a,b)=>a+b,0) / (avgW.filter(v=>v>0).length || 1);
+        if (!Number.isFinite(grand) || grand <= 0) return null;
+        const factors = avgW.map(v=> v>0 ? v/grand : 1);
+        const startW = (weekdayLast+1)%7, season = new Array(H);
+        for (let h=0; h<H; h++) season[h] = factors[(startW+h)%7] || 1;
+        return season;
+      }
+      if (USE_SEASONAL){
+        const seas = seasonalityWeeklyWin(consWin, H, lastDateStr);
+        if (seas) dHat = dHat.map((v,i)=> Math.max(v * seas[i], 0));
+      }
 
-// Proyección arranca en el último inventario real
-const I0 = lastVal;
-const { base, withOrder } = simulate(I0, dHat, Q, data.lead || LEAD);
+      // Piso mínimo con mu_d para no colapsar a 0 cuando hubo stockout prolongado
+      const muDaily = Number(data.mu_d||0);
+      const MIN_FACTOR = 0.6; // 60% del promedio diario backend
+      if (muDaily > 0) dHat = dHat.map(v => Math.max(v, muDaily * MIN_FACTOR));
 
+      // Proyección arranca en el último inventario real
+      const I0 = lastVal;
+      const { base, withOrder } = simulate(I0, dHat, Q, data.lead || LEAD);
 
-// Fechas futuras y datasets
-const lastDate = new Date(lastDateStr), future = [];
-for (let i=1; i<=H; i++){ const d = new Date(lastDate); d.setDate(d.getDate()+i); future.push(d.toISOString().slice(0,10)); }
-const labels = serie.map(p=>p.fecha).concat(future);
+      // Fechas futuras y datasets
+      const lastDate = new Date(lastDateStr), future = [];
+      for (let i=1; i<=H; i++){ const d = new Date(lastDate); d.setDate(d.getDate()+i); future.push(d.toISOString().slice(0,10)); }
+      const labels = serie.map(p=>p.fecha).concat(future);
 
-const histData     = invHist.concat(Array(future.length).fill(null));
-const projData     = Array(serie.length).fill(null).concat(base);
-const projPlusData = Array(serie.length).fill(null).concat(withOrder);
+      const histData     = invHist.concat(Array(future.length).fill(null));
+      const projData     = Array(serie.length).fill(null).concat(base);
+      const projPlusData = Array(serie.length).fill(null).concat(withOrder);
 
-// === ETA de stock = 0 usando SOLO la proyección visible (coherente con la gráfica) ===
-let zeroDateStr = '';
-if (base && base.length) {
-  const idxZero = base.findIndex(v => Number(v || 0) <= 0);
-  if (idxZero >= 0) zeroDateStr = future[idxZero] || '';
-}
-if (document.getElementById('mZero')) document.getElementById('mZero').textContent = zeroDateStr ? zeroDateStr : 'No llega a 0 en horizonte';
-if (document.getElementById('mZeroDate')) document.getElementById('mZeroDate').textContent = zeroDateStr
-  ? 'Fecha estimada en que el stock llegaría a 0.'
-  : 'No alcanza 0 dentro del horizonte mostrado.';
-
+      // === ETA de stock = 0 usando SOLO la proyección visible (coherente con la gráfica) ===
+      let zeroDateStr = '';
+      if (base && base.length) {
+        const idxZero = base.findIndex(v => Number(v || 0) <= 0);
+        if (idxZero >= 0) zeroDateStr = future[idxZero] || '';
+      }
+      if (document.getElementById('mZero')) document.getElementById('mZero').textContent = zeroDateStr ? zeroDateStr : 'No llega a 0 en horizonte';
+      if (document.getElementById('mZeroDate')) document.getElementById('mZeroDate').textContent = zeroDateStr
+        ? 'Fecha estimada en que el stock llegaría a 0.'
+        : 'No alcanza 0 dentro del horizonte mostrado.';
 
       let kb = Number(data.kb_min||0);               // μ_D × L
       let sfty = Number(data.inventario_critico||0); // SS
@@ -661,7 +668,6 @@ if (document.getElementById('mZeroDate')) document.getElementById('mZeroDate').t
       setKPIs(invActual, rop, sfty, globalMaxDate || lastDateStr, sma15);
       // === Si estamos en modo Grupo: recalcular μ_D y σ_D del GRUPO desde la serie agregada ===
       if (mode === 'Grupo') {
-        const prevRop = rop, prevSfty = sfty;
         const stats90 = robustStatsDaily(cons, 90);
         const muLocal    = stats90.mu || 0;              // mediana de consumo diario (últimos 90 días)
         const sigmaLocal = stats90.sigma || 0;           // 1.4826 × MAD
@@ -676,17 +682,16 @@ if (document.getElementById('mZeroDate')) document.getElementById('mZeroDate').t
         setKPIs(invActual, rop, sfty, globalMaxDate || lastDateStr, sma15);
       }
 
-
       // Cobertura 4 meses consistente con la proyección (usa d̂)
       const dailyExpected = dHat.length
         ? dHat.reduce((a,b)=>a + Number(b||0), 0) / dHat.length
         : Number(data.mu_d||0);
-      
+
       const weeklyExpected = dailyExpected * 7;
       const needFor4M = weeklyExpected * 4 * 4.345; // ~4 meses
       const covPct = needFor4M ? Math.min((invActual / needFor4M) * 100, 999) : 0;
       const covNote = `Consumo semanal esperado ≈ ${fmtInt(Math.round(weeklyExpected))}. Requerido 4 meses ≈ ${fmtInt(Math.round(needFor4M))}.`;
-      
+
       $('kpiCov').textContent = fmtPct(covPct);
       setSideMetrics(data.min_value||0, data.min_date||'', data.max_value||0, data.max_date||'', data.avg_30||0, covPct, covNote);
 
@@ -721,7 +726,7 @@ if (document.getElementById('mZeroDate')) document.getElementById('mZeroDate').t
               legend:{position:'bottom'},
               title:{display:true, text:graphTitle},
               tooltip:{callbacks:{label:(ctx)=>{ const v=ctx.parsed.y; return `${ctx.dataset.label}: ${Number.isFinite(v)? fmtInt(v):''}`; }}},
-              annotation: { annotations: { arrival: { type:'line', xMin:arrivalLabel, xMax:arrivalLabel, borderColor:'rgba(160,160,160,0.8)', borderWidth:1, borderDash:[6,4], label:{ display:true, content:`Llegada pedido (+${(data.lead||LEAD)})`, position:'start', backgroundColor:'rgba(0,0,0,0.0)', color:'#666', rotation:-90, xAdjust:-6, yAdjust:12 } } } }
+              annotation: { annotations: { arrival: { type:'line', xMin:arrivalLabel, xMax:arrivalLabel, borderColor:'rgba(160,160,160,0.8)', borderWidth:1, borderDash:[6,4], label:{ display:true, content:'Llegada pedido', enabled:true, position:'start', backgroundColor:'rgba(15,23,42,0.9)', color:'#fff', padding:4, borderRadius:6 } } } }
             },
             elements:{ line:{tension:0.2} }
           }
@@ -771,7 +776,20 @@ if (document.getElementById('mZeroDate')) document.getElementById('mZeroDate').t
 // Header móvil: ocultar/mostrar en scroll
 (function(){
   const tb = document.querySelector('.topbar'); if (!tb) return; let lastY = window.scrollY, hidden = false;
-  function onScroll(){ const y = window.scrollY; const isMobile = window.innerWidth <= 720; if (!isMobile){ if (hidden){ tb.classList.remove('topbar--hidden'); hidden=false; } lastY = y; return; } if (y > lastY + 12 && y > 60 && !hidden){ tb.classList.add('topbar--hidden'); hidden = true; } else if (y < lastY - 12 && hidden){ tb.classList.remove('topbar--hidden'); hidden = false; } lastY = y; }
+  function onScroll(){
+    const y = window.scrollY;
+    const isMobile = window.innerWidth <= 720;
+    if (!isMobile){
+      if (hidden){ tb.classList.remove('topbar--hidden'); hidden=false; }
+      lastY = y; return;
+    }
+    if (y > lastY + 20 && !hidden){
+      tb.classList.add('topbar--hidden'); hidden=true;
+    } else if (y < lastY - 20 && hidden){
+      tb.classList.remove('topbar--hidden'); hidden=false;
+    }
+    lastY = y;
+  }
   window.addEventListener('scroll', onScroll, {passive:true});
   window.addEventListener('resize', ()=>{ tb.classList.remove('topbar--hidden'); hidden=false; lastY=window.scrollY; });
 })();
@@ -779,8 +797,23 @@ if (document.getElementById('mZeroDate')) document.getElementById('mZeroDate').t
 window.addEventListener('load', init);
 if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js').catch(()=>{}); }
 
-function normalizeHeader(){ const tb = document.querySelector('.topbar'); if (!tb) return; if (window.innerWidth <= 720){ tb.classList.remove('topbar--hidden'); tb.style.position = 'static'; tb.style.transform = 'none'; } }
-(function(){ const BTN = document.getElementById('btn'); const REF = document.getElementById('refreshBtn'); const _safe = (fn)=> fn && fn.addEventListener && fn.addEventListener('click', ()=> setTimeout(normalizeHeader, 0)); _safe(BTN); _safe(REF); window.addEventListener('load', ()=> setTimeout(normalizeHeader, 0)); })();
+function normalizeHeader(){
+  const tb = document.querySelector('.topbar'); if (!tb) return;
+  if (window.innerWidth <= 720){
+    tb.classList.remove('topbar--hidden');
+    tb.style.position = 'static';
+    tb.style.boxShadow = 'none';
+  } else {
+    tb.style.position = 'sticky';
+    tb.style.boxShadow = '0 2px 10px rgba(0,0,0,.2)';
+  }
+}
+(function(){
+  const BTN = document.getElementById('btn');
+  const REF = document.getElementById('refreshBtn');
+  const _safe = (el)=> el && el.addEventListener && el.addEventListener('click', ()=> setTimeout(normalizeHeader, 50));
+  _safe(BTN); _safe(REF);
+})();
 
 // === FIX MÓVIL: actualiza --vh y fuerza resize del chart ===
 function setVH(){
@@ -805,8 +838,9 @@ window.addEventListener('load', ()=>{
   ro.observe(wrap);
 });
 </script>
+
 <!-- Toast de actualización: pegar al final del <body> -->
-<div id="updateToast" style="position:fixed; left:50%; transform:translateX(-50%); bottom:16px; z-index:9999; display:none; max-width:92vw; box-shadow:0 6px 20px rgba(0,0,0,.2); border-radius:12px; padding:12px 14px; background:#111; color:#fff; font:14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;">
+<div id="updateToast" style="position:fixed; left:50%; transform:translateX(-50%); bottom:16px; z-index:9999; display:none; max-width:92vw; box-shadow:0 6px 20px rgba(0,0,0,.2); border-radius:12px; padding:8px 12px; background:#0f172a; color:white; font-size:14px; align-items:center; gap:8px;">
   <span style="margin-right:12px;">Hay una nueva versión disponible</span>
   <button id="updateToastBtn" style="border:0; padding:8px 12px; border-radius:10px; background:#0b5fff; color:white; cursor:pointer;">Actualizar</button>
 </div>
@@ -856,6 +890,88 @@ window.addEventListener('load', ()=>{
     setInterval(() => reg.update(), 60 * 60 * 1000);
   }).catch(console.error);
 })();
-</script>  
+
+// === Exportar a PDF el informe de curvas de inventario ===
+(function () {
+  const btn = document.getElementById('exportPdfBtn');
+  if (!btn) return;
+
+  btn.addEventListener('click', async () => {
+    const area = document.getElementById('reportArea');
+    if (!area) return;
+
+    // Evitar scroll interno en tablas para capturarlas completas
+    const projWrap = document.querySelector('.proj-table-wrap');
+    const tblWrap  = document.querySelector('.table-wrap');
+    const oldProjMaxH = projWrap ? projWrap.style.maxHeight : '';
+    const oldTblMaxH  = tblWrap ? tblWrap.style.maxHeight : '';
+
+    if (projWrap) projWrap.style.maxHeight = 'none';
+    if (tblWrap)  tblWrap.style.maxHeight  = 'none';
+
+    try {
+      await new Promise(r => setTimeout(r, 150)); // esperar que se rehaga el layout
+
+      const canvas = await html2canvas(area, {
+        scale: 2,
+        useCORS: true,
+        scrollY: -window.scrollY
+      });
+
+      const imgData = canvas.toDataURL('image/png');
+      const { jsPDF } = window.jspdf;
+      const pdf = new jsPDF('p', 'mm', 'a4');
+
+      const pageWidth  = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const margin = 10;
+
+      const imgWidth  = pageWidth - 2 * margin;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+      let remainingHeight = imgHeight;
+      let sY = 0;
+      const pxPerMm = canvas.height / imgHeight; // px/mm en la imagen completa
+
+      while (remainingHeight > 0) {
+        const sliceHeightMm = Math.min(remainingHeight, pageHeight - 2 * margin);
+        const sliceHeightPx = sliceHeightMm * pxPerMm;
+
+        const sliceCanvas = document.createElement('canvas');
+        sliceCanvas.width  = canvas.width;
+        sliceCanvas.height = sliceHeightPx;
+
+        const ctx = sliceCanvas.getContext('2d');
+        ctx.drawImage(
+          canvas,
+          0, sY,
+          canvas.width, sliceHeightPx,
+          0, 0,
+          canvas.width, sliceHeightPx
+        );
+
+        const sliceData = sliceCanvas.toDataURL('image/png');
+        pdf.addImage(sliceData, 'PNG', margin, margin, imgWidth, sliceHeightMm);
+
+        remainingHeight -= sliceHeightMm;
+        sY += sliceHeightPx;
+
+        if (remainingHeight > 0) {
+          pdf.addPage();
+        }
+      }
+
+      const today = new Date().toISOString().slice(0,10);
+      pdf.save(`Curvas_de_Inventario_${today}.pdf`);
+    } catch (e) {
+      console.error('Error generando PDF', e);
+      alert('Ocurrió un problema al generar el PDF.');
+    } finally {
+      if (projWrap) projWrap.style.maxHeight = oldProjMaxH;
+      if (tblWrap)  tblWrap.style.maxHeight  = oldTblMaxH;
+    }
+  });
+})();
+</script>
 </body>
 </html>
