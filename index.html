@@ -219,10 +219,10 @@
 
     <div class="kpis">
       <div class="kpi"><div class="l">% Abastecimiento (4 meses)</div><div class="v" id="kpiCov">–</div></div>
-      <div class="kpi"><div class="l">Inventario actual</div><div class="v" id="kpiInv">–</div><span class="muted" id="kpiInvDate">–</span></div>
+      <div class="kpi"><div class="l">Inventario disponible</div><div class="v" id="kpiInv">–</div><span class="muted" id="kpiInvDate">–</span></div>
       <div class="kpi"><div class="l">Punto de Reorden (CTD + SS)</div><div class="v" id="kpiKb">–</div></div>
       <div class="kpi"><div class="l">Inv. Crítico (95%)</div><div class="v" id="kpiCrit">–</div></div>
-      <div class="kpi"><div class="l">SMA_15 Inventario (nivel inicial)</div><div class="v" id="kpiI0">–</div></div>
+      <div class="kpi"><div class="l">SMA_15 Inventario disponible</div><div class="v" id="kpiI0">–</div></div>
     </div>
 
     <div class="row">
@@ -293,7 +293,7 @@
 
         <div class="card table-wrap">
           <div class="muted">Tabla diaria</div>
-          <table id="tbl"><thead><tr><th>Fecha</th><th>Cantidad</th><th>Δ</th></tr></thead><tbody></tbody></table>
+          <table id="tbl"><thead><tr><th>Fecha</th><th>Total</th><th>Disponible</th><th>Vencido</th><th>Δ</th></tr></thead><tbody></tbody></table>
         </div>
       </div>
     </div>
@@ -305,6 +305,32 @@ const API_BASE = 'https://script.google.com/macros/s/AKfycbwQ4oSPrSKmpP7tq_7pl7u
 const LEAD = 45, TYPEAHEAD_LIMIT = 100, USE_SEASONAL = true;
 const EXTRA_AFTER_ORDER = 30; // días extra cuando hay Q>0
 const horizon = (Q)=> Number(Q) > 0 ? LEAD + EXTRA_AFTER_ORDER : LEAD;
+
+// Helper function to calculate available inventory (non-expired)
+function calculateAvailableInventory(punto, currentDate) {
+  const total = Number(punto.inventario || 0);
+  
+  // If no expiration data, all inventory is available
+  if (!punto.vencimientos || !Array.isArray(punto.vencimientos) || punto.vencimientos.length === 0) {
+    return { total, available: total, expired: 0 };
+  }
+  
+  const refDate = new Date(currentDate);
+  let expired = 0;
+  
+  // Sum up quantities that have already expired
+  for (const venc of punto.vencimientos) {
+    if (venc.fecha_vencimiento && venc.cantidad) {
+      const expDate = new Date(venc.fecha_vencimiento);
+      if (expDate < refDate) {
+        expired += Number(venc.cantidad || 0);
+      }
+    }
+  }
+  
+  const available = Math.max(total - expired, 0);
+  return { total, available, expired };
+}
 
 let chartInstance=null, deferredPrompt=null;
 let codes=[], sups=[], groups=[];
@@ -401,11 +427,13 @@ function simulate(inv0, dHat, q=0, lead=45){
 }
 
 // Tablas
-function fillTable(tbody, serie){
+function fillTable(tbody, serie, invAvailable, invExpired){
   tbody.innerHTML='';
 
   // 1) Orden descendente (más reciente -> más antiguo)
   const arr = (serie||[]).slice().sort((a,b)=> b.fecha.localeCompare(a.fecha));
+  const arrAvail = invAvailable ? [...invAvailable].reverse() : [];
+  const arrExpired = invExpired ? [...invExpired].reverse() : [];
 
   // 2) Δ correcto en orden descendente:
   //    Δ = inventario(día anterior cronológico) - inventario(día actual)
@@ -413,11 +441,14 @@ function fillTable(tbody, serie){
   for (let i=0;i<arr.length;i++){
     const curr = arr[i];
     const inv = Number(curr.inventario);
+    const avail = arrAvail[i] !== undefined ? arrAvail[i] : inv;
+    const expired = arrExpired[i] !== undefined ? arrExpired[i] : 0;
     const prevChron = (i+1 < arr.length) ? Number(arr[i+1].inventario) : NaN;
     const delta = Number.isFinite(prevChron) ? fmtInt(prevChron - inv) : '–';
 
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${curr.fecha}</td><td>${fmtInt(inv)}</td><td>${delta}</td>`;
+    const expiredCell = expired > 0 ? `<td style="color:#ef4444">${fmtInt(Math.round(expired))}</td>` : '<td>–</td>';
+    tr.innerHTML = `<td>${curr.fecha}</td><td>${fmtInt(inv)}</td><td>${fmtInt(Math.round(avail))}</td>${expiredCell}<td>${delta}</td>`;
     tbody.appendChild(tr);
   }
 
@@ -425,7 +456,7 @@ function fillTable(tbody, serie){
   if (!tbody.children.length && arr.length){
     const p = arr[0];
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${p.fecha}</td><td>${fmtInt(Number(p.inventario))}</td><td>–</td>`;
+    tr.innerHTML = `<td>${p.fecha}</td><td>${fmtInt(Number(p.inventario))}</td><td>${fmtInt(Number(p.inventario))}</td><td>–</td><td>–</td>`;
     tbody.appendChild(tr);
   }
 }
@@ -566,31 +597,48 @@ async function init(){
 
       if(!serie.length){ alert('Sin datos para esa selección/filtro.'); setBtnState(btn,'is-error'); setTimeout(()=>{ setBtnState(btn,''); btn.disabled=false; }, 900); return; }
 
-      // Históricos
+      // === Calculate total and available inventory for each date ===
       const invHist = serie.map(p => Number(p.inventario));
+      const invAvailable = [];
+      const invExpired = [];
+      
+      for (const punto of serie) {
+        const calc = calculateAvailableInventory(punto, punto.fecha);
+        invAvailable.push(calc.available);
+        invExpired.push(calc.expired);
+      }
 
       // === Inventario "actual" al último día del CONSOLIDADO ===
       const globalMaxDate = (meta && meta.max_fecha) ? String(meta.max_fecha) : '';
       // reconstruir un Map por fecha (ya deduplicado arriba)
       const mapByDate = new Map(serie.map(p => [p.fecha, p]));
       const pointAtGlobal = mapByDate.get(globalMaxDate);
-      const invActual = pointAtGlobal ? Number(pointAtGlobal.inventario) || 0 : 0;
+      
+      // Calculate available inventory at global max date
+      let invActual = 0;
+      let invActualAvailable = 0;
+      if (pointAtGlobal) {
+        const calc = calculateAvailableInventory(pointAtGlobal, globalMaxDate);
+        invActual = calc.total;
+        invActualAvailable = calc.available;
+      }
 
       // Último punto REAL de la serie del producto (para otras métricas que no dependen del día global)
       const lastVal = invHist[invHist.length - 1];
+      const lastValAvailable = invAvailable[invAvailable.length - 1];
       const lastDateStr = serie[serie.length - 1]?.fecha || '';
-      // === SMA_15 para KPI ===
+      // === SMA_15 para KPI (usando inventario disponible) ===
       const SMA_WINDOW = 15;
-      const tail = invHist.slice(-SMA_WINDOW).filter(Number.isFinite);
-      const sma15 = tail.length
-        ? tail.reduce((a,b)=> a+b, 0) / tail.length
-        : lastVal;
+      const tailAvailable = invAvailable.slice(-SMA_WINDOW).filter(Number.isFinite);
+      const sma15 = tailAvailable.length
+        ? tailAvailable.reduce((a,b)=> a+b, 0) / tailAvailable.length
+        : lastValAvailable;
 
-      // Consumo por día evitando sesgo por stockout (solo si prev ≥ 0.8 × SS)
+      // Consumo por día evitando sesgo por stockout (usando inventario disponible)
       const cons = [];
       const ss = Number(data.inventario_critico||0);
-      for (let i=1;i<invHist.length;i++){
-        const prev = invHist[i-1], cur = invHist[i];
+      for (let i=1;i<invAvailable.length;i++){
+        const prev = invAvailable[i-1], cur = invAvailable[i];
         const delta = Math.max(prev - cur, 0);                    // solo salidas
         // días entre lecturas (por si hay huecos); fallback a 1
         const d1 = new Date(serie[i-1].fecha), d2 = new Date(serie[i].fecha);
@@ -639,8 +687,8 @@ async function init(){
       const MIN_FACTOR = 0.6; // 60% del promedio diario backend
       if (muDaily > 0) dHat = dHat.map(v => Math.max(v, muDaily * MIN_FACTOR));
 
-      // Proyección arranca en el último inventario real
-      const I0 = lastVal;
+      // Proyección arranca en el último inventario disponible (no vencido)
+      const I0 = lastValAvailable;
       const { base, withOrder } = simulate(I0, dHat, Q, data.lead || LEAD);
 
       // Fechas futuras y datasets
@@ -648,9 +696,10 @@ async function init(){
       for (let i=1; i<=H; i++){ const d = new Date(lastDate); d.setDate(d.getDate()+i); future.push(d.toISOString().slice(0,10)); }
       const labels = serie.map(p=>p.fecha).concat(future);
 
-      const histData     = invHist.concat(Array(future.length).fill(null));
-      const projData     = Array(serie.length).fill(null).concat(base);
-      const projPlusData = Array(serie.length).fill(null).concat(withOrder);
+      const histData          = invHist.concat(Array(future.length).fill(null));
+      const histAvailableData = invAvailable.concat(Array(future.length).fill(null));
+      const projData          = Array(serie.length).fill(null).concat(base);
+      const projPlusData      = Array(serie.length).fill(null).concat(withOrder);
 
       // === ETA de stock = 0 usando SOLO la proyección visible (coherente con la gráfica) ===
       let zeroDateStr = '';
@@ -668,8 +717,8 @@ async function init(){
       let rop = kb + sfty;                            // ROP
       let muForUI = Number(data.mu_d||0), sigmaForUI = Number(data.sigma_d||0);
 
-      fillTable(tbody, serie);
-      setKPIs(invActual, rop, sfty, globalMaxDate || lastDateStr, sma15);
+      fillTable(tbody, serie, invAvailable, invExpired);
+      setKPIs(invActualAvailable, rop, sfty, globalMaxDate || lastDateStr, sma15);
       // === Si estamos en modo Grupo: recalcular μ_D y σ_D del GRUPO desde la serie agregada ===
       if (mode === 'Grupo') {
         const stats90 = robustStatsDaily(cons, 90);
@@ -683,17 +732,17 @@ async function init(){
         muForUI = muLocal;
         sigmaForUI = sigmaLocal;
         // Actualiza KPIs con los valores del grupo
-        setKPIs(invActual, rop, sfty, globalMaxDate || lastDateStr, sma15);
+        setKPIs(invActualAvailable, rop, sfty, globalMaxDate || lastDateStr, sma15);
       }
 
-      // Cobertura 4 meses consistente con la proyección (usa d̂)
+      // Cobertura 4 meses consistente con la proyección (usa d̂ y inventario disponible)
       const dailyExpected = dHat.length
         ? dHat.reduce((a,b)=>a + Number(b||0), 0) / dHat.length
         : Number(data.mu_d||0);
 
       const weeklyExpected = dailyExpected * 7;
       const needFor4M = weeklyExpected * 4 * 4.345; // ~4 meses
-      const covPct = needFor4M ? Math.min((invActual / needFor4M) * 100, 999) : 0;
+      const covPct = needFor4M ? Math.min((invActualAvailable / needFor4M) * 100, 999) : 0;
       const covNote = `Consumo semanal esperado ≈ ${fmtInt(Math.round(weeklyExpected))}. Requerido 4 meses ≈ ${fmtInt(Math.round(needFor4M))}.`;
 
       $('kpiCov').textContent = fmtPct(covPct);
@@ -716,11 +765,12 @@ async function init(){
         chartInstance = new Chart(ctx, {
           type:'line',
           data:{ labels, datasets:[
-            {label:'Inventario histórico', data:histData, fill:true, pointRadius:0},
-            {label:`Proyección ${H} días`, data:projData, fill:true, pointRadius:0},
-            {label:'Proyección + pedido', data:projPlusData, fill:true, pointRadius:0},
-            {label:'Punto de Reorden (CTD+SS)', data:Array(labels.length).fill(rop), pointRadius:0, borderDash:[4,4], fill:false},
-            {label:'Inventario Crítico', data:Array(labels.length).fill(sfty), pointRadius:0, borderDash:[4,2], fill:false}
+            {label:'Inventario total', data:histData, fill:false, pointRadius:0, borderColor:'rgba(156, 163, 175, 0.5)', backgroundColor:'rgba(156, 163, 175, 0.1)', borderWidth:1.5},
+            {label:'Inventario disponible', data:histAvailableData, fill:true, pointRadius:0, borderColor:'rgba(59, 130, 246, 1)', backgroundColor:'rgba(59, 130, 246, 0.1)', borderWidth:2},
+            {label:`Proyección ${H} días`, data:projData, fill:true, pointRadius:0, borderColor:'rgba(34, 197, 94, 1)', backgroundColor:'rgba(34, 197, 94, 0.1)'},
+            {label:'Proyección + pedido', data:projPlusData, fill:true, pointRadius:0, borderColor:'rgba(168, 85, 247, 1)', backgroundColor:'rgba(168, 85, 247, 0.1)'},
+            {label:'Punto de Reorden (CTD+SS)', data:Array(labels.length).fill(rop), pointRadius:0, borderDash:[4,4], fill:false, borderColor:'rgba(251, 146, 60, 1)'},
+            {label:'Inventario Crítico', data:Array(labels.length).fill(sfty), pointRadius:0, borderDash:[4,2], fill:false, borderColor:'rgba(239, 68, 68, 1)'}
           ]},
           options:{
             responsive:true, maintainAspectRatio:false, animation:false,
@@ -740,11 +790,12 @@ async function init(){
       }else{
         chartInstance.data.labels=labels;
         chartInstance.data.datasets[0].data=histData;
-        chartInstance.data.datasets[1].label=`Proyección ${H} días`;
-        chartInstance.data.datasets[1].data=projData;
-        chartInstance.data.datasets[2].data=projPlusData;
-        chartInstance.data.datasets[3].data=Array(labels.length).fill(rop);
-        chartInstance.data.datasets[4].data=Array(labels.length).fill(sfty);
+        chartInstance.data.datasets[1].data=histAvailableData;
+        chartInstance.data.datasets[2].label=`Proyección ${H} días`;
+        chartInstance.data.datasets[2].data=projData;
+        chartInstance.data.datasets[3].data=projPlusData;
+        chartInstance.data.datasets[4].data=Array(labels.length).fill(rop);
+        chartInstance.data.datasets[5].data=Array(labels.length).fill(sfty);
         chartInstance.options.plugins.title.text=graphTitle;
         if (chartInstance.options.plugins.annotation) {
           chartInstance.options.plugins.annotation.annotations.arrival.xMin = arrivalLabel;
