@@ -15,7 +15,12 @@
 
   <style>
     :root{ --bg:#0b1f3a; --bg2:#133a74; --card:#ffffff; --muted:#6b7280; --ring:#e5e7eb;
-           --text:#0f172a; --sub:#334155; --border:#e5e7eb; --canvas:#f6f7fb; --vh:1vh; }
+           --text:#0f172a; --sub:#334155; --border:#e5e7eb; --canvas:#f6f7fb; --vh:1vh; 
+           --chart-total:rgba(156,163,175,0.5); --chart-total-fill:rgba(156,163,175,0.1);
+           --chart-available:rgba(59,130,246,1); --chart-available-fill:rgba(59,130,246,0.1);
+           --chart-projection:rgba(34,197,94,1); --chart-projection-fill:rgba(34,197,94,0.1);
+           --chart-order:rgba(168,85,247,1); --chart-order-fill:rgba(168,85,247,0.1);
+           --chart-rop:rgba(251,146,60,1); --chart-critical:rgba(239,68,68,1); }
     @media (prefers-color-scheme: dark){
       :root{ --bg:#0a1120; --bg2:#0f2142; --card:#0f172a; --muted:#94a3b8; --ring:#1f2937;
              --text:#e5e7eb; --sub:#cbd5e1; --border:#334155; --canvas:#0b1220; }
@@ -106,6 +111,10 @@
     .fc-formula{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:12px; color:var(--sub)}
     .muted{color:var(--muted);font-size:12px}
     ul.formula{padding-left:18px}
+    
+    /* Expired inventory styling */
+    .expired-qty{color:#ef4444}
+    [data-theme="dark"] .expired-qty{color:#f87171}
 
     .proj-table-wrap{ max-height:260px; overflow:auto; margin-top:8px; }
     .proj-table-wrap table{ width:100%; border-collapse:collapse; font-size:12px; }
@@ -316,13 +325,20 @@ function calculateAvailableInventory(punto, currentDate) {
   }
   
   const refDate = new Date(currentDate);
+  // Validate reference date
+  if (isNaN(refDate.getTime())) {
+    console.warn('Invalid current date:', currentDate);
+    return { total, available: total, expired: 0 };
+  }
+  
   let expired = 0;
   
   // Sum up quantities that have already expired
   for (const venc of punto.vencimientos) {
     if (venc.fecha_vencimiento && venc.cantidad) {
       const expDate = new Date(venc.fecha_vencimiento);
-      if (expDate < refDate) {
+      // Validate expiration date before comparing
+      if (!isNaN(expDate.getTime()) && expDate < refDate) {
         expired += Number(venc.cantidad || 0);
       }
     }
@@ -447,7 +463,7 @@ function fillTable(tbody, serie, invAvailable, invExpired){
     const delta = Number.isFinite(prevChron) ? fmtInt(prevChron - inv) : '–';
 
     const tr = document.createElement('tr');
-    const expiredCell = expired > 0 ? `<td style="color:#ef4444">${fmtInt(Math.round(expired))}</td>` : '<td>–</td>';
+    const expiredCell = expired > 0 ? `<td class="expired-qty">${fmtInt(Math.round(expired))}</td>` : '<td>–</td>';
     tr.innerHTML = `<td>${curr.fecha}</td><td>${fmtInt(inv)}</td><td>${fmtInt(Math.round(avail))}</td>${expiredCell}<td>${delta}</td>`;
     tbody.appendChild(tr);
   }
@@ -760,17 +776,32 @@ async function init(){
 
       const ctx = document.getElementById('chart').getContext('2d');
       const arrivalLabel = future[Math.min((data.lead||LEAD)-1, future.length-1)];
+      
+      // Get chart colors from CSS variables
+      const styles = getComputedStyle(document.documentElement);
+      const chartColors = {
+        total: styles.getPropertyValue('--chart-total').trim() || 'rgba(156, 163, 175, 0.5)',
+        totalFill: styles.getPropertyValue('--chart-total-fill').trim() || 'rgba(156, 163, 175, 0.1)',
+        available: styles.getPropertyValue('--chart-available').trim() || 'rgba(59, 130, 246, 1)',
+        availableFill: styles.getPropertyValue('--chart-available-fill').trim() || 'rgba(59, 130, 246, 0.1)',
+        projection: styles.getPropertyValue('--chart-projection').trim() || 'rgba(34, 197, 94, 1)',
+        projectionFill: styles.getPropertyValue('--chart-projection-fill').trim() || 'rgba(34, 197, 94, 0.1)',
+        order: styles.getPropertyValue('--chart-order').trim() || 'rgba(168, 85, 247, 1)',
+        orderFill: styles.getPropertyValue('--chart-order-fill').trim() || 'rgba(168, 85, 247, 0.1)',
+        rop: styles.getPropertyValue('--chart-rop').trim() || 'rgba(251, 146, 60, 1)',
+        critical: styles.getPropertyValue('--chart-critical').trim() || 'rgba(239, 68, 68, 1)'
+      };
 
       if(!chartInstance){
         chartInstance = new Chart(ctx, {
           type:'line',
           data:{ labels, datasets:[
-            {label:'Inventario total', data:histData, fill:false, pointRadius:0, borderColor:'rgba(156, 163, 175, 0.5)', backgroundColor:'rgba(156, 163, 175, 0.1)', borderWidth:1.5},
-            {label:'Inventario disponible', data:histAvailableData, fill:true, pointRadius:0, borderColor:'rgba(59, 130, 246, 1)', backgroundColor:'rgba(59, 130, 246, 0.1)', borderWidth:2},
-            {label:`Proyección ${H} días`, data:projData, fill:true, pointRadius:0, borderColor:'rgba(34, 197, 94, 1)', backgroundColor:'rgba(34, 197, 94, 0.1)'},
-            {label:'Proyección + pedido', data:projPlusData, fill:true, pointRadius:0, borderColor:'rgba(168, 85, 247, 1)', backgroundColor:'rgba(168, 85, 247, 0.1)'},
-            {label:'Punto de Reorden (CTD+SS)', data:Array(labels.length).fill(rop), pointRadius:0, borderDash:[4,4], fill:false, borderColor:'rgba(251, 146, 60, 1)'},
-            {label:'Inventario Crítico', data:Array(labels.length).fill(sfty), pointRadius:0, borderDash:[4,2], fill:false, borderColor:'rgba(239, 68, 68, 1)'}
+            {label:'Inventario total', data:histData, fill:false, pointRadius:0, borderColor:chartColors.total, backgroundColor:chartColors.totalFill, borderWidth:1.5},
+            {label:'Inventario disponible', data:histAvailableData, fill:true, pointRadius:0, borderColor:chartColors.available, backgroundColor:chartColors.availableFill, borderWidth:2},
+            {label:`Proyección ${H} días`, data:projData, fill:true, pointRadius:0, borderColor:chartColors.projection, backgroundColor:chartColors.projectionFill},
+            {label:'Proyección + pedido', data:projPlusData, fill:true, pointRadius:0, borderColor:chartColors.order, backgroundColor:chartColors.orderFill},
+            {label:'Punto de Reorden (CTD+SS)', data:Array(labels.length).fill(rop), pointRadius:0, borderDash:[4,4], fill:false, borderColor:chartColors.rop},
+            {label:'Inventario Crítico', data:Array(labels.length).fill(sfty), pointRadius:0, borderDash:[4,2], fill:false, borderColor:chartColors.critical}
           ]},
           options:{
             responsive:true, maintainAspectRatio:false, animation:false,
