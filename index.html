@@ -463,16 +463,18 @@ function fillTable(tbody, serie, invAvailable, invExpired){
     const delta = Number.isFinite(prevChron) ? fmtInt(prevChron - inv) : '–';
 
     const tr = document.createElement('tr');
+    // Apply consistent rounding to all inventory values
     const expiredCell = expired > 0 ? `<td class="expired-qty">${fmtInt(Math.round(expired))}</td>` : '<td>–</td>';
-    tr.innerHTML = `<td>${curr.fecha}</td><td>${fmtInt(inv)}</td><td>${fmtInt(Math.round(avail))}</td>${expiredCell}<td>${delta}</td>`;
+    tr.innerHTML = `<td>${curr.fecha}</td><td>${fmtInt(Math.round(inv))}</td><td>${fmtInt(Math.round(avail))}</td>${expiredCell}<td>${delta}</td>`;
     tbody.appendChild(tr);
   }
 
   // Fallback por si llegara una sola fila (mantiene tu comportamiento actual)
   if (!tbody.children.length && arr.length){
     const p = arr[0];
+    const invVal = Number(p.inventario);
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${p.fecha}</td><td>${fmtInt(Number(p.inventario))}</td><td>${fmtInt(Number(p.inventario))}</td><td>–</td><td>–</td>`;
+    tr.innerHTML = `<td>${p.fecha}</td><td>${fmtInt(Math.round(invVal))}</td><td>${fmtInt(Math.round(invVal))}</td><td>–</td><td>–</td>`;
     tbody.appendChild(tr);
   }
 }
