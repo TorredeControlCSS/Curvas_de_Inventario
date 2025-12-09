@@ -32,27 +32,42 @@ He realizado los siguientes cambios en tu repositorio:
 
 ### Paso 1: Preparar tus Archivos Excel
 
-Tus archivos Excel de inventario ahora deben incluir una nueva hoja llamada **"Vencimientos"** con las siguientes columnas:
+**¡BUENAS NOTICIAS!** El script ahora es más flexible y funciona con tu estructura actual.
+
+#### Opción A: Si ya tienes los datos de vencimiento en tu hoja de Inventario ✅ RECOMENDADO
+
+Si tu archivo Excel ya tiene columnas como estas en la hoja "Inventario":
+- **Fecha Vto** o **Fecha_Vencimiento** o **Vencimiento**
+- **Nº de Lote** (opcional, se detectará automáticamente)
+- **Cantidad**
+
+**¡No necesitas hacer nada!** El script automáticamente detectará y extraerá los datos de vencimiento.
+
+**Ejemplo de estructura que ya funciona:**
+```
+| Fecha      | Código  | Grupo | Suministro | Nº de Lote | Fecha Vto  | Cantidad |
+|------------|---------|-------|------------|------------|------------|----------|
+| 04/12/2025 | 101097501| G1   | Abacavir..| E231419A   | 31/03/2026 | 6,000    |
+| 04/12/2025 | 101097501| G1   | Abacavir..| E231419A   | 31/03/2026 | 1,380    |
+```
+
+El script:
+- ✅ Detecta automáticamente la columna "Fecha Vto"
+- ✅ Agrupa los datos por fecha y código para el inventario total
+- ✅ Extrae cada registro con su fecha de vencimiento individual
+
+#### Opción B: Hoja "Vencimientos" separada (para compatibilidad)
+
+Si prefieres mantener los datos separados, puedes crear una hoja llamada **"Vencimientos"** con:
 
 ```
 | Fecha      | Codigo  | Fecha_Vencimiento | Cantidad |
 |------------|---------|-------------------|----------|
 | 2024-01-15 | MED001  | 2024-02-01        | 200      |
 | 2024-01-15 | MED001  | 2024-03-15        | 800      |
-| 2024-01-16 | MED001  | 2024-02-01        | 180      |
 ```
 
-**Columnas opcionales** (si no las incluyes, se buscarán en el índice):
-- Suministro
-- Grupo
-
-**Ejemplo de hoja Vencimientos completa:**
-```
-| Fecha      | Codigo  | Suministro        | Grupo         | Fecha_Vencimiento | Cantidad |
-|------------|---------|-------------------|---------------|-------------------|----------|
-| 2024-01-15 | MED001  | Paracetamol 500mg | Medicamentos  | 2024-02-01        | 200      |
-| 2024-01-15 | MED001  | Paracetamol 500mg | Medicamentos  | 2024-03-15        | 800      |
-```
+**El script soporta ambas opciones simultáneamente.**
 
 ### Paso 2: Configurar Google Apps Script
 

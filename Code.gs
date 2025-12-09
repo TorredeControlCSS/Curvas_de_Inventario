@@ -10,6 +10,14 @@
  * 3. Ejecuta setup() para crear las hojas necesarias
  * 4. Ejecuta consolidate() para poblar los datos
  * 5. Ejecuta createDailyTrigger() para automatizar actualizaciones
+ * 
+ * DETECCIÓN AUTOMÁTICA DE VENCIMIENTOS:
+ * El script detecta automáticamente columnas de vencimiento en tu hoja de Inventario:
+ * - "Fecha Vto", "Fecha_Vencimiento", "Vencimiento", "Expiry", etc.
+ * - "Nº de Lote", "Lote", "Batch" (opcional)
+ * 
+ * No necesitas crear una hoja "Vencimientos" separada si ya tienes estos datos
+ * en tu hoja principal de Inventario. El script soporta ambas opciones.
  */
 
 // ============================================================================
@@ -154,12 +162,18 @@ function consolidate() {
         }
       });
       
-      // NUEVO: Procesar hoja de Vencimientos si existe
+      // NUEVO: Agregar vencimientos extraídos de la hoja de Inventario
+      if (inventarioData.vencimientos && inventarioData.vencimientos.length > 0) {
+        allVencimientos.push(...inventarioData.vencimientos);
+        Logger.log(`  ✓ ${inventarioData.vencimientos.length} registros de vencimiento encontrados en hoja Inventario`);
+      }
+      
+      // NUEVO: Procesar hoja de Vencimientos separada si existe (para compatibilidad)
       const vencimientoSheet = tempSheet.getSheetByName('Vencimientos');
       if (vencimientoSheet) {
         const vencimientoData = processVencimientoSheet(vencimientoSheet);
         allVencimientos.push(...vencimientoData);
-        Logger.log(`  ✓ ${vencimientoData.length} registros de vencimiento encontrados`);
+        Logger.log(`  ✓ ${vencimientoData.length} registros de vencimiento encontrados en hoja separada`);
       }
       
       // Limpiar archivo temporal
@@ -208,25 +222,34 @@ function consolidate() {
 
 /**
  * Procesa la hoja de Inventario de un archivo Excel
+ * ACTUALIZADO: Ahora también extrae datos de vencimiento si están en la misma hoja
  */
 function processInventarioSheet(sheet) {
   const data = sheet.getDataRange().getValues();
   const headers = data[0].map(h => String(h).toLowerCase().trim());
   
-  // Detectar columnas
+  // Detectar columnas básicas
   const fechaCol = findColumn(headers, ['fecha', 'date']);
   const codigoCol = findColumn(headers, ['codigo', 'código', 'code', 'sku']);
   const suministroCol = findColumn(headers, ['suministro', 'producto', 'product', 'descripcion', 'descripción']);
   const grupoCol = findColumn(headers, ['grupo', 'group', 'categoria', 'categoría']);
   const cantidadCol = findColumn(headers, ['cantidad', 'inventario', 'stock', 'quantity']);
   
+  // NUEVO: Detectar columnas de vencimiento en la misma hoja
+  const fechaVtoCol = findColumn(headers, ['fecha vto', 'fecha_vto', 'vencimiento', 'fecha_vencimiento', 'expiry', 'caducidad']);
+  const loteCol = findColumn(headers, ['lote', 'nº de lote', 'n de lote', 'batch', 'lot']);
+  
   if (fechaCol === -1 || codigoCol === -1 || cantidadCol === -1) {
     Logger.log('  ⚠ Columnas requeridas no encontradas');
-    return { data: [], index: [] };
+    return { data: [], index: [], vencimientos: [] };
   }
   
   const result = [];
   const index = [];
+  const vencimientos = [];
+  
+  // Variable para acumular inventario total por fecha y código
+  const inventoryAgg = new Map();
   
   for (let i = 1; i < data.length; i++) {
     const row = data[i];
@@ -239,15 +262,42 @@ function processInventarioSheet(sheet) {
     
     if (!fecha || !codigo || cantidad === 0) continue;
     
-    result.push([fecha, codigo, suministro, grupo, cantidad]);
-    
     // Agregar al índice
     if (!index.find(item => item.codigo === codigo)) {
       index.push({ codigo, suministro, grupo });
     }
+    
+    // NUEVO: Si hay columna de fecha de vencimiento, procesar datos de vencimiento
+    if (fechaVtoCol !== -1) {
+      const fechaVto = parseDate(row[fechaVtoCol]);
+      
+      if (fechaVto) {
+        // Guardar registro de vencimiento
+        vencimientos.push([fecha, codigo, suministro, grupo, fechaVto, cantidad]);
+      }
+      
+      // Acumular inventario total por fecha y código
+      const key = `${fecha}_${codigo}`;
+      if (!inventoryAgg.has(key)) {
+        inventoryAgg.set(key, {
+          fecha, codigo, suministro, grupo, total: 0
+        });
+      }
+      inventoryAgg.get(key).total += cantidad;
+    } else {
+      // Si no hay datos de vencimiento, procesar como antes (un registro por fila)
+      result.push([fecha, codigo, suministro, grupo, cantidad]);
+    }
   }
   
-  return { data: result, index };
+  // Si procesamos datos de vencimiento, crear registros agregados de inventario total
+  if (fechaVtoCol !== -1 && inventoryAgg.size > 0) {
+    for (const [key, item] of inventoryAgg) {
+      result.push([item.fecha, item.codigo, item.suministro, item.grupo, item.total]);
+    }
+  }
+  
+  return { data: result, index, vencimientos };
 }
 
 /**

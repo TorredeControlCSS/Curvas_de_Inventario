@@ -17,24 +17,30 @@ Usa esta lista para verificar que has completado todos los pasos necesarios.
 
 ---
 
-## Parte 2: Modificar Archivos Excel (10-15 minutos)
+## Parte 2: Verificar Archivos Excel (2 minutos) ⭐ ACTUALIZADO
+
+**¡Ya no necesitas crear hojas nuevas!** El script ahora detecta automáticamente los datos de vencimiento.
 
 - [ ] **2.1** Abrí uno de mis archivos Excel de inventario
-- [ ] **2.2** Creé una nueva hoja llamada **"Vencimientos"**
-- [ ] **2.3** Agregué los encabezados:
-  ```
-  Fecha | Codigo | Fecha_Vencimiento | Cantidad
-  ```
-- [ ] **2.4** Agregué datos de ejemplo (al menos 3 filas)
-- [ ] **2.5** Guardé el archivo Excel
-- [ ] **2.6** (Opcional) Repetí 2.1-2.5 para otros archivos
+- [ ] **2.2** Verifiqué que mi hoja "Inventario" (o similar) tiene estas columnas:
+  - [ ] Fecha
+  - [ ] Código (o Codigo)
+  - [ ] **Fecha Vto** o **Fecha_Vencimiento** (o similar)
+  - [ ] Cantidad
+  - [ ] (Opcional) Nº de Lote
+  - [ ] (Opcional) Suministro
+  - [ ] (Opcional) Grupo
 
-**Ejemplo de datos:**
+**Ejemplo de estructura que ya funciona:**
 ```
-2024-01-15 | MED001 | 2024-02-01 | 200
-2024-01-15 | MED001 | 2024-03-15 | 800
-2024-01-16 | MED001 | 2024-02-01 | 180
+Fecha      | Código    | Grupo | Suministro | Nº de Lote | Fecha Vto  | Cantidad
+04/12/2025 | 101097501 | G1    | Abacavir...| E231419A   | 31/03/2026 | 6,000
 ```
+
+- [ ] **2.3** Confirmé que mis archivos tienen esta estructura ✅
+- [ ] **2.4** No necesito modificar nada más en los archivos Excel ✅
+
+**Nota**: Si tus archivos ya tienen columnas como "Fecha Vto", el script las detectará automáticamente. No necesitas crear una hoja "Vencimientos" separada.
 
 ---
 

@@ -60,11 +60,14 @@ He implementado el **seguimiento de fechas de vencimiento** para tu dashboard de
 ## ⚡ Inicio Rápido (5 Pasos Esenciales)
 
 ### Paso 1: Preparar tus Excel
-Agrega una hoja llamada **"Vencimientos"** a tus archivos Excel:
-```
-Fecha      | Codigo  | Fecha_Vencimiento | Cantidad
-2024-01-15 | MED001  | 2024-02-01        | 200
-```
+**¡No necesitas cambiar nada si ya tienes los datos!** ✅
+
+El script ahora detecta automáticamente columnas como:
+- **Fecha Vto** o **Fecha_Vencimiento**
+- **Nº de Lote** (opcional)
+- **Cantidad**
+
+Si ya tienes estas columnas en tu hoja "Inventario", el script las usará automáticamente.
 
 ### Paso 2: Copiar el Script
 1. Abre tu Google Sheet "Inventario Consolidado"
