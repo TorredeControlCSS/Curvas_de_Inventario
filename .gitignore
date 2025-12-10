@@ -1,8 +1,0 @@
-# Backup files
-*.backup
-*.bak
-*~
-
-# Temporary files
-*.tmp
-.DS_Store
