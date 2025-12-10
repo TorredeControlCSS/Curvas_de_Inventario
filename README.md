@@ -17,3 +17,39 @@ Backend sin servidores con **Google Apps Script** que consolida tus Excel de inv
 - El backend calcula **KB_min** e **Inventario Crítico**. La proyección a 45 días usa **Suavizado Exponencial Simple (SES)** en el frontend.
 - El pedido planificado (campo de cantidad) se aplica en **t+45**.
 - Si quieres restringir acceso, pon el Web App con autenticación de Google y sirve el frontend desde un dominio que comparta sesión (o usa un pequeño proxy).
+
+## ⚡ Nueva funcionalidad: Seguimiento de fechas de vencimiento
+
+El dashboard ahora soporta **fechas de vencimiento** para productos perecederos:
+
+- **Inventario Total vs Disponible**: Visualiza tanto el inventario total como el inventario disponible (descontando productos vencidos).
+- **Cálculos basados en disponible**: Todos los cálculos estadísticos (consumo, proyecciones, ROP, SS) usan el inventario real disponible.
+- **Visualización mejorada**: Nueva serie en la gráfica que distingue claramente entre inventario total y disponible.
+- **Tabla detallada**: Columnas adicionales muestran inventario disponible y cantidad vencida por fecha.
+
+### Configuración Backend
+
+Para habilitar esta funcionalidad, el backend debe proporcionar datos de vencimiento en el formato:
+
+```json
+{
+  "serie": [
+    {
+      "fecha": "2024-01-15",
+      "inventario": 1000,
+      "vencimientos": [
+        {"fecha_vencimiento": "2024-02-01", "cantidad": 200},
+        {"fecha_vencimiento": "2024-03-15", "cantidad": 300}
+      ]
+    }
+  ]
+}
+```
+
+Ver [BACKEND_EXPIRATION_DATES.md](BACKEND_EXPIRATION_DATES.md) para detalles completos sobre:
+- Estructura de datos requerida
+- Cambios necesarios en Google Apps Script
+- Formato de hojas de cálculo
+- Ejemplos de implementación
+
+**Nota**: La funcionalidad es completamente retrocompatible. Si no se proporcionan fechas de vencimiento, el dashboard funciona como antes, tratando todo el inventario como disponible.
