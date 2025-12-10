@@ -9,13 +9,14 @@
  * - Detección ESTRICTA de encabezados (primeras 5 filas). Si falta alguna, se omite el archivo y se deja log.
  * 
  * CONFIGURACIÓN DE PERFORMANCE:
- * - PROCESS_VENCIMIENTOS = true: Procesa fechas de vencimiento (más lento, ~6-7 seg/archivo)
- * - PROCESS_VENCIMIENTOS = false: Solo inventario sin vencimientos (más rápido, ~2-3 seg/archivo, como original)
- * - BATCH_SIZE = 5: Escribe cada 5 archivos (reduce timeout con archivos grandes)
+ * - PROCESS_VENCIMIENTOS = false: Solo inventario (RÁPIDO ~2-3 seg/archivo, como script original) ← POR DEFECTO
+ * - PROCESS_VENCIMIENTOS = true: Procesa fechas de vencimiento (LENTO ~6-7 seg/archivo, requiere 2-3 ejecuciones)
+ * - BATCH_SIZE = 10: Escribe cada 10 archivos (por defecto)
  * 
- * SI EXPERIMENTAS TIMEOUT (Exceeded maximum execution time):
- * 1. Reduce BATCH_SIZE a 3 o 2
- * 2. O cambia PROCESS_VENCIMIENTOS a false temporalmente
+ * RECOMENDACIÓN:
+ * 1. Usa PROCESS_VENCIMIENTOS = false para consolidar rápidamente (2-3 min para 60+ archivos)
+ * 2. Activa PROCESS_VENCIMIENTOS = true solo cuando necesites análisis de vencimientos
+ * 3. Con PROCESS_VENCIMIENTOS = true, reduce BATCH_SIZE a 3-5 para más seguridad
  * 
  * Requisitos: Drive API v2 activada en servicios avanzados de Apps Script.
  */
@@ -26,8 +27,8 @@ const CONFIG = {
   DATA_SHEET: 'Data',
   INDEX_SHEET: 'Index',
   VENCIMIENTOS_SHEET: 'Vencimientos', // NUEVO: Hoja para datos de vencimiento
-  PROCESS_VENCIMIENTOS: true, // NUEVO: true = procesar vencimientos, false = solo inventario (más rápido)
-  BATCH_SIZE: 5, // NUEVO: Escribir cada 5 archivos (más frecuente para evitar timeout)
+  PROCESS_VENCIMIENTOS: false, // NUEVO: false = solo inventario (RÁPIDO, como original), true = con vencimientos (LENTO)
+  BATCH_SIZE: 10, // NUEVO: Escribir cada N archivos (10 = por defecto, 3-5 = más conservador si hay timeout)
   LEAD: 45,
   Z: 1.65,
   WINDOW: 90
@@ -106,15 +107,17 @@ function detectHeaderStrict(values){
     }
     if (!foundAll) continue;
     
-    // NUEVO: Buscar columnas de vencimiento (opcionales)
+    // NUEVO: Buscar columnas de vencimiento (opcionales) - SOLO SI ESTÁ ACTIVADO
     const vencIdx = { fechaVto: -1, lote: -1 };
-    for (const vOpt of VENC_HDR_OPTIONS){
-      const pos = norm.indexOf(vOpt);
-      if (pos !== -1){ vencIdx.fechaVto = pos; break; }
-    }
-    for (const lOpt of LOTE_HDR_OPTIONS){
-      const pos = norm.indexOf(lOpt);
-      if (pos !== -1){ vencIdx.lote = pos; break; }
+    if (CONFIG.PROCESS_VENCIMIENTOS) {
+      for (const vOpt of VENC_HDR_OPTIONS){
+        const pos = norm.indexOf(vOpt);
+        if (pos !== -1){ vencIdx.fechaVto = pos; break; }
+      }
+      for (const lOpt of LOTE_HDR_OPTIONS){
+        const pos = norm.indexOf(lOpt);
+        if (pos !== -1){ vencIdx.lote = pos; break; }
+      }
     }
     
     return { row: r, idx, vencIdx };
@@ -127,10 +130,19 @@ function consolidate(){
   const ss = SpreadsheetApp.getActive();
   const dSheet = ss.getSheetByName(CONFIG.DATA_SHEET);
   const iSheet = ss.getSheetByName(CONFIG.INDEX_SHEET);
-  const vSheet = ss.getSheetByName(CONFIG.VENCIMIENTOS_SHEET); // NUEVO
   
-  if (!dSheet || !iSheet || !vSheet){
-    Logger.log('ERROR: Faltan hojas. Ejecuta setup() primero.');
+  // NUEVO: Solo verificar hoja de vencimientos si está activado el procesamiento
+  let vSheet = null;
+  if (CONFIG.PROCESS_VENCIMIENTOS) {
+    vSheet = ss.getSheetByName(CONFIG.VENCIMIENTOS_SHEET);
+    if (!vSheet){
+      Logger.log('ERROR: Falta hoja Vencimientos. Ejecuta setup() primero o desactiva PROCESS_VENCIMIENTOS.');
+      return;
+    }
+  }
+  
+  if (!dSheet || !iSheet){
+    Logger.log('ERROR: Faltan hojas Data o Index. Ejecuta setup() primero.');
     return;
   }
   
@@ -142,12 +154,13 @@ function consolidate(){
   if (iSheet.getLastRow() > 1) {
     iSheet.getRange(2, 1, iSheet.getLastRow()-1, iSheet.getLastColumn()).clearContent();
   }
-  if (vSheet.getLastRow() > 1) {
+  // NUEVO: Solo limpiar hoja vencimientos si está activado el procesamiento
+  if (vSheet && vSheet.getLastRow() > 1) {
     vSheet.getRange(2, 1, vSheet.getLastRow()-1, vSheet.getLastColumn()).clearContent();
   }
   
   let allData = [];
-  let allVenc = []; // NUEVO: array para vencimientos
+  let allVenc = []; // NUEVO: array para vencimientos (solo si está activado)
   const indexMap = new Map();
   let filesProcessed = 0; // NUEVO: contador para escribir por lotes
   
@@ -203,7 +216,7 @@ function consolidate(){
             Logger.log(`  → Escritura parcial: ${allData.length} registros inventario (total: ${lastRow + allData.length - 1})`);
             allData = []; // Limpiar memoria
           }
-          if (allVenc.length > 0){
+          if (CONFIG.PROCESS_VENCIMIENTOS && allVenc.length > 0){
             const lastRow = vSheet.getLastRow();
             vSheet.getRange(lastRow + 1, 1, allVenc.length, 6).setValues(allVenc);
             Logger.log(`  → Escritura parcial: ${allVenc.length} registros vencimiento (total: ${lastRow + allVenc.length - 1})`);
@@ -233,8 +246,8 @@ function consolidate(){
     Logger.log(`✓ Escritura final: ${allData.length} registros de inventario`);
   }
   
-  // NUEVO: Escribir datos finales de vencimientos
-  if (allVenc.length > 0){
+  // NUEVO: Escribir datos finales de vencimientos (solo si está activado)
+  if (CONFIG.PROCESS_VENCIMIENTOS && allVenc.length > 0){
     const lastRow = vSheet.getLastRow();
     vSheet.getRange(lastRow + 1, 1, allVenc.length, 6).setValues(allVenc);
     Logger.log(`✓ Escritura final: ${allVenc.length} registros de vencimiento`);
@@ -242,9 +255,11 @@ function consolidate(){
   
   // Resumen final
   const totalInv = dSheet.getLastRow() - 1;
-  const totalVenc = vSheet.getLastRow() - 1;
   Logger.log(`✓ ${totalInv} registros de inventario consolidados (total)`);
-  Logger.log(`✓ ${totalVenc} registros de vencimiento consolidados (total)`);
+  if (CONFIG.PROCESS_VENCIMIENTOS && vSheet) {
+    const totalVenc = vSheet.getLastRow() - 1;
+    Logger.log(`✓ ${totalVenc} registros de vencimiento consolidados (total)`);
+  }
   
   // Índice
   if (indexMap.size > 0){
