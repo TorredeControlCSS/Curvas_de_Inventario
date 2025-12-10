@@ -7,6 +7,16 @@
  * - API: filtros ?grupo=, ?from=YYYY-MM-DD, ?to=YYYY-MM-DD, ?codigo=, ?suministro=.
  * - Encabezados congelados y orden seguro (no mueve headers).
  * - Detección ESTRICTA de encabezados (primeras 5 filas). Si falta alguna, se omite el archivo y se deja log.
+ * 
+ * CONFIGURACIÓN DE PERFORMANCE:
+ * - PROCESS_VENCIMIENTOS = true: Procesa fechas de vencimiento (más lento, ~6-7 seg/archivo)
+ * - PROCESS_VENCIMIENTOS = false: Solo inventario sin vencimientos (más rápido, ~2-3 seg/archivo, como original)
+ * - BATCH_SIZE = 5: Escribe cada 5 archivos (reduce timeout con archivos grandes)
+ * 
+ * SI EXPERIMENTAS TIMEOUT (Exceeded maximum execution time):
+ * 1. Reduce BATCH_SIZE a 3 o 2
+ * 2. O cambia PROCESS_VENCIMIENTOS a false temporalmente
+ * 
  * Requisitos: Drive API v2 activada en servicios avanzados de Apps Script.
  */
 
@@ -16,6 +26,8 @@ const CONFIG = {
   DATA_SHEET: 'Data',
   INDEX_SHEET: 'Index',
   VENCIMIENTOS_SHEET: 'Vencimientos', // NUEVO: Hoja para datos de vencimiento
+  PROCESS_VENCIMIENTOS: true, // NUEVO: true = procesar vencimientos, false = solo inventario (más rápido)
+  BATCH_SIZE: 5, // NUEVO: Escribir cada 5 archivos (más frecuente para evitar timeout)
   LEAD: 45,
   Z: 1.65,
   WINDOW: 90
@@ -175,16 +187,16 @@ function consolidate(){
             if (!indexMap.has(item.codigo)) indexMap.set(item.codigo, item);
           });
         }
-        // NUEVO: Agregar datos de vencimientos si existen
-        if (result.vencimientos && result.vencimientos.length > 0){
+        // NUEVO: Agregar datos de vencimientos si existen y está habilitado
+        if (CONFIG.PROCESS_VENCIMIENTOS && result.vencimientos && result.vencimientos.length > 0){
           allVenc.push(...result.vencimientos);
           Logger.log(`    ✓ ${result.vencimientos.length} registros de vencimiento`);
         }
         
         filesProcessed++;
         
-        // NUEVO: Escribir por lotes cada 10 archivos para evitar timeout
-        if (filesProcessed % 10 === 0 && (allData.length > 0 || allVenc.length > 0)){
+        // NUEVO: Escribir por lotes más frecuentes para evitar timeout
+        if (filesProcessed % CONFIG.BATCH_SIZE === 0 && (allData.length > 0 || allVenc.length > 0)){
           if (allData.length > 0){
             const lastRow = dSheet.getLastRow();
             dSheet.getRange(lastRow + 1, 1, allData.length, 5).setValues(allData);
@@ -288,8 +300,8 @@ function processSheetFile(file){
         index.push({ codigo, suministro, grupo });
       }
       
-      // NUEVO: Procesar vencimientos si existen
-      if (hasVenc){
+      // NUEVO: Procesar vencimientos si existen y está habilitado
+      if (hasVenc && CONFIG.PROCESS_VENCIMIENTOS){
         const fechaVto = parseDate(row[vencIdx.fechaVto]);
         if (fechaVto){
           const fechaVtoStr = fmtDate(fechaVto);
@@ -303,13 +315,13 @@ function processSheetFile(file){
         }
         inventoryAgg.get(key).total += cantidad;
       } else {
-        // Sin datos de vencimiento, procesar como antes
+        // Sin datos de vencimiento o deshabilitado, procesar como antes
         data.push([fechaStr, codigo, suministro, grupo, cantidad]);
       }
     }
     
     // NUEVO: Si procesamos vencimientos, usar inventario agregado
-    if (hasVenc && inventoryAgg.size > 0){
+    if (hasVenc && CONFIG.PROCESS_VENCIMIENTOS && inventoryAgg.size > 0){
       for (const [key, item] of inventoryAgg){
         data.push([item.fecha, item.codigo, item.suministro, item.grupo, item.total]);
       }
