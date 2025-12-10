@@ -215,8 +215,30 @@ Esto crea datos de prueba con el código "TEST001".
 ### Problema: "El dashboard no carga datos"
 **Solución**:
 1. Verifica que publicaste el Web App
-2. Verifica la URL en index.html línea 304
+2. Verifica la URL en index.html línea 313
 3. Abre la URL del Web App directamente en el navegador
+
+### Problema: Error CORS en la consola del navegador
+**Síntoma**: Ves este error:
+```
+Access to fetch at 'https://script.google.com/...' has been blocked by CORS policy
+```
+
+**Causa**: El Google Apps Script no está devolviendo los encabezados CORS necesarios.
+
+**Solución**:
+1. Abre tu Google Apps Script
+2. Verifica que la función `doGet()` incluya estos encabezados:
+   ```javascript
+   return output
+     .setHeader('Access-Control-Allow-Origin', '*')
+     .setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+     .setHeader('Access-Control-Allow-Headers', 'Content-Type');
+   ```
+3. El archivo `Code.gs` de este repositorio **YA incluye esta corrección**
+4. Guarda y vuelve a **Implementar → Nueva implementación**
+5. Usa la nueva URL en tu index.html
+6. Limpia el caché del navegador (Ctrl+F5) y recarga
 
 ---
 

@@ -362,8 +362,15 @@ function createDailyTrigger(){
 // ========= API Web (doGet) =========
 function doGet(e){
   const p = e.parameter;
-  if (p.list === 'true') return getMetadata();
-  return getSerie(p);
+  
+  // Add CORS headers to allow cross-origin requests from GitHub Pages
+  const output = (p.list === 'true') ? getMetadata() : getSerie(p);
+  
+  // Apply CORS headers
+  return output
+    .setHeader('Access-Control-Allow-Origin', '*')
+    .setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+    .setHeader('Access-Control-Allow-Headers', 'Content-Type');
 }
 
 function getMetadata(){

@@ -53,3 +53,36 @@ Ver [BACKEND_EXPIRATION_DATES.md](BACKEND_EXPIRATION_DATES.md) para detalles com
 - Ejemplos de implementación
 
 **Nota**: La funcionalidad es completamente retrocompatible. Si no se proporcionan fechas de vencimiento, el dashboard funciona como antes, tratando todo el inventario como disponible.
+
+## 🔧 Solución de Problemas
+
+### Error CORS: "No 'Access-Control-Allow-Origin' header"
+
+Si ves este error en la consola del navegador:
+```
+Access to fetch at 'https://script.google.com/macros/s/...' has been blocked by CORS policy
+```
+
+**Causa**: El Google Apps Script no está devolviendo los encabezados CORS necesarios para permitir solicitudes desde GitHub Pages.
+
+**Solución**: Asegúrate de que tu `Code.gs` incluye los encabezados CORS en la función `doGet()`. El script proporcionado en este repositorio ya incluye la corrección:
+
+```javascript
+function doGet(e){
+  const p = e.parameter;
+  
+  // Add CORS headers to allow cross-origin requests
+  const output = (p.list === 'true') ? getMetadata() : getSerie(p);
+  
+  return output
+    .setHeader('Access-Control-Allow-Origin', '*')
+    .setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+    .setHeader('Access-Control-Allow-Headers', 'Content-Type');
+}
+```
+
+**Pasos para aplicar**:
+1. Abre tu Google Apps Script
+2. Verifica que la función `doGet()` incluya los encabezados CORS
+3. Guarda y vuelve a implementar el Web App
+4. Prueba el dashboard nuevamente
