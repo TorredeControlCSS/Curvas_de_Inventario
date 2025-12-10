@@ -123,9 +123,16 @@ function consolidate(){
   }
   
   // Limpiar hojas (mantener encabezados)
-  if (dSheet.getLastRow() > 1) dSheet.deleteRows(2, dSheet.getLastRow()-1);
-  if (iSheet.getLastRow() > 1) iSheet.deleteRows(2, iSheet.getLastRow()-1);
-  if (vSheet.getLastRow() > 1) vSheet.deleteRows(2, vSheet.getLastRow()-1); // NUEVO
+  // Usar clearContent en lugar de deleteRows para evitar problemas con filas inmovilizadas
+  if (dSheet.getLastRow() > 1) {
+    dSheet.getRange(2, 1, dSheet.getLastRow()-1, dSheet.getLastColumn()).clearContent();
+  }
+  if (iSheet.getLastRow() > 1) {
+    iSheet.getRange(2, 1, iSheet.getLastRow()-1, iSheet.getLastColumn()).clearContent();
+  }
+  if (vSheet.getLastRow() > 1) {
+    vSheet.getRange(2, 1, vSheet.getLastRow()-1, vSheet.getLastColumn()).clearContent();
+  }
   
   const allData = [];
   const allVenc = []; // NUEVO: array para vencimientos
