@@ -134,9 +134,10 @@ function consolidate(){
     vSheet.getRange(2, 1, vSheet.getLastRow()-1, vSheet.getLastColumn()).clearContent();
   }
   
-  const allData = [];
-  const allVenc = []; // NUEVO: array para vencimientos
+  let allData = [];
+  let allVenc = []; // NUEVO: array para vencimientos
   const indexMap = new Map();
+  let filesProcessed = 0; // NUEVO: contador para escribir por lotes
   
   function processFolder(folderId){
     Logger.log(`→ Procesando carpeta: ${folderId}`);
@@ -179,6 +180,25 @@ function consolidate(){
           allVenc.push(...result.vencimientos);
           Logger.log(`    ✓ ${result.vencimientos.length} registros de vencimiento`);
         }
+        
+        filesProcessed++;
+        
+        // NUEVO: Escribir por lotes cada 10 archivos para evitar timeout
+        if (filesProcessed % 10 === 0 && (allData.length > 0 || allVenc.length > 0)){
+          if (allData.length > 0){
+            const lastRow = dSheet.getLastRow();
+            dSheet.getRange(lastRow + 1, 1, allData.length, 5).setValues(allData);
+            Logger.log(`  → Escritura parcial: ${allData.length} registros inventario (total: ${lastRow + allData.length - 1})`);
+            allData = []; // Limpiar memoria
+          }
+          if (allVenc.length > 0){
+            const lastRow = vSheet.getLastRow();
+            vSheet.getRange(lastRow + 1, 1, allVenc.length, 6).setValues(allVenc);
+            Logger.log(`  → Escritura parcial: ${allVenc.length} registros vencimiento (total: ${lastRow + allVenc.length - 1})`);
+            allVenc = []; // Limpiar memoria
+          }
+        }
+        
       } catch(e){
         Logger.log(`    ✗ Error: ${e.message}`);
       }
@@ -194,17 +214,25 @@ function consolidate(){
   
   processFolder(CONFIG.FOLDER_ID);
   
-  // Escribir datos
+  // Escribir datos finales (lo que quedó sin escribir)
   if (allData.length > 0){
-    dSheet.getRange(2,1,allData.length,5).setValues(allData);
-    Logger.log(`✓ ${allData.length} registros de inventario consolidados`);
+    const lastRow = dSheet.getLastRow();
+    dSheet.getRange(lastRow + 1, 1, allData.length, 5).setValues(allData);
+    Logger.log(`✓ Escritura final: ${allData.length} registros de inventario`);
   }
   
-  // NUEVO: Escribir datos de vencimientos
+  // NUEVO: Escribir datos finales de vencimientos
   if (allVenc.length > 0){
-    vSheet.getRange(2,1,allVenc.length,6).setValues(allVenc);
-    Logger.log(`✓ ${allVenc.length} registros de vencimiento consolidados`);
+    const lastRow = vSheet.getLastRow();
+    vSheet.getRange(lastRow + 1, 1, allVenc.length, 6).setValues(allVenc);
+    Logger.log(`✓ Escritura final: ${allVenc.length} registros de vencimiento`);
   }
+  
+  // Resumen final
+  const totalInv = dSheet.getLastRow() - 1;
+  const totalVenc = vSheet.getLastRow() - 1;
+  Logger.log(`✓ ${totalInv} registros de inventario consolidados (total)`);
+  Logger.log(`✓ ${totalVenc} registros de vencimiento consolidados (total)`);
   
   // Índice
   if (indexMap.size > 0){
