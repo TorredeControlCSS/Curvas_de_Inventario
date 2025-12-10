@@ -62,7 +62,7 @@ function doGet(e){
   // Apply CORS headers
   return output
     .setHeader('Access-Control-Allow-Origin', '*')
-    .setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+    .setHeader('Access-Control-Allow-Methods', 'GET')
     .setHeader('Access-Control-Allow-Headers', 'Content-Type');
 }
 ```
@@ -72,7 +72,7 @@ function doGet(e){
 - **`Access-Control-Allow-Origin: *`**: Permite solicitudes desde cualquier dominio
   - Si quieres mayor seguridad, cambia `*` por `https://torredecontrolcss.github.io`
   
-- **`Access-Control-Allow-Methods: GET, POST, OPTIONS`**: Métodos HTTP permitidos
+- **`Access-Control-Allow-Methods: GET`**: Métodos HTTP permitidos (solo GET para este API)
 
 - **`Access-Control-Allow-Headers: Content-Type`**: Encabezados HTTP permitidos
 

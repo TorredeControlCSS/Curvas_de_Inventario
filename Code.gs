@@ -369,7 +369,7 @@ function doGet(e){
   // Apply CORS headers
   return output
     .setHeader('Access-Control-Allow-Origin', '*')
-    .setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+    .setHeader('Access-Control-Allow-Methods', 'GET')
     .setHeader('Access-Control-Allow-Headers', 'Content-Type');
 }
 
