@@ -71,7 +71,7 @@ const REQUIRED_HDR = ["FECHA","CODIGO","SUMINISTRO","GRUPO","CANTIDAD"];
 
 // NUEVO: Nombres opcionales para vencimientos (normalizados)
 const VENC_HDR_OPTIONS = ["FECHA VTO","FECHA_VTO","FECHAVTO","VENCIMIENTO","FECHA_VENCIMIENTO","FECHAVENCIMIENTO","EXPIRY","CADUCIDAD"];
-const LOTE_HDR_OPTIONS = ["Nº DE LOTE","N DE LOTE","LOTE","BATCH","LOT","NUM LOTE"];
+const LOTE_HDR_OPTIONS = ["NO DE LOTE","N DE LOTE","LOTE","BATCH","LOT","NUM LOTE","NUMERO DE LOTE"];
 
 /**
  * Busca la fila de encabezado en las primeras 5 filas y devuelve {row, idx, vencIdx}
@@ -142,10 +142,31 @@ function consolidate(){
     Logger.log(`→ Procesando carpeta: ${folderId}`);
     const folder = DriveApp.getFolderById(folderId);
     
-    // Procesar archivos Excel
-    const files = folder.getFilesByType(MimeType.MICROSOFT_EXCEL);
+    // Procesar archivos (Excel y shortcuts en un solo pase)
+    const files = folder.getFiles();
     while (files.hasNext()){
       const file = files.next();
+      const mimeType = file.getMimeType();
+      
+      // Procesar shortcuts a carpetas
+      if (mimeType === MimeType.SHORTCUT){
+        try {
+          const targetId = file.getTargetId();
+          const target = DriveApp.getFolderById(targetId);
+          processFolder(targetId);
+        } catch(e){
+          Logger.log(`  ✗ Shortcut error: ${e.message}`);
+        }
+        continue;
+      }
+      
+      // Filtrar solo archivos Excel
+      if (mimeType !== MimeType.MICROSOFT_EXCEL && 
+          mimeType !== MimeType.MICROSOFT_EXCEL_LEGACY &&
+          !file.getName().match(/\.(xlsx?|xlsm)$/i)) {
+        continue;
+      }
+      
       Logger.log(`  Archivo: ${file.getName()}`);
       try {
         const result = processExcelFile(file);
@@ -170,19 +191,6 @@ function consolidate(){
     while (folders.hasNext()){
       const sub = folders.next();
       processFolder(sub.getId());
-    }
-    
-    // Procesar shortcuts
-    const shortcuts = folder.getFilesByType(MimeType.SHORTCUT);
-    while (shortcuts.hasNext()){
-      const sh = shortcuts.next();
-      try {
-        const targetId = sh.getTargetId();
-        const target = DriveApp.getFolderById(targetId);
-        processFolder(targetId);
-      } catch(e){
-        Logger.log(`  ✗ Shortcut error: ${e.message}`);
-      }
     }
   }
   
