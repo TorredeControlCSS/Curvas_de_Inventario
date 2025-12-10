@@ -142,7 +142,7 @@ function consolidate(){
     Logger.log(`→ Procesando carpeta: ${folderId}`);
     const folder = DriveApp.getFolderById(folderId);
     
-    // Procesar archivos (Excel y shortcuts en un solo pase)
+    // Procesar archivos (Google Sheets y shortcuts en un solo pase)
     const files = folder.getFiles();
     while (files.hasNext()){
       const file = files.next();
@@ -160,16 +160,14 @@ function consolidate(){
         continue;
       }
       
-      // Filtrar solo archivos Excel
-      if (mimeType !== MimeType.MICROSOFT_EXCEL && 
-          mimeType !== MimeType.MICROSOFT_EXCEL_LEGACY &&
-          !file.getName().match(/\.(xlsx?|xlsm)$/i)) {
+      // Filtrar solo archivos Google Sheets
+      if (mimeType !== MimeType.GOOGLE_SHEETS) {
         continue;
       }
       
       Logger.log(`  Archivo: ${file.getName()}`);
       try {
-        const result = processExcelFile(file);
+        const result = processSheetFile(file);
         if (result.data.length > 0){
           allData.push(...result.data);
           result.index.forEach(item => {
@@ -218,24 +216,17 @@ function consolidate(){
   Logger.log('✓ Consolidación completada');
 }
 
-function processExcelFile(file){
-  const blob = file.getBlob();
-  const tempFile = DriveApp.createFile(blob);
-  const tempId = tempFile.getId();
-  
+function processSheetFile(file){
   try {
-    const resource = { title: file.getName(), mimeType: MimeType.GOOGLE_SHEETS };
-    const converted = Drive.Files.copy(resource, tempId);
-    const tempSS = SpreadsheetApp.openById(converted.id);
+    // Abrir directamente el archivo Google Sheets (sin conversión)
+    const ss = SpreadsheetApp.openById(file.getId());
     
-    const sheet = tempSS.getSheetByName(CONFIG.SHEET_NAME) || tempSS.getSheets()[0];
+    const sheet = ss.getSheetByName(CONFIG.SHEET_NAME) || ss.getSheets()[0];
     const values = sheet.getDataRange().getValues();
     
     const hdr = detectHeaderStrict(values);
     if (!hdr){
       Logger.log(`    ⚠ Encabezados no encontrados o incompletos`);
-      Drive.Files.remove(converted.id);
-      tempFile.setTrashed(true);
       return { data: [], index: [], vencimientos: [] };
     }
     
@@ -296,13 +287,10 @@ function processExcelFile(file){
       }
     }
     
-    Drive.Files.remove(converted.id);
-    tempFile.setTrashed(true);
-    
     return { data, index, vencimientos };
     
   } catch(e){
-    tempFile.setTrashed(true);
+    Logger.log(`    ✗ Error procesando archivo: ${e.message}`);
     throw e;
   }
 }
