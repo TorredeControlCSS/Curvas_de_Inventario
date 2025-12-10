@@ -1,5 +1,12 @@
 # 📖 LÉEME PRIMERO - Resumen Ejecutivo
 
+## 🚨 ¿Tienes un error CORS?
+Si ves este error en la consola: `"blocked by CORS policy"`, **ve directamente a**: [`INICIO_RAPIDO.md`](INICIO_RAPIDO.md)
+
+La solución toma solo 5 minutos y el archivo `Code.gs` de este repositorio **ya incluye la corrección**.
+
+---
+
 ## ✅ ¿Qué se hizo?
 
 He implementado el **seguimiento de fechas de vencimiento** para tu dashboard de inventario. El trabajo está **100% completo**.

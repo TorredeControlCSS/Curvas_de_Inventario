@@ -1,5 +1,8 @@
 # Inv Dashboard (Apps Script + GitHub Pages)
 
+## 🚨 ¿Tienes un error CORS?
+Si ves `"blocked by CORS policy"` en la consola, **lee primero**: [`INICIO_RAPIDO.md`](INICIO_RAPIDO.md) o [`SOLUCION_CORS.md`](SOLUCION_CORS.md)
+
 ## Qué es
 Backend sin servidores con **Google Apps Script** que consolida tus Excel de inventario de Drive, y frontend **HTML+JS (Chart.js)** hosteado en **GitHub Pages** con 3 series (histórico, proyección 45 días y proyección + pedido). PWA instalable en móviles.
 

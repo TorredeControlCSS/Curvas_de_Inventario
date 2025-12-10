@@ -132,11 +132,14 @@ _________________________________________________________________
 
 ## Parte 6: Verificar Dashboard (5 minutos)
 
-- [ ] **6.1** Verifiqué que `index.html` tiene la URL correcta (línea 304)
+- [ ] **6.1** Verifiqué que `index.html` tiene la URL correcta (línea 313)
   - Si es diferente, actualicé la URL
 - [ ] **6.2** Abrí mi dashboard en el navegador
-- [ ] **6.3** Busqué un producto de mis datos
-- [ ] **6.4** Verifiqué que veo:
+- [ ] **6.3** Abrí la Consola del navegador (F12) para verificar errores
+- [ ] **6.4** **NO veo error CORS** (muy importante) ✅
+  - Si veo "blocked by CORS policy", consulta `SOLUCION_CORS.md`
+- [ ] **6.5** Busqué un producto de mis datos
+- [ ] **6.6** Verifiqué que veo:
   - [ ] Dos líneas en la gráfica (gris y azul) ⭐
   - [ ] Columnas: Total | Disponible | Vencido ⭐
   - [ ] Valores en la columna "Vencido" si aplica
@@ -216,6 +219,17 @@ Si marcaste todas las casillas, tu implementación está completa.
 3. Sigue las instrucciones de Google
 4. Intenta ejecutar la función de nuevo
 
+### ❌ Error CORS en la consola del navegador
+
+**Problema**: Ves "blocked by CORS policy" en la consola.
+
+**Solución**:
+1. **LEE el archivo `SOLUCION_CORS.md`** (completo y detallado)
+2. Verifica que tu `Code.gs` tiene los encabezados CORS en la función `doGet()`
+3. **Reimplementa** el Web App (no crear nueva, actualizar la existente)
+4. Limpia el caché del navegador (Ctrl+F5)
+5. Recarga el dashboard
+
 ### ❌ El dashboard no muestra datos de vencimientos
 
 **Problema**: La API no está devolviendo los datos o la URL está mal.
@@ -225,6 +239,7 @@ Si marcaste todas las casillas, tu implementación está completa.
 2. Agrega `?list=true` al final: `https://script...?list=true`
 3. Deberías ver un JSON con datos
 4. Si ves error, verifica que publicaste el Web App correctamente
+5. Si ves error CORS, consulta `SOLUCION_CORS.md`
 
 ### ❌ Las dos líneas son iguales (Total = Disponible)
 
