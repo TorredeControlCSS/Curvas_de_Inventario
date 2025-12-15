@@ -918,44 +918,7 @@ window.addEventListener('load', ()=>{
 </div>
 
 <script>
-(function () {
-  if (!('serviceWorker' in navigator)) return;
-  navigator.serviceWorker.register('./sw.js', { scope: './' }).then((reg) => {
-    const toast = document.getElementById('updateToast');
-    const btn   = document.getElementById('updateToastBtn');
-
-    function showToast() {
-      if (toast) toast.style.display = 'flex';
-    }
-    if (reg.waiting) showToast();
-
-    reg.addEventListener('updatefound', () => {
-      const sw = reg.installing;
-      if (!sw) return;
-      sw.addEventListener('statechange', () => {
-        if (sw.state === 'installed' && navigator.serviceWorker.controller) {
-          showToast();
-        }
-      });
-    });
-
-    btn?.addEventListener('click', () => {
-      reg.waiting?.postMessage('SKIP_WAITING');
-    });
-
-    let refreshing = false;
-    navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if (refreshing) return;
-      refreshing = true;
-      location.reload();
-    });
-
-    reg.update();
-    setInterval(() => reg.update(), 60 * 60 * 1000);
-  }).catch(console.error);
-})();
-
-// === Exportar a PDF el informe de curvas de inventario (versión ligera) ===
+// === Exportar a PDF el informe de curvas de inventario (versión ligera con header parecido al dashboard) ===
 (function () {
   const btn = document.getElementById('exportPdfBtn');
   if (!btn || !window.jspdf || !window.html2canvas) return;
@@ -988,23 +951,63 @@ window.addEventListener('load', ()=>{
       const pageWidth  = pdf.internal.pageSize.getWidth();
       const pageHeight = pdf.internal.pageSize.getHeight();
 
-      // Cabecera
-      pdf.setFontSize(14);
-      pdf.text('Curvas de Inventario — CEDIS PANAMÁ CSS', 10, 12);
-      if (subjectLabel) {
-        pdf.setFontSize(11);
-        pdf.text(String(subjectLabel), 10, 18);
+      // ==== HEADER estilo dashboard ====
+      const topMargin = 8;
+      const logoSize = 10; // mm
+      const logoX = 10;
+      const logoY = topMargin;
+
+      // Intentamos cargar el logo del mismo path que usas en el dashboard
+      let logoLoaded = false;
+      try {
+        const logoImg = new Image();
+        logoImg.crossOrigin = 'anonymous';
+        logoImg.src = 'icons/icon-512.png';
+        await new Promise((resolve, reject) => {
+          logoImg.onload = resolve;
+          logoImg.onerror = reject;
+        });
+        const canvasTmp = document.createElement('canvas');
+        canvasTmp.width = logoImg.width;
+        canvasTmp.height = logoImg.height;
+        const ctxTmp = canvasTmp.getContext('2d');
+        ctxTmp.drawImage(logoImg, 0, 0);
+        const logoData = canvasTmp.toDataURL('image/png');
+        pdf.addImage(logoData, 'PNG', logoX, logoY, logoSize, logoSize);
+        logoLoaded = true;
+      } catch (e) {
+        console.warn('No se pudo cargar el logo para el PDF:', e);
       }
+
+      // Títulos al lado del logo
+      const textStartX = logoLoaded ? (logoX + logoSize + 4) : 10;
+      const titleY = topMargin + 4;      // línea superior
+      const subtitleY = topMargin + 9;   // debajo
+
+      pdf.setFontSize(13);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text('Curvas de Inventario — CEDIS PANAMÁ CSS', textStartX, titleY);
+
+      pdf.setFontSize(10);
+      pdf.setFont('helvetica', 'normal');
+      pdf.text('v1.0 · Torre de Control', textStartX, subtitleY);
+
+      // Subject (suministro / código / grupo) debajo
+      if (subjectLabel) {
+        pdf.setFontSize(10);
+        pdf.setFont('helvetica', 'italic');
+        pdf.text(String(subjectLabel), textStartX, subtitleY + 5);
+      }
+
+      // Fecha y hora en la esquina derecha
       const now = new Date();
       pdf.setFontSize(9);
-      pdf.text(
-        'Generado: ' + now.toLocaleString('es-PA', { dateStyle:'short', timeStyle:'short' }),
-        pageWidth - 80,
-        12
-      );
+      pdf.setFont('helvetica', 'normal');
+      const ts = 'Generado: ' + now.toLocaleString('es-PA', { dateStyle:'short', timeStyle:'short' });
+      pdf.text(ts, pageWidth - 80, topMargin + 4);
 
-      // html2canvas con escala baja para que pese poco (1 o 1.5)
-      const scale = 1.2; // antes probablemente usabas 2 o más
+      // ==== Captura del área de contenido ====
+      const scale = 1.2; // baja resolución para que el PDF sea ligero
       const canvas = await html2canvas(area, {
         scale,
         useCORS: true,
@@ -1013,12 +1016,14 @@ window.addEventListener('load', ()=>{
         windowHeight: area.scrollHeight
       });
 
-      // Convertir a JPEG con compresión alta (calidad baja => menos peso)
-      const imgData = canvas.toDataURL('image/jpeg', 0.6); // 0.6 ~ buena calidad, peso reducido
+      // Convertir a JPEG con compresión
+      const imgData = canvas.toDataURL('image/jpeg', 0.6);
 
+      // Ajustar imagen dentro de la página
       const margin = 10;
+      const availableTop = topMargin + 18; // dejamos espacio para header
       const maxW = pageWidth - margin*2;
-      const maxH = pageHeight - margin*2 - 12;
+      const maxH = pageHeight - availableTop - margin;
       const imgRatio = canvas.width / canvas.height;
       let renderW = maxW;
       let renderH = renderW / imgRatio;
@@ -1027,7 +1032,7 @@ window.addEventListener('load', ()=>{
         renderW = renderH * imgRatio;
       }
       const x = (pageWidth - renderW)/2;
-      const y = 22;
+      const y = availableTop;
 
       pdf.addImage(imgData, 'JPEG', x, y, renderW, renderH);
       pdf.save('Curvas_Inventario.pdf');
