@@ -1035,7 +1035,12 @@ window.addEventListener('load', ()=>{
       const y = availableTop;
 
       pdf.addImage(imgData, 'JPEG', x, y, renderW, renderH);
-      pdf.save('Curvas_Inventario.pdf');
+      const fileSubject = (subjectLabel || 'General')
+        .replace(/[\/\\:*?"<>|]+/g, '_')
+        .replace(/\s+/g, '_')
+        .substring(0, 60);
+      
+      pdf.save(`Curvas_Inventario_${fileSubject}.pdf`);
     } catch (e) {
       console.error('Error generando PDF:', e);
       alert('No se pudo generar el PDF.');
