@@ -183,11 +183,10 @@
 <body>
   <div class="topbar">
     <img src="icons/icon-512.png" alt="Logo" width="40" height="40" />
-  <!-- Contenedor de título reutilizando la clase .title -->
-  <div class="title">
-    <div class="title-main">Curvas de Inventario — CEDIS PANAMÁ CSS</div>
-    <div class="title-sub">v1.0 · Torre de Control</div>
-  </div>
+    <div class="title">
+      <div class="title-main">Curvas de Inventario — CEDIS PANAMÁ CSS</div>
+      <div class="title-sub">v1.0 · Torre de Control</div>
+    </div>
     <div class="top-actions">
       <select id="theme" class="theme-select" title="Tema">
         <option value="system">Sistema</option>
@@ -196,13 +195,11 @@
       </select>
       <span id="net" class="net"></span>
       <button id="refreshBtn" class="btn ghost">Actualizar</button>
-      <!-- Nuevo botón para descargar PDF -->
       <button id="exportPdfBtn" class="btn">Descargar PDF</button>
       <button id="installBtn" class="btn install hidden">Instalar app</button>
     </div>
   </div>
 
-  <!-- Marcamos el área que formará parte del informe en PDF -->
   <div class="container" id="reportArea">
     <div class="card filters">
       <div>
@@ -303,7 +300,10 @@
 
         <div class="card table-wrap">
           <div class="muted">Tabla diaria</div>
-          <table id="tbl"><thead><tr><th>Fecha</th><th>Total</th><th>Disponible</th><th>Vencido</th><th>Δ</th></tr></thead><tbody></tbody></table>
+          <table id="tbl">
+            <thead><tr><th>Fecha</th><th>Total</th><th>Disponible</th><th>Vencido</th><th>Δ</th></tr></thead>
+            <tbody></tbody>
+          </table>
         </div>
       </div>
     </div>
@@ -313,7 +313,7 @@
 // === Config ===
 const API_BASE = 'https://script.google.com/macros/s/AKfycbwQ4oSPrSKmpP7tq_7pl7uGac5xR6Qd9x3es3B0ChSZ4gshx_m4rZ-kKCyrVwfTSkoGrw/exec';
 const LEAD = 45, TYPEAHEAD_LIMIT = 100, USE_SEASONAL = true;
-const EXTRA_AFTER_ORDER = 30; // días extra cuando hay Q>0
+const EXTRA_AFTER_ORDER = 30;
 const horizon = (Q)=> Number(Q) > 0 ? LEAD + EXTRA_AFTER_ORDER : LEAD;
 
 let chartInstance=null, deferredPrompt=null;
@@ -392,15 +392,6 @@ function smaLast(arr, k){
   const n=arr.length; if(!n) return 0; const slice = arr.slice(Math.max(0,n-k)).map(Number).filter(Number.isFinite);
   if (!slice.length) return 0; if (slice.length>=3){ const s=[...slice].sort((a,b)=>a-b); s.shift(); s.pop(); return mean(s); } return mean(slice);
 }
-function seasonalityWeekly(cons, H, lastDateISO){
-  const n=cons.length; if(n<14) return null; const lastDate=new Date(lastDateISO), weekdayLast=lastDate.getDay();
-  const wkIdx=new Array(n); for(let i=n-1,w=weekdayLast;i>=0;i--,w=(w-1+7)%7) wkIdx[i]=w;
-  const sums=Array(7).fill(0), cnt=Array(7).fill(0);
-  for(let i=0;i<n;i++){ const w=wkIdx[i]; sums[w]+=Number(cons[i]||0); cnt[w]+=1; }
-  const avgW = sums.map((s,i)=> cnt[i]? s/cnt[i]:0); const grand = mean(avgW.filter(v=>v>0)) || 1; const factors = avgW.map(v=> v>0 ? v/grand : 1);
-  const startW=(weekdayLast+1)%7, season=new Array(H); for(let h=0;h<H;h++) season[h]=factors[(startW+h)%7]||1; return season;
-}
-function ses(cons, H, alpha=0.3){ if(!cons.length) return Array(H).fill(0); let s=cons[0]; for(let i=1;i<cons.length;i++) s = alpha*cons[i]+(1-alpha)*s; return Array(H).fill(s); }
 function simulate(inv0, dHat, q=0, lead=45){
   const H=dHat.length, base=new Array(H), withOrder=new Array(H);
   for(let h=0;h<H;h++) base[h]= h? Math.max(base[h-1]-dHat[h],0) : Math.max(inv0-dHat[0],0);
@@ -452,6 +443,7 @@ function fillProjTable(tbody, dates, dHat, base, withOrder, lead, Q){
     tbody.appendChild(tr);
   }
 }
+
 // KPIs y fórmulas
 function setKPIs(invLast, rop, sfty, lastDateISO, I0){
   if ($('kpiInv'))     $('kpiInv').textContent = fmtInt(Math.round(invLast||0));
@@ -493,13 +485,13 @@ function coverageFourMonths(invLast, serie, mu_d){
   }
   let dailyExpected;
   if (rates.length >= 8){
-    const recent = rates.slice(-56); // ~8 semanas
+    const recent = rates.slice(-56);
     dailyExpected = recent.reduce((a,b)=>a+b,0)/(recent.length||1);
   } else {
     dailyExpected = Number(mu_d||0);
   }
   const weeklyExpected = dailyExpected * 7;
-  const needFor4M = weeklyExpected * 4 * 4.345; // ~4 meses
+  const needFor4M = weeklyExpected * 4 * 4.345;
   const pct = needFor4M ? Math.min((invLast/needFor4M)*100, 999) : 0;
   const note = `Consumo semanal esperado ≈ ${fmtInt(Math.round(weeklyExpected))}. Requerido 4 meses ≈ ${fmtInt(Math.round(needFor4M))}.`;
   return { pct, note };
@@ -551,7 +543,6 @@ async function init(){
       serie = (serie||[])
         .filter(p => p && p.fecha && Number.isFinite(Number(p.inventario)))
         .sort((a,b) => a.fecha.localeCompare(b.fecha));
-
       const byDate = new Map();
       for (const p of serie) byDate.set(p.fecha, p);
       serie = Array.from(byDate.values()).sort((a,b)=> a.fecha.localeCompare(b.fecha));
@@ -563,12 +554,10 @@ async function init(){
         return;
       }
 
-      // === Usar inventario y vencido devueltos por el backend ===
       const invHist    = serie.map(p => Number(p.inventario || 0));
       const invExpired = serie.map(p => Number(p.vencido || 0));
       const invAvailable = invHist.map((v,i)=> Math.max(v - invExpired[i], 0));
 
-      // Inventario actual disponible al último día consolidado
       const globalMaxDate = (meta && meta.max_fecha) ? String(meta.max_fecha) : '';
       const mapByDate = new Map(serie.map(p => [p.fecha, p]));
       const pointAtGlobal = mapByDate.get(globalMaxDate);
@@ -588,7 +577,6 @@ async function init(){
         ? tailAvailable.reduce((a,b)=> a+b, 0) / tailAvailable.length
         : lastValAvailable;
 
-      // Consumo diario usando inventario disponible
       const cons = [];
       const ss = Number(data.inventario_critico||0);
       for (let i=1;i<invAvailable.length;i++){
@@ -758,7 +746,6 @@ async function init(){
           }
         });
         window.chartInstance = chartInstance;
-        requestAnimationFrame(fixAfterRotate);
       }else{
         chartInstance.data.labels=labels;
         chartInstance.data.datasets[0].data=histData;
@@ -769,14 +756,8 @@ async function init(){
         chartInstance.data.datasets[4].data=projPlusData;
         chartInstance.data.datasets[5].data=Array(labels.length).fill(rop);
         chartInstance.data.datasets[6].data=Array(labels.length).fill(sfty);
-        chartInstance.options.plugins.title.text=graphTitle;
-        if (chartInstance.options.plugins.annotation) {
-          chartInstance.options.plugins.annotation.annotations.arrival.xMin = arrivalLabel;
-          chartInstance.options.plugins.annotation.annotations.arrival.xMax = arrivalLabel;
-        }
         chartInstance.update();
         window.chartInstance = chartInstance;
-        requestAnimationFrame(fixAfterRotate);
       }
 
       setBtnState(btn,'is-ok'); setTimeout(()=>{ setBtnState(btn,''); btn.disabled=false; }, 900);
@@ -801,7 +782,7 @@ async function init(){
   await run();
 }
 
-// Header móvil: ocultar/mostrar en scroll
+// Header móvil
 (function(){
   const tb = document.querySelector('.topbar'); if (!tb) return; let lastY = window.scrollY, hidden = false;
   function onScroll(){
@@ -858,7 +839,6 @@ window.addEventListener('orientationchange', ()=> setTimeout(fixAfterRotate, 350
 window.addEventListener('resize',             ()=> setTimeout(fixAfterRotate, 150));
 if (window.visualViewport){ window.visualViewport.addEventListener('resize', ()=> setTimeout(fixAfterRotate, 150)); }
 
-// Observa el contenedor por cambios reales de tamaño
 window.addEventListener('load', ()=>{
   const wrap = document.querySelector('.chart-wrap');
   if (!wrap || !('ResizeObserver' in window)) return;
@@ -867,7 +847,7 @@ window.addEventListener('load', ()=>{
 });
 </script>
 
-<!-- Toast de actualización: pegar al final del <body> -->
+<!-- Toast de actualización -->
 <div id="updateToast" style="position:fixed; left:50%; transform:translateX(-50%); bottom:16px; z-index:9999; display:none; max-width:92vw; box-shadow:0 6px 20px rgba(0,0,0,.2); border-radius:12px; padding:10px 12px; background:#0f172a; color:#fff; align-items:center; gap:10px;">
   <span style="margin-right:12px;">Hay una nueva versión disponible</span>
   <button id="updateToastBtn" style="border:0; padding:8px 12px; border-radius:10px; background:#0b5fff; color:white; cursor:pointer;">Actualizar</button>
@@ -876,8 +856,6 @@ window.addEventListener('load', ()=>{
 <script>
 (function () {
   if (!('serviceWorker' in navigator)) return;
-
-  // Registra con rutas relativas al subpath
   navigator.serviceWorker.register('./sw.js', { scope: './' }).then((reg) => {
     const toast = document.getElementById('updateToast');
     const btn   = document.getElementById('updateToastBtn');
@@ -886,10 +864,8 @@ window.addEventListener('load', ()=>{
       if (toast) toast.style.display = 'flex';
     }
 
-    // Si ya hay uno esperando (pasa al volver a abrir)
     if (reg.waiting) showToast();
 
-    // Detecta nuevas instalaciones
     reg.addEventListener('updatefound', () => {
       const sw = reg.installing;
       if (!sw) return;
@@ -900,12 +876,10 @@ window.addEventListener('load', ()=>{
       });
     });
 
-    // Botón "Actualizar" => pedir activar y recargar cuando tome control
     btn?.addEventListener('click', () => {
       reg.waiting?.postMessage('SKIP_WAITING');
     });
 
-    // Recarga una sola vez al tomar control la nueva versión
     let refreshing = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       if (refreshing) return;
@@ -913,14 +887,81 @@ window.addEventListener('load', ()=>{
       location.reload();
     });
 
-    // Buscar updates ahora y cada hora
     reg.update();
     setInterval(() => reg.update(), 60 * 60 * 1000);
   }).catch(console.error);
 })();
 
 // === Exportar a PDF el informe de curvas de inventario ===
-// (se mantiene exactamente tu bloque actual; aquí iría el resto del código que truncaste con [...])
+(function () {
+  const btn = document.getElementById('exportPdfBtn');
+  if (!btn) return;
+
+  btn.addEventListener('click', async () => {
+    const area = document.getElementById('reportArea');
+    if (!area) return;
+
+    const termInput = document.getElementById('term');
+    const modeSel   = document.getElementById('mode');
+    let subjectLabel = '';
+
+    if (modeSel && termInput) {
+      const mode = modeSel.value;
+      const term = (termInput.value || '').trim();
+      if (mode === 'Suministro' && term) {
+        subjectLabel = term;
+      } else if (mode === 'Código' && term) {
+        subjectLabel = 'Código ' + term;
+      } else if (mode === 'Grupo' && term) {
+        subjectLabel = 'Grupo ' + term;
+      }
+    }
+
+    const { jsPDF } = window.jspdf || window.jspdf || {};
+    if (!jsPDF) {
+      alert('No se pudo cargar jsPDF.');
+      return;
+    }
+
+    const pdf = new jsPDF('l', 'mm', 'a4');
+    const pageWidth  = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+
+    pdf.setFontSize(14);
+    pdf.text('Curvas de Inventario — CEDIS PANAMÁ CSS', 10, 12);
+    if (subjectLabel) {
+      pdf.setFontSize(11);
+      pdf.text(String(subjectLabel), 10, 18);
+    }
+    const now = new Date();
+    pdf.setFontSize(9);
+    pdf.text(
+      'Generado: ' + now.toLocaleString('es-PA', { dateStyle:'short', timeStyle:'short' }),
+      pageWidth - 80,
+      12
+    );
+
+    const scale = 2;
+    const canvas = await html2canvas(area, { scale });
+    const imgData = canvas.toDataURL('image/png');
+
+    const margin = 10;
+    const maxW = pageWidth - margin*2;
+    const maxH = pageHeight - margin*2 - 12;
+    const imgRatio = canvas.width / canvas.height;
+    let renderW = maxW;
+    let renderH = renderW / imgRatio;
+    if (renderH > maxH) {
+      renderH = maxH;
+      renderW = renderH * imgRatio;
+    }
+    const x = (pageWidth - renderW)/2;
+    const y = 22;
+
+    pdf.addImage(imgData, 'PNG', x, y, renderW, renderH);
+    pdf.save('Curvas_Inventario.pdf');
+  });
+})();
 </script>
 </body>
 </html>
