@@ -129,7 +129,7 @@
 
     /* Cargando */
     button.primary.is-loading{
-      background:#6b7280;
+      background:#6b7280;        /* gris */
       border-color:#6b7280;
       color:#fff;
       pointer-events:none;
@@ -149,11 +149,13 @@
       border-color:#16a34a;
       color:#fff;
     }
+
     button.primary.is-error{
       background:#dc2626;
       border-color:#dc2626;
       color:#fff;
     }
+
     button.primary:disabled{
       opacity:.85;
       cursor:not-allowed;
@@ -306,30 +308,6 @@ const LEAD = 45, TYPEAHEAD_LIMIT = 100, USE_SEASONAL = true;
 const EXTRA_AFTER_ORDER = 30;
 const horizon = (Q)=> Number(Q) > 0 ? LEAD + EXTRA_AFTER_ORDER : LEAD;
 
-// Helper function to calculate available inventory (non-expired)
-function calculateAvailableInventory(punto, currentDate) {
-  const total = Number(punto.inventario || 0);
-  if (!punto.vencimientos || !Array.isArray(punto.vencimientos) || punto.vencimientos.length === 0) {
-    return { total, available: total, expired: 0 };
-  }
-  const refDate = new Date(currentDate);
-  if (isNaN(refDate.getTime())) {
-    console.warn('Invalid current date:', currentDate);
-    return { total, available: total, expired: 0 };
-  }
-  let expired = 0;
-  for (const venc of punto.vencimientos) {
-    if (venc.fecha_vencimiento && venc.cantidad) {
-      const expDate = new Date(venc.fecha_vencimiento);
-      if (!isNaN(expDate.getTime()) && expDate < refDate) {
-        expired += Number(venc.cantidad || 0);
-      }
-    }
-  }
-  const available = Math.max(total - expired, 0);
-  return { total, available, expired };
-}
-
 let chartInstance=null, deferredPrompt=null;
 let codes=[], sups=[], groups=[];
 
@@ -426,7 +404,6 @@ function simulate(inv0, dHat, q=0, lead=45){
 // Tablas
 function fillTable(tbody, serie, invAvailable, invExpired){
   tbody.innerHTML='';
-
   const arr = (serie||[]).slice().sort((a,b)=> b.fecha.localeCompare(a.fecha));
   const arrAvail = invAvailable ? [...invAvailable].reverse() : [];
   const arrExpired = invExpired ? [...invExpired].reverse() : [];
@@ -527,36 +504,7 @@ async function init(){
         btn=$('btn'), btnClear=$('btnClear'), refreshBtn=$('refreshBtn'),
         tbody=document.querySelector('#tbl tbody'),
         projTbody=document.querySelector('#projTbl tbody');
-
-  const meta = await safeFetchList();
-  codes = meta.codigos||[]; sups = meta.suministros||[]; groups=[''].concat(meta.grupos||[]);
-  $('group').innerHTML = groups.map(g => `<option value="${g}">${g||'Todos'}</option>`).join('');
-  from.value = meta.min_fecha||''; to.value = meta.max_fecha||'';
-
-  function fillTerms(){
-    const mode=modeSel.value;
-    if(mode==='Código'){
-      lbl.textContent='Código';
-      termWrap.classList.remove('hidden');
-      termInp.value='';
-      fillDatalist(codes);
-    } else if(mode==='Suministro'){
-      lbl.textContent='Suministro';
-      termWrap.classList.remove('hidden');
-      termInp.value='';
-      fillDatalist(sups);
-    } else {
-      termWrap.classList.add('hidden');
-      termInp.value='';
-    }
-  }
-  modeSel.addEventListener('change', fillTerms);
-  termInp.addEventListener('input', e=>{
-    const arr = (modeSel.value==='Código')? codes : sups;
-    fillDatalist(arr, e.target.value||'');
-  });
-
-  // Limpiar campo y sugerencias al hacer foco (tu lógica)
+  // limpiar campo al foco y ejecutar enter/cambio
   if (termInp){
     termInp.addEventListener('focus', ()=>{
       termInp.value='';
@@ -570,12 +518,22 @@ async function init(){
     });
   }
 
-  // Por defecto: Suministro + primer valor
-  modeSel.value='Suministro';
-  fillTerms();
-  if (sups.length>0) termInp.value = sups[0];
+  const meta = await safeFetchList();
+  codes = meta.codigos||[]; sups = meta.suministros||[]; groups=[''].concat(meta.grupos||[]);
+  $('group').innerHTML = groups.map(g => `<option value="${g}">${g||'Todos'}</option>`).join('');
+  from.value = meta.min_fecha||''; to.value = meta.max_fecha||'';
 
-  // Ocultar teclado numérico al confirmar
+  function fillTerms(){
+    const mode=modeSel.value;
+    if(mode==='Código'){ lbl.textContent='Código'; termWrap.classList.remove('hidden'); termInp.value=''; fillDatalist(codes); }
+    else if(mode==='Suministro'){ lbl.textContent='Suministro'; termWrap.classList.remove('hidden'); termInp.value=''; fillDatalist(sups); }
+    else { termWrap.classList.add('hidden'); termInp.value=''; }
+  }
+  modeSel.addEventListener('change', fillTerms);
+  termInp.addEventListener('input', e=>{ const arr = (modeSel.value==='Código')? codes : sups; fillDatalist(arr, e.target.value||''); });
+
+  modeSel.value='Suministro'; fillTerms(); if (sups.length>0) termInp.value = sups[0];
+
   qty.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); qty.blur(); run(); } });
   qty.addEventListener('change', ()=>{ run(); });
   termInp.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); termInp.blur(); run(); } });
@@ -602,33 +560,23 @@ async function init(){
       for (const p of serie) byDate.set(p.fecha, p);
       serie = Array.from(byDate.values()).sort((a,b)=> a.fecha.localeCompare(b.fecha));
 
-      if(!serie.length){
-        alert('Sin datos para esa selección/filtro.');
-        setBtnState(btn,'is-error');
-        setTimeout(()=>{ setBtnState(btn,''); btn.disabled=false; }, 900);
-        return;
-      }
+      if(!serie.length){ alert('Sin datos para esa selección/filtro.'); setBtnState(btn,'is-error'); setTimeout(()=>{ setBtnState(btn,''); btn.disabled=false; }, 900); return; }
 
-      // Inventario total / disponible / vencido según tu lógica actual
-      const invHist = serie.map(p => Number(p.inventario));
-      const invAvailable = [];
-      const invExpired = [];
-      for (const punto of serie) {
-        const calc = calculateAvailableInventory(punto, punto.fecha);
-        invAvailable.push(calc.available);
-        invExpired.push(calc.expired);
-      }
+      // Inventario total / vencido / disponible desde backend
+      const invHist    = serie.map(p => Number(p.inventario || 0));
+      const invExpired = serie.map(p => Number(p.vencido || 0));
+      const invAvailable = invHist.map((v,i)=> Math.max(v - invExpired[i], 0));
 
       const globalMaxDate = (meta && meta.max_fecha) ? String(meta.max_fecha) : '';
       const mapByDate = new Map(serie.map(p => [p.fecha, p]));
       const pointAtGlobal = mapByDate.get(globalMaxDate);
       let invActualAvailable = 0;
       if (pointAtGlobal) {
-        const calc = calculateAvailableInventory(pointAtGlobal, globalMaxDate);
-        invActualAvailable = calc.available;
+        const total   = Number(pointAtGlobal.inventario || 0);
+        const expired = Number(pointAtGlobal.vencido || 0);
+        invActualAvailable = Math.max(total - expired, 0);
       }
 
-      const lastVal = invHist[invHist.length - 1];
       const lastValAvailable = invAvailable[invAvailable.length - 1];
       const lastDateStr = serie[serie.length - 1]?.fecha || '';
 
@@ -638,7 +586,7 @@ async function init(){
         ? tailAvailable.reduce((a,b)=> a+b, 0) / tailAvailable.length
         : lastValAvailable;
 
-      // Consumo basándose en inventario disponible
+      // Consumo por día usando inventario disponible
       const cons = [];
       const ss = Number(data.inventario_critico||0);
       for (let i=1;i<invAvailable.length;i++){
@@ -694,6 +642,7 @@ async function init(){
 
       const histData          = invHist.concat(Array(future.length).fill(null));
       const histAvailableData = invAvailable.concat(Array(future.length).fill(null));
+      const histExpiredData   = invExpired.concat(Array(future.length).fill(null));
       const projData          = Array(serie.length).fill(null).concat(base);
       const projPlusData      = Array(serie.length).fill(null).concat(withOrder);
 
@@ -713,7 +662,7 @@ async function init(){
       let muForUI = Number(data.mu_d||0), sigmaForUI = Number(data.sigma_d||0);
 
       fillTable(tbody, serie, invAvailable, invExpired);
-      setKPIs(invActualAvailable, rop, sfty, globalMaxDate || lastDateStr, sma15);
+      setKPIs(invActualAvailable, rop, sfty, meta.max_fecha || lastDateStr, sma15);
 
       if (mode === 'Grupo') {
         const stats90 = robustStatsDaily(cons, 90);
@@ -725,7 +674,7 @@ async function init(){
         rop  = kb + sfty;
         muForUI = muLocal;
         sigmaForUI = sigmaLocal;
-        setKPIs(invActualAvailable, rop, sfty, globalMaxDate || lastDateStr, sma15);
+        setKPIs(invActualAvailable, rop, sfty, meta.max_fecha || lastDateStr, sma15);
       }
 
       const dailyExpected = dHat.length
@@ -767,17 +716,20 @@ async function init(){
         critical: styles.getPropertyValue('--chart-critical').trim() || 'rgba(239, 68, 68, 1)'
       };
 
+      const datasets = [
+        {label:'Inventario total', data:histData, fill:false, pointRadius:0, borderColor:chartColors.total, backgroundColor:chartColors.totalFill, borderWidth:1.5},
+        {label:'Inventario disponible', data:histAvailableData, fill:true, pointRadius:0, borderColor:chartColors.available, backgroundColor:chartColors.availableFill, borderWidth:2},
+        {label:'Inventario vencido', data:histExpiredData, fill:false, pointRadius:0, borderColor:chartColors.critical, backgroundColor:'rgba(239,68,68,0.15)', borderWidth:1.8},
+        {label:`Proyección ${H} días`, data:projData, fill:true, pointRadius:0, borderColor:chartColors.projection, backgroundColor:chartColors.projectionFill},
+        {label:'Proyección + pedido', data:projPlusData, fill:true, pointRadius:0, borderColor:chartColors.order, backgroundColor:chartColors.orderFill},
+        {label:'Punto de Reorden (CTD+SS)', data:Array(labels.length).fill(rop), pointRadius:0, borderDash:[4,4], fill:false, borderColor:chartColors.rop},
+        {label:'Inventario Crítico', data:Array(labels.length).fill(sfty), pointRadius:0, borderDash:[4,2], fill:false, borderColor:chartColors.critical}
+      ];
+
       if(!chartInstance){
         chartInstance = new Chart(ctx, {
           type:'line',
-          data:{ labels, datasets:[
-            {label:'Inventario total', data:histData, fill:false, pointRadius:0, borderColor:chartColors.total, backgroundColor:chartColors.totalFill, borderWidth:1.5},
-            {label:'Inventario disponible', data:histAvailableData, fill:true, pointRadius:0, borderColor:chartColors.available, backgroundColor:chartColors.availableFill, borderWidth:2},
-            {label:`Proyección ${H} días`, data:projData, fill:true, pointRadius:0, borderColor:chartColors.projection, backgroundColor:chartColors.projectionFill},
-            {label:'Proyección + pedido', data:projPlusData, fill:true, pointRadius:0, borderColor:chartColors.order, backgroundColor:chartColors.orderFill},
-            {label:'Punto de Reorden (CTD+SS)', data:Array(labels.length).fill(rop), pointRadius:0, borderDash:[4,4], fill:false, borderColor:chartColors.rop},
-            {label:'Inventario Crítico', data:Array(labels.length).fill(sfty), pointRadius:0, borderDash:[4,2], fill:false, borderColor:chartColors.critical}
-          ]},
+          data:{ labels, datasets },
           options:{
             responsive:true, maintainAspectRatio:false, animation:false,
             interaction:{mode:'nearest',intersect:false},
@@ -790,8 +742,7 @@ async function init(){
                 annotations: {
                   arrival: {
                     type:'line',
-                    xMin:arrivalLabel,
-                    xMax:arrivalLabel,
+                    xMin:arrivalLabel, xMax:arrivalLabel,
                     borderColor:'rgba(160,160,160,0.8)',
                     borderWidth:1,
                     borderDash:[6,4],
@@ -806,15 +757,16 @@ async function init(){
         window.chartInstance = chartInstance;
         requestAnimationFrame(fixAfterRotate);
       }else{
-        chartInstance.data.labels=labels;
-        chartInstance.data.datasets[0].data=histData;
-        chartInstance.data.datasets[1].data=histAvailableData;
-        chartInstance.data.datasets[2].label=`Proyección ${H} días`;
-        chartInstance.data.datasets[2].data=projData;
-        chartInstance.data.datasets[3].data=projPlusData;
-        chartInstance.data.datasets[4].data=Array(labels.length).fill(rop);
-        chartInstance.data.datasets[5].data=Array(labels.length).fill(sfty);
-        chartInstance.options.plugins.title.text=graphTitle;
+        chartInstance.data.labels = labels;
+        chartInstance.data.datasets[0].data = histData;
+        chartInstance.data.datasets[1].data = histAvailableData;
+        chartInstance.data.datasets[2].data = histExpiredData;
+        chartInstance.data.datasets[3].label = `Proyección ${H} días`;
+        chartInstance.data.datasets[3].data  = projData;
+        chartInstance.data.datasets[4].data  = projPlusData;
+        chartInstance.data.datasets[5].data  = Array(labels.length).fill(rop);
+        chartInstance.data.datasets[6].data  = Array(labels.length).fill(sfty);
+        chartInstance.options.plugins.title.text = graphTitle;
         if (chartInstance.options.plugins.annotation) {
           chartInstance.options.plugins.annotation.annotations.arrival.xMin = arrivalLabel;
           chartInstance.options.plugins.annotation.annotations.arrival.xMax = arrivalLabel;
@@ -903,6 +855,7 @@ window.addEventListener('orientationchange', ()=> setTimeout(fixAfterRotate, 350
 window.addEventListener('resize',             ()=> setTimeout(fixAfterRotate, 150));
 if (window.visualViewport){ window.visualViewport.addEventListener('resize', ()=> setTimeout(fixAfterRotate, 150)); }
 
+// Observa el contenedor por cambios reales de tamaño
 window.addEventListener('load', ()=>{
   const wrap = document.querySelector('.chart-wrap');
   if (!wrap || !('ResizeObserver' in window)) return;
@@ -918,7 +871,41 @@ window.addEventListener('load', ()=>{
 </div>
 
 <script>
-// === Exportar a PDF el informe de curvas de inventario (versión ligera con header parecido al dashboard) ===
+(function () {
+  if (!('serviceWorker' in navigator)) return;
+
+  navigator.serviceWorker.register('./sw.js', { scope: './' }).then((reg) => {
+    const toast = document.getElementById('updateToast');
+    const btn   = document.getElementById('updateToastBtn');
+
+    function showToast() { if (toast) toast.style.display = 'flex'; }
+    if (reg.waiting) showToast();
+
+    reg.addEventListener('updatefound', () => {
+      const sw = reg.installing;
+      if (!sw) return;
+      sw.addEventListener('statechange', () => {
+        if (sw.state === 'installed' && navigator.serviceWorker.controller) showToast();
+      });
+    });
+
+    btn?.addEventListener('click', () => { reg.waiting?.postMessage('SKIP_WAITING'); });
+
+    let refreshing = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (refreshing) return;
+      refreshing = true;
+      location.reload();
+    });
+
+    reg.update();
+    setInterval(() => reg.update(), 60 * 60 * 1000);
+  }).catch(console.error);
+})();
+</script>
+
+<!-- Exportar a PDF (ligero, nombre con sujeto) -->
+<script>
 (function () {
   const btn = document.getElementById('exportPdfBtn');
   if (!btn || !window.jspdf || !window.html2canvas) return;
@@ -931,7 +918,6 @@ window.addEventListener('load', ()=>{
       const termInput = document.getElementById('term');
       const modeSel   = document.getElementById('mode');
       let subjectLabel = '';
-
       if (modeSel && termInput) {
         const mode = modeSel.value;
         const term = (termInput.value || '').trim();
@@ -941,73 +927,23 @@ window.addEventListener('load', ()=>{
       }
 
       const { jsPDF } = window.jspdf;
-      if (!jsPDF) {
-        alert('No se pudo cargar jsPDF.');
-        return;
-      }
+      if (!jsPDF) { alert('No se pudo cargar jsPDF.'); return; }
 
-      // PDF en A4 apaisado
       const pdf = new jsPDF('l', 'mm', 'a4');
       const pageWidth  = pdf.internal.pageSize.getWidth();
       const pageHeight = pdf.internal.pageSize.getHeight();
 
-      // ==== HEADER estilo dashboard ====
-      const topMargin = 8;
-      const logoSize = 10; // mm
-      const logoX = 10;
-      const logoY = topMargin;
-
-      // Intentamos cargar el logo del mismo path que usas en el dashboard
-      let logoLoaded = false;
-      try {
-        const logoImg = new Image();
-        logoImg.crossOrigin = 'anonymous';
-        logoImg.src = 'icons/icon-512.png';
-        await new Promise((resolve, reject) => {
-          logoImg.onload = resolve;
-          logoImg.onerror = reject;
-        });
-        const canvasTmp = document.createElement('canvas');
-        canvasTmp.width = logoImg.width;
-        canvasTmp.height = logoImg.height;
-        const ctxTmp = canvasTmp.getContext('2d');
-        ctxTmp.drawImage(logoImg, 0, 0);
-        const logoData = canvasTmp.toDataURL('image/png');
-        pdf.addImage(logoData, 'PNG', logoX, logoY, logoSize, logoSize);
-        logoLoaded = true;
-      } catch (e) {
-        console.warn('No se pudo cargar el logo para el PDF:', e);
-      }
-
-      // Títulos al lado del logo
-      const textStartX = logoLoaded ? (logoX + logoSize + 4) : 10;
-      const titleY = topMargin + 4;      // línea superior
-      const subtitleY = topMargin + 9;   // debajo
-
-      pdf.setFontSize(13);
-      pdf.setFont('helvetica', 'bold');
-      pdf.text('Curvas de Inventario — CEDIS PANAMÁ CSS', textStartX, titleY);
-
-      pdf.setFontSize(10);
-      pdf.setFont('helvetica', 'normal');
-      pdf.text('v1.0 · Torre de Control', textStartX, subtitleY);
-
-      // Subject (suministro / código / grupo) debajo
-      if (subjectLabel) {
-        pdf.setFontSize(10);
-        pdf.setFont('helvetica', 'italic');
-        pdf.text(String(subjectLabel), textStartX, subtitleY + 5);
-      }
-
-      // Fecha y hora en la esquina derecha
+      // Cabecera simple
+      pdf.setFontSize(14); pdf.setFont('helvetica','bold');
+      pdf.text('Curvas de Inventario — CEDIS PANAMÁ CSS', 10, 12);
+      pdf.setFontSize(10); pdf.setFont('helvetica','normal');
+      pdf.text('v1.0 · Torre de Control', 10, 18);
+      if (subjectLabel) { pdf.setFontSize(10); pdf.setFont('helvetica','italic'); pdf.text(String(subjectLabel), 10, 23); }
       const now = new Date();
       pdf.setFontSize(9);
-      pdf.setFont('helvetica', 'normal');
-      const ts = 'Generado: ' + now.toLocaleString('es-PA', { dateStyle:'short', timeStyle:'short' });
-      pdf.text(ts, pageWidth - 80, topMargin + 4);
+      pdf.text('Generado: ' + now.toLocaleString('es-PA', { dateStyle:'short', timeStyle:'short' }), pageWidth - 80, 12);
 
-      // ==== Captura del área de contenido ====
-      const scale = 1.2; // baja resolución para que el PDF sea ligero
+      const scale = 1.2;
       const canvas = await html2canvas(area, {
         scale,
         useCORS: true,
@@ -1015,31 +951,26 @@ window.addEventListener('load', ()=>{
         windowWidth: area.scrollWidth,
         windowHeight: area.scrollHeight
       });
-
-      // Convertir a JPEG con compresión
       const imgData = canvas.toDataURL('image/jpeg', 0.6);
 
-      // Ajustar imagen dentro de la página
       const margin = 10;
-      const availableTop = topMargin + 18; // dejamos espacio para header
+      const availableTop = 28; // deja espacio para la cabecera
       const maxW = pageWidth - margin*2;
       const maxH = pageHeight - availableTop - margin;
       const imgRatio = canvas.width / canvas.height;
       let renderW = maxW;
       let renderH = renderW / imgRatio;
-      if (renderH > maxH) {
-        renderH = maxH;
-        renderW = renderH * imgRatio;
-      }
+      if (renderH > maxH) { renderH = maxH; renderW = renderH * imgRatio; }
       const x = (pageWidth - renderW)/2;
       const y = availableTop;
 
       pdf.addImage(imgData, 'JPEG', x, y, renderW, renderH);
+
+      // Nombre de archivo con sujeto
       const fileSubject = (subjectLabel || 'General')
         .replace(/[\/\\:*?"<>|]+/g, '_')
         .replace(/\s+/g, '_')
         .substring(0, 60);
-      
       pdf.save(`Curvas_Inventario_${fileSubject}.pdf`);
     } catch (e) {
       console.error('Error generando PDF:', e);
