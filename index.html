@@ -904,7 +904,7 @@ window.addEventListener('load', ()=>{
 })();
 </script>
 
-<!-- Exportar a PDF (ligero, nombre con sujeto) -->
+<!-- Exportar a PDF multipágina a ancho completo -->
 <script>
 (function () {
   const btn = document.getElementById('exportPdfBtn');
@@ -923,54 +923,118 @@ window.addEventListener('load', ()=>{
         const term = (termInput.value || '').trim();
         if (mode === 'Suministro' && term) subjectLabel = term;
         else if (mode === 'Código' && term) subjectLabel = 'Código ' + term;
-        else if (mode === 'Grupo' && term) subjectLabel = 'Grupo ' + term;
+        else if (mode === 'Grupo' && (document.getElementById('group')?.value || '')) subjectLabel = 'Grupo ' + (document.getElementById('group')?.value || '');
       }
 
       const { jsPDF } = window.jspdf;
-      if (!jsPDF) { alert('No se pudo cargar jsPDF.'); return; }
+      const pdf = new jsPDF('l', 'mm', 'a4'); // A4 horizontal
+      const pageW = pdf.internal.pageSize.getWidth();
+      const pageH = pdf.internal.pageSize.getHeight();
 
-      const pdf = new jsPDF('l', 'mm', 'a4');
-      const pageWidth  = pdf.internal.pageSize.getWidth();
-      const pageHeight = pdf.internal.pageSize.getHeight();
+      // ===== Header (similar al dashboard) =====
+      const marginX = 10;
+      const topMargin = 8;
+      const headerH = 22; // espacio reservado para header
 
-      // Cabecera simple
-      pdf.setFontSize(14); pdf.setFont('helvetica','bold');
-      pdf.text('Curvas de Inventario — CEDIS PANAMÁ CSS', 10, 12);
-      pdf.setFontSize(10); pdf.setFont('helvetica','normal');
-      pdf.text('v1.0 · Torre de Control', 10, 18);
-      if (subjectLabel) { pdf.setFontSize(10); pdf.setFont('helvetica','italic'); pdf.text(String(subjectLabel), 10, 23); }
-      const now = new Date();
+      pdf.setFontSize(13);
+      pdf.setFont('helvetica','bold');
+      pdf.text('Curvas de Inventario — CEDIS PANAMÁ CSS', marginX, topMargin + 6);
+
+      pdf.setFontSize(10);
+      pdf.setFont('helvetica','normal');
+      pdf.text('v1.0 · Torre de Control', marginX, topMargin + 12);
+
+      if (subjectLabel) {
+        pdf.setFont('helvetica','italic');
+        pdf.text(String(subjectLabel), marginX, topMargin + 18);
+      }
+
+      pdf.setFont('helvetica','normal');
       pdf.setFontSize(9);
-      pdf.text('Generado: ' + now.toLocaleString('es-PA', { dateStyle:'short', timeStyle:'short' }), pageWidth - 80, 12);
+      pdf.text('Generado: ' + new Date().toLocaleString('es-PA', { dateStyle:'short', timeStyle:'short' }),
+               pageW - 80, topMargin + 6);
 
-      const scale = 1.2;
+      // ===== Captura en alta resolución =====
+      const scale = Math.min(2.5, window.devicePixelRatio ? window.devicePixelRatio * 2 : 2);
       const canvas = await html2canvas(area, {
         scale,
         useCORS: true,
         logging: false,
+        backgroundColor: getComputedStyle(document.documentElement).getPropertyValue('--canvas')?.trim() || '#ffffff',
         windowWidth: area.scrollWidth,
         windowHeight: area.scrollHeight
       });
-      const imgData = canvas.toDataURL('image/jpeg', 0.6);
 
-      const margin = 10;
-      const availableTop = 28; // deja espacio para la cabecera
-      const maxW = pageWidth - margin*2;
-      const maxH = pageHeight - availableTop - margin;
-      const imgRatio = canvas.width / canvas.height;
-      let renderW = maxW;
-      let renderH = renderW / imgRatio;
-      if (renderH > maxH) { renderH = maxH; renderW = renderH * imgRatio; }
-      const x = (pageWidth - renderW)/2;
-      const y = availableTop;
+      const imgData = canvas.toDataURL('image/jpeg', 0.92);
 
-      pdf.addImage(imgData, 'JPEG', x, y, renderW, renderH);
+      // ===== Ajuste a ancho completo y paginado =====
+      const contentTop = topMargin + headerH;
+      const contentH = pageH - contentTop - 10; // margen inferior 10mm
+      const contentW = pageW - marginX*2;
 
-      // Nombre de archivo con sujeto
+      // Convertir tamaño canvas(px) a tamaño en mm al ancho completo
+      const imgWmm = contentW;
+      const imgHmm = (canvas.height * imgWmm) / canvas.width;
+
+      // Si cabe en una sola página, listo
+      if (imgHmm <= contentH) {
+        pdf.addImage(imgData, 'JPEG', marginX, contentTop, imgWmm, imgHmm);
+      } else {
+        // Multipágina: vamos “recortando” la imagen en tiras verticales
+        // Calcula cuántos px corresponden a una página en mm:
+        const pxPerMm = canvas.width / imgWmm;
+        const pageContentPxH = Math.floor(contentH * pxPerMm);
+
+        let yPx = 0;
+        let pageIndex = 0;
+
+        while (yPx < canvas.height) {
+          if (pageIndex > 0) {
+            pdf.addPage('a4', 'l');
+            // Re-dibujar header en páginas siguientes
+            pdf.setFontSize(13);
+            pdf.setFont('helvetica','bold');
+            pdf.text('Curvas de Inventario — CEDIS PANAMÁ CSS', marginX, topMargin + 6);
+
+            pdf.setFontSize(10);
+            pdf.setFont('helvetica','normal');
+            pdf.text('v1.0 · Torre de Control', marginX, topMargin + 12);
+
+            if (subjectLabel) {
+              pdf.setFont('helvetica','italic');
+              pdf.text(String(subjectLabel), marginX, topMargin + 18);
+            }
+
+            pdf.setFont('helvetica','normal');
+            pdf.setFontSize(9);
+            pdf.text('Generado: ' + new Date().toLocaleString('es-PA', { dateStyle:'short', timeStyle:'short' }),
+                     pageW - 80, topMargin + 6);
+          }
+
+          const sliceH = Math.min(pageContentPxH, canvas.height - yPx);
+
+          // Crear canvas temporal con el recorte
+          const sliceCanvas = document.createElement('canvas');
+          sliceCanvas.width = canvas.width;
+          sliceCanvas.height = sliceH;
+          const sctx = sliceCanvas.getContext('2d');
+          sctx.drawImage(canvas, 0, yPx, canvas.width, sliceH, 0, 0, canvas.width, sliceH);
+
+          const sliceData = sliceCanvas.toDataURL('image/jpeg', 0.92);
+          const sliceHmm = (sliceH * imgWmm) / canvas.width;
+
+          pdf.addImage(sliceData, 'JPEG', marginX, contentTop, imgWmm, sliceHmm);
+
+          yPx += sliceH;
+          pageIndex++;
+        }
+      }
+
       const fileSubject = (subjectLabel || 'General')
         .replace(/[\/\\:*?"<>|]+/g, '_')
         .replace(/\s+/g, '_')
         .substring(0, 60);
+
       pdf.save(`Curvas_Inventario_${fileSubject}.pdf`);
     } catch (e) {
       console.error('Error generando PDF:', e);
