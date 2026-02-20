@@ -1,86 +1,67 @@
-// sw.js — Curvas_de_Inventario (con Navigation Preload)
+// sw.js — Curvas_de_Inventario
 // =======================================================
-const CACHE_VERSION = 'v4.0-FORCE-REFRESH';// ⬅️ súbelo en cada release
+// CAMBIO CRÍTICO: Versión actualizada para forzar recarga
+const CACHE_VERSION = 'v5.0-FINAL-FIX-2026-02-20';
 const STATIC_CACHE = `static-${CACHE_VERSION}`;
 
-/** Lista mínima del app-shell.
- *  Usa RUTAS RELATIVAS porque estás en /Curvas_de_Inventario/
- */
 const APP_SHELL = [
   './',
   './index.html',
   './manifest.json',
   './icons/icon-192.png',
   './icons/icon-512.png',
-  // './css/app.css',
-  // './js/app.js',
 ];
 
-// Install: precache del app-shell
+// 1. Install: Precacheo agresivo
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(STATIC_CACHE).then((c) => c.addAll(APP_SHELL)));
+  // Obliga al SW a activarse inmediatamente, sin esperar
   self.skipWaiting();
+  event.waitUntil(
+    caches.open(STATIC_CACHE).then((cache) => cache.addAll(APP_SHELL))
+  );
 });
 
-// Activate: limpia versiones antiguas, habilita Navigation Preload y toma control
+// 2. Activate: Limpieza inmediata de cachés viejas
 self.addEventListener('activate', (event) => {
-  event.waitUntil((async () => {
-    const keys = await caches.keys();
-    await Promise.all(keys.map(k => (k !== STATIC_CACHE ? caches.delete(k) : Promise.resolve())));
-    // Habilita Navigation Preload si está disponible (mejora TTFB en navigations)
-    if (self.registration.navigationPreload) {
-      await self.registration.navigationPreload.enable();
-    }
-    await self.clients.claim();
-  })());
+  event.waitUntil(
+    caches.keys().then((keys) =>
+      Promise.all(
+        keys.map((key) => {
+          if (key !== STATIC_CACHE) {
+            return caches.delete(key);
+          }
+        })
+      )
+    ).then(() => self.clients.claim()) // Toma control de la página inmediatamente
+  );
 });
 
-// Fetch policy:
-// - Navegaciones (HTML): usa preload si existe; si no, network-first; fallback caché.
-// - Estáticos locales (script/style/image/font): stale-while-revalidate.
-// - Externos (otro origen): no interceptar.
+// 3. Fetch: Estrategia Network-First para HTML (Vital para evitar que index.html se pegue)
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   const url = new URL(req.url);
 
-  // No tocar otros orígenes (CDN, Google Apps Script, etc.)
+  // Solo interceptar peticiones del mismo origen
   if (url.origin !== location.origin) return;
 
-  // HTML / navegaciones => usa preload -> network-first -> cache
+  // Estrategia para HTML (Navegación): Network First, luego Cache
+  // Esto asegura que siempre intente bajar el index.html nuevo primero.
   if (req.mode === 'navigate' || req.destination === 'document') {
-    event.respondWith((async () => {
-      try {
-        const preload = await event.preloadResponse;
-        if (preload) return preload;
-        const fresh = await fetch(req, { cache: 'no-store' });
-        return fresh;
-      } catch {
-        const cached = await caches.match('./index.html');
-        return cached || new Response('Offline', { status: 503 });
-      }
-    })());
+    event.respondWith(
+      fetch(req).catch(() => caches.match('./index.html'))
+    );
     return;
   }
 
-  // Estáticos locales => SWR
-  if (req.method === 'GET' && (req.destination === 'script' || req.destination === 'style' || req.destination === 'image' || req.destination === 'font')) {
-    event.respondWith((async () => {
-      const cache = await caches.open(STATIC_CACHE);
-      const cached = await cache.match(req);
-      const fetchPromise = fetch(req).then((res) => {
-        if (res && res.ok) cache.put(req, res.clone());
-        return res;
-      }).catch(() => null);
-      return cached || fetchPromise || Response.error();
-    })());
-    return;
-  }
-
-  // Por defecto: red con fallback a caché
-  event.respondWith(fetch(req).catch(() => caches.match(req)));
-});
-
-// Permite a la página activar YA la nueva versión
-self.addEventListener('message', (event) => {
-  if (event.data === 'SKIP_WAITING') self.skipWaiting();
+  // Estrategia para recursos estáticos (JS, CSS, Imágenes): Cache First
+  event.respondWith(
+    caches.match(req).then((cached) => {
+      return cached || fetch(req).then((response) => {
+        return caches.open(STATIC_CACHE).then((cache) => {
+          cache.put(req, response.clone());
+          return response;
+        });
+      });
+    })
+  );
 });
