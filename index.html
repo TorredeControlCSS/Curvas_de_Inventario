@@ -8,6 +8,8 @@
   <link rel="manifest" href="manifest.json">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
+
+  <!-- Librerías para exportar a PDF -->
   <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 
@@ -202,7 +204,7 @@
       <div id="termWrap">
         <label id="lbl-term">Suministro</label>
         <div class="input-clear">
-          <input id="term" list="termOptions" placeholder="Escribe para buscar..." autocomplete="off">
+          <input id="term" list="termOptions" placeholder="Cargando..." autocomplete="off">
         </div>
         <datalist id="termOptions"></datalist>
       </div>
@@ -301,7 +303,7 @@
 
 <script>
 // === Config ===
-// **** URL CORREGIDA POR EL USUARIO ****
+// **** URL CORREGIDA: Apunta a tu despliegue actual ****
 const API_BASE = 'https://script.google.com/macros/s/AKfycbzllEuKb5KwwVer3u0QRIWnFVS8vK0VBr0quQwoxD76xbzSQvZYctXhNM8e022c4M-uRQ/exec';
 
 const LEAD = 45, TYPEAHEAD_LIMIT = 100, USE_SEASONAL = true;
@@ -504,6 +506,7 @@ async function init(){
         btn=$('btn'), btnClear=$('btnClear'), refreshBtn=$('refreshBtn'),
         tbody=document.querySelector('#tbl tbody'),
         projTbody=document.querySelector('#projTbl tbody');
+
   // limpiar campo al foco y ejecutar enter/cambio
   if (termInp){
     termInp.addEventListener('focus', ()=>{
@@ -518,7 +521,18 @@ async function init(){
     });
   }
 
-  const meta = await safeFetchList();
+  // **** CAMBIO CLAVE: Cargar lista y ejecutar automáticamente ****
+  setBtnState(btn, 'is-loading');
+  let meta = {};
+  try {
+    meta = await safeFetchList();
+  } catch (e) {
+    console.error(e);
+    setBtnState(btn, 'is-error');
+    alert("Error de conexión. Revisa tu internet.");
+    return;
+  }
+
   codes = meta.codigos||[]; sups = meta.suministros||[]; groups=[''].concat(meta.grupos||[]);
   $('group').innerHTML = groups.map(g => `<option value="${g}">${g||'Todos'}</option>`).join('');
   from.value = meta.min_fecha||''; to.value = meta.max_fecha||'';
@@ -532,12 +546,19 @@ async function init(){
   modeSel.addEventListener('change', fillTerms);
   termInp.addEventListener('input', e=>{ const arr = (modeSel.value==='Código')? codes : sups; fillDatalist(arr, e.target.value||''); });
 
-  modeSel.value='Suministro'; fillTerms(); if (sups.length>0) termInp.value = sups[0];
+  modeSel.value='Suministro'; fillTerms(); 
+  
+  // Si hay suministros, seleccionar el primero y ejecutar
+  if(sups.length>0) {
+    termInp.value = sups[0];
+    // Ejecutar búsqueda inicial
+    await run();
+  } else {
+    setBtnState(btn, '');
+  }
 
   qty.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); qty.blur(); run(); } });
   qty.addEventListener('change', ()=>{ run(); });
-  termInp.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); termInp.blur(); run(); } });
-  termInp.addEventListener('change', ()=>{ if(termInp.value && termInp.value.trim().length>0){ run(); } });
 
   async function run(){
     setBtnState(btn,'is-loading'); btn.disabled = true;
@@ -819,6 +840,27 @@ async function init(){
   window.addEventListener('resize', ()=>{ tb.classList.remove('topbar--hidden'); hidden=false; lastY=window.scrollY; });
 })();
 
+window.addEventListener('load', init);
+if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js').catch(()=>{}); }
+
+function normalizeHeader(){
+  const tb = document.querySelector('.topbar'); if (!tb) return;
+  if (window.innerWidth <= 720){
+    tb.classList.remove('topbar--hidden');
+    tb.style.position = 'static';
+    tb.style.boxShadow = 'none';
+  } else {
+    tb.style.position = 'sticky';
+    tb.style.boxShadow = '0 2px 10px rgba(0,0,0,.2)';
+  }
+}
+(function(){
+  const BTN = document.getElementById('btn');
+  const REF = document.getElementById('refreshBtn');
+  const _safe = (el)=> el && el.addEventListener && el.addEventListener('click', ()=> setTimeout(normalizeHeader, 50));
+  _safe(BTN); _safe(REF);
+})();
+
 // === FIX MÓVIL: actualiza --vh y fuerza resize del chart ===
 function setVH(){
   const vh = (window.visualViewport?.height || window.innerHeight) * 0.01;
@@ -841,32 +883,46 @@ window.addEventListener('load', ()=>{
   const ro = new ResizeObserver(()=>{ const c = window.chartInstance || chartInstance; if (c && typeof c.resize === 'function') c.resize(); });
   ro.observe(wrap);
 });
+</script>
 
-// ============================================
-// GESTIÓN DE SERVICE WORKER (FORZAR ACTUALIZACIÓN)
-// ============================================
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./sw.js').then(reg => {
-    // Si hay un SW esperando, forzarlo a tomar control
-    if (reg.waiting) { reg.waiting.postMessage('SKIP_WAITING'); }
+<!-- Toast de actualización -->
+<div id="updateToast" style="position:fixed; left:50%; transform:translateX(-50%); bottom:16px; z-index:9999; display:none; max-width:92vw; box-shadow:0 6px 20px rgba(0,0,0,.2); border-radius:12px; padding:10px 12px; background:#0f172a; color:#fff; align-items:center; gap:10px;">
+  <span style="margin-right:12px;">Hay una nueva versión disponible</span>
+  <button id="updateToastBtn" style="border:0; padding:8px 12px; border-radius:10px; background:#0b5fff; color:white; cursor:pointer;">Actualizar</button>
+</div>
+
+<script>
+(function () {
+  if (!('serviceWorker' in navigator)) return;
+
+  navigator.serviceWorker.register('./sw.js', { scope: './' }).then((reg) => {
+    const toast = document.getElementById('updateToast');
+    const btn   = document.getElementById('updateToastBtn');
+
+    function showToast() { if (toast) toast.style.display = 'flex'; }
+    if (reg.waiting) showToast();
+
     reg.addEventListener('updatefound', () => {
-      const newWorker = reg.installing;
-      newWorker.addEventListener('statechange', () => {
-        if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-          newWorker.postMessage('SKIP_WAITING');
-        }
+      const sw = reg.installing;
+      if (!sw) return;
+      sw.addEventListener('statechange', () => {
+        if (sw.state === 'installed' && navigator.serviceWorker.controller) showToast();
       });
     });
-  });
 
-  // Cuando el nuevo SW toma el control, recargar la página para limpiar la caché vieja
-  let refreshing = false;
-  navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (refreshing) return;
-    window.location.reload();
-    refreshing = true;
-  });
-}
+    btn?.addEventListener('click', () => { reg.waiting?.postMessage('SKIP_WAITING'); });
+
+    let refreshing = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (refreshing) return;
+      refreshing = true;
+      location.reload();
+    });
+
+    reg.update();
+    setInterval(() => reg.update(), 60 * 60 * 1000);
+  }).catch(console.error);
+})();
 </script>
 
 <!-- Exportar a PDF multipágina a ancho completo -->
