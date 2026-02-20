@@ -1,6 +1,6 @@
 // sw.js — Curvas_de_Inventario (con Navigation Preload)
 // =======================================================
-const CACHE_VERSION = 'v4.0-RESET-2026-02-20'; // ⬅️ súbelo en cada release
+const CACHE_VERSION = 'v4.0-FORCE-REFRESH';// ⬅️ súbelo en cada release
 const STATIC_CACHE = `static-${CACHE_VERSION}`;
 
 /** Lista mínima del app-shell.
