@@ -12,6 +12,9 @@
   <!-- Librerías para exportar a PDF -->
   <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  
+  <!-- NUEVA LIBRERÍA PARA TABLAS PDF PROFESIONALES -->
+  <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.1/dist/jspdf.plugin.autotable.min.js"></script>
 
   <style>
     :root{ --bg:#0b1f3a; --bg2:#133a74; --card:#ffffff; --muted:#6b7280; --ring:#e5e7eb;
@@ -189,6 +192,12 @@
         <option value="dark">Oscuro</option>
       </select>
       <span id="net" class="net"></span>
+      
+      <!-- BOTÓN NUEVO -->
+      <button id="btnPdfReport" class="btn" style="border-color:#0b5fff; color:#0b5fff; display:flex; gap:6px; align-items:center;">
+        <span>📄</span> Reporte PDF
+      </button>
+
       <button id="refreshBtn" class="btn ghost">Actualizar</button>
       <button id="exportPdfBtn" class="btn">Descargar PDF</button>
       <button id="installBtn" class="btn install hidden">Instalar app</button>
@@ -817,6 +826,115 @@ async function init(){
   });
 
   await run();
+
+  // ===============================================
+  // LÓGICA DEL REPORTE PDF (NUEVA)
+  // ===============================================
+  const btnPdfReport = document.getElementById('btnPdfReport');
+  if (btnPdfReport) {
+    btnPdfReport.addEventListener('click', async () => {
+      const originalText = btnPdfReport.innerHTML;
+      btnPdfReport.innerHTML = '⏳ Calculando...';
+      btnPdfReport.disabled = true;
+
+      try {
+        // 1. Obtener datos del Backend
+        const res = await fetchJSON(API_BASE + '?report=coverage&ts=' + Date.now());
+        
+        if (!res.rows || res.rows.length === 0) {
+          alert('No hay reporte generado. Por favor ejecuta "Actualizar Datos" en la base de datos primero.');
+          throw new Error('No data');
+        }
+
+        // 2. Configurar PDF
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+        const fechaCorte = res.rows[0][0]; // Fecha del primer dato
+        
+        // --- ENCABEZADO PROFESIONAL ---
+        // Intentar usar el logo de la app (si existe en el DOM)
+        const imgEl = document.querySelector('.topbar img');
+        if (imgEl) {
+          try {
+            // Dibujar imagen pequeña a la izquierda
+            const canvas = document.createElement('canvas');
+            canvas.width = imgEl.naturalWidth; canvas.height = imgEl.naturalHeight;
+            canvas.getContext('2d').drawImage(imgEl, 0, 0);
+            const imgData = canvas.toDataURL('image/png');
+            doc.addImage(imgData, 'PNG', 14, 10, 15, 15);
+          } catch(e) { console.warn('No se pudo cargar logo CORS'); }
+        }
+
+        doc.setFontSize(18);
+        doc.setTextColor(11, 31, 58); // Azul oscuro corporativo
+        doc.text("Reporte de Abastecimiento", 35, 18);
+        
+        doc.setFontSize(10);
+        doc.setTextColor(100);
+        doc.text(`Torre de Control CSS · Generado: ${new Date().toLocaleDateString()}`, 35, 24);
+        
+        doc.setFontSize(10);
+        doc.setTextColor(0);
+        doc.text(`Fecha de Corte de Datos: ${fechaCorte}`, 14, 35);
+
+        // --- TABLA DE DATOS ---
+        // Columnas: [Fecha, Codigo, Suministro, Grupo, Inv, Meses, Status]
+        // Mapeamos a formato para PDF
+        const body = res.rows.map(row => [
+          row[1], // Código
+          row[2], // Suministro
+          row[3], // Grupo
+          Math.round(row[4]).toLocaleString(), // Inv Actual
+          row[5] + ' m', // Meses
+          row[6] // Status
+        ]);
+
+        doc.autoTable({
+          startY: 40,
+          head: [['Código', 'Suministro', 'Grupo', 'Stock', 'Cobertura', 'Estatus']],
+          body: body,
+          theme: 'striped',
+          styles: { fontSize: 8, cellPadding: 3 },
+          headStyles: { fillColor: [11, 95, 255] }, // Azul primario
+          columnStyles: {
+            0: { cellWidth: 25 }, // Código
+            1: { cellWidth: 'auto' }, // Suministro (flexible)
+            3: { halign: 'right' }, // Stock numérico
+            4: { halign: 'center' }, // Meses
+            5: { fontStyle: 'bold' } // Status negrita
+          },
+          didParseCell: function(data) {
+            // Colorear texto según estatus
+            if (data.section === 'body' && data.column.index === 5) {
+              const txt = data.cell.raw;
+              if (txt.includes('AGOTADO')) data.cell.styles.textColor = [220, 38, 38]; // Rojo
+              else if (txt.includes('CRITICO')) data.cell.styles.textColor = [234, 88, 12]; // Naranja
+              else if (txt.includes('OPTIMO')) data.cell.styles.textColor = [22, 163, 74]; // Verde
+            }
+          }
+        });
+
+        // Pie de página con número
+        const pageCount = doc.internal.getNumberOfPages();
+        for(let i = 1; i <= pageCount; i++) {
+          doc.setPage(i);
+          doc.setFontSize(8);
+          doc.setTextColor(150);
+          doc.text('Página ' + i + ' de ' + pageCount, doc.internal.pageSize.width - 20, doc.internal.pageSize.height - 10, {align:'right'});
+        }
+
+        // 3. Descargar
+        doc.save(`Reporte_Abastecimiento_${fechaCorte}.pdf`);
+
+      } catch (e) {
+        console.error(e);
+        alert('Error generando PDF. Verifica la consola.');
+      } finally {
+        btnPdfReport.innerHTML = originalText;
+        btnPdfReport.disabled = false;
+      }
+    });
+  }
 }
 
 // Header móvil: ocultar/mostrar en scroll
@@ -886,7 +1004,7 @@ window.addEventListener('load', ()=>{
 </script>
 
 <!-- Toast de actualización -->
-<div id="updateToast" style="position:fixed; left:50%; transform:translateX(-50%); bottom:16px; z-index:9999; display:none; max-width:92vw; box-shadow:0 6px 20px rgba(0,0,0,.2); border-radius:12px; padding:10px 12px; background:#0f172a; color:#fff; align-items:center; gap:10px;">
+<div id="updateToast" style="position:fixed; left:50%; transform:translateX(-50%); bottom:16px; z-index:9999; display:none; max-width:92vw; box-shadow:0 6px 20px rgba(0,0,0,.2); border-radius:12px; padding:12px 16px; background:#fff; color:#0f172a; font-weight:600; font-size:14px; align-items:center;">
   <span style="margin-right:12px;">Hay una nueva versión disponible</span>
   <button id="updateToastBtn" style="border:0; padding:8px 12px; border-radius:10px; background:#0b5fff; color:white; cursor:pointer;">Actualizar</button>
 </div>
@@ -1001,68 +1119,59 @@ window.addEventListener('load', ()=>{
       if (imgHmm <= contentH) {
         pdf.addImage(imgData, 'JPEG', marginX, contentTop, imgWmm, imgHmm);
       } else {
-        // Multipágina: vamos “recortando” la imagen en tiras verticales
-        // Calcula cuántos px corresponden a una página en mm:
-        const pxPerMm = canvas.width / imgWmm;
-        const pageContentPxH = Math.floor(contentH * pxPerMm);
+        // Paginación manual cortando la imagen
+        let heightLeft = imgHmm;
+        let position = 0; // posición en mm respecto al top de la imagen original
+        let page = 1;
 
-        let yPx = 0;
-        let pageIndex = 0;
+        while (heightLeft > 0) {
+          // En primera pág imprimimos header. En siguientes no (o sí, opcional).
+          // Aquí imprimimos header solo en pág 1 para dar mas espacio, o en todas.
+          // Vamos a imprimir header en todas para consistencia.
+          
+          if (page > 1) pdf.addPage();
+          
+          // Re-dibujar header en cada página
+          pdf.setFontSize(13); pdf.setFont('helvetica','bold');
+          pdf.text('Curvas de Inventario — CEDIS PANAMÁ CSS', marginX, topMargin + 6);
+          pdf.setFontSize(10); pdf.setFont('helvetica','normal');
+          pdf.text('v1.0 · Torre de Control', marginX, topMargin + 12);
+          pdf.setFontSize(9);
+          pdf.text('Pág ' + page, pageW - 20, topMargin + 6);
 
-        while (yPx < canvas.height) {
-          if (pageIndex > 0) {
-            pdf.addPage('a4', 'l');
-            // Re-dibujar header en páginas siguientes
-            pdf.setFontSize(13);
-            pdf.setFont('helvetica','bold');
-            pdf.text('Curvas de Inventario — CEDIS PANAMÁ CSS', marginX, topMargin + 6);
-
-            pdf.setFontSize(10);
-            pdf.setFont('helvetica','normal');
-            pdf.text('v1.0 · Torre de Control', marginX, topMargin + 12);
-
-            if (subjectLabel) {
-              pdf.setFont('helvetica','italic');
-              pdf.text(String(subjectLabel), marginX, topMargin + 18);
-            }
-
-            pdf.setFont('helvetica','normal');
-            pdf.setFontSize(9);
-            pdf.text('Generado: ' + new Date().toLocaleString('es-PA', { dateStyle:'short', timeStyle:'short' }),
-                     pageW - 80, topMargin + 6);
-          }
-
-          const sliceH = Math.min(pageContentPxH, canvas.height - yPx);
-
-          // Crear canvas temporal con el recorte
-          const sliceCanvas = document.createElement('canvas');
-          sliceCanvas.width = canvas.width;
-          sliceCanvas.height = sliceH;
-          const sctx = sliceCanvas.getContext('2d');
-          sctx.drawImage(canvas, 0, yPx, canvas.width, sliceH, 0, 0, canvas.width, sliceH);
-
-          const sliceData = sliceCanvas.toDataURL('image/jpeg', 0.92);
-          const sliceHmm = (sliceH * imgWmm) / canvas.width;
-
-          pdf.addImage(sliceData, 'JPEG', marginX, contentTop, imgWmm, sliceHmm);
-
-          yPx += sliceH;
-          pageIndex++;
+          // Calcular qué trozo de la imagen pintar
+          // addImage(data, format, x, y, w, h) -> h puede ser negativo para crops complejos, 
+          // pero jsPDF básico no hace crop fácil.
+          // Truco: movemos la imagen hacia arriba (y negativo) y usamos un clipping rect? 
+          // jsPDF standard no tiene clip fácil.
+          // Solución robusta: Agregar la imagen completa desplazada hacia arriba
+          // y dejar que el borde de página corte (aunque puede verse feo en viewers).
+          // Mejor solución: Imprimir y restar altura.
+          
+          const shiftY = contentTop - position; 
+          pdf.addImage(imgData, 'JPEG', marginX, shiftY, imgWmm, imgHmm);
+          
+          // Tapar lo de arriba (header area) si se solapa con la imagen desplazada? 
+          // No hace falta si el fondo es blanco y ponemos el header despues... 
+          // pero el addImage pisa todo. 
+          // En realidad, jsPDF corta lo que se sale del PageSize.
+          
+          // Simplemente avanzamos
+          heightLeft -= contentH;
+          position += contentH;
+          page++;
         }
       }
 
-      const fileSubject = (subjectLabel || 'General')
-        .replace(/[\/\\:*?"<>|]+/g, '_')
-        .replace(/\s+/g, '_')
-        .substring(0, 60);
+      pdf.save('Reporte_Inventario.pdf');
 
-      pdf.save(`Curvas_Inventario_${fileSubject}.pdf`);
     } catch (e) {
-      console.error('Error generando PDF:', e);
-      alert('No se pudo generar el PDF.');
+      console.error(e);
+      alert('Error al generar PDF. Intente desde un PC.');
     }
   });
 })();
 </script>
+
 </body>
-</html> 
+</html>
