@@ -827,7 +827,7 @@ async function init(){
   await run();
 
   // ===============================================
-  // REPORTE GERENCIAL (VERSION FINAL - MATEMÁTICA VISIBLE)
+  // REPORTE GERENCIAL (VERSION FINAL - CORREGIDA Y UNIFICADA)
   // ===============================================
   const btnPdfReport = document.getElementById('btnPdfReport');
   if (btnPdfReport) {
@@ -871,6 +871,7 @@ async function init(){
         lists.optimo.sort(sortByDemand);
         lists.exceso.sort((a,b) => b.stock - a.stock); // Exceso por Stock
 
+        // Tops 15
         const tops = {
           agotado: lists.agotado.slice(0, 15),
           critico: lists.critico.slice(0, 15),
@@ -882,10 +883,12 @@ async function init(){
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF();
         const azul = [11, 31, 58];
-        const fechaCorte = res.rows[0][0];
+        // Limpiar fecha corte (quitar hora si viene)
+        let fechaCorte = res.rows[0][0];
+        try { fechaCorte = new Date(fechaCorte).toISOString().split('T')[0]; } catch(e){}
 
-        // --- HEADER CON LOGO ---
-        const drawHeader = (pageTitle) => {
+        // --- HEADER UNIFICADO (En cada página nueva) ---
+        const drawHeader = () => {
           const imgEl = document.querySelector('.topbar img');
           if (imgEl) {
             try {
@@ -896,46 +899,42 @@ async function init(){
             } catch(e){}
           }
           doc.setFont('helvetica','bold').setFontSize(20).setTextColor(...azul).text("Tablero de Abastecimiento", 35, 18);
-          doc.setFont('helvetica','normal').setFontSize(10).setTextColor(80).text(`Corte: ${fechaCorte} | ${pageTitle}`, 35, 24);
+          // Subtitulo estándar: Corte y Generado
+          doc.setFont('helvetica','normal').setFontSize(10).setTextColor(80).text(`Corte Datos: ${fechaCorte} | Generado: ${new Date().toLocaleDateString()}`, 35, 24);
           doc.setDrawColor(200).line(14, 28, 196, 28);
         };
 
         // --- PÁGINA 1 ---
-        drawHeader("Resumen Ejecutivo");
+        drawHeader();
 
-        // === FICHA TÉCNICA DE CÁLCULO (VISIBLE) ===
-        // Un cuadro gris claro con las reglas matemáticas explícitas
+        // === FICHA TÉCNICA (Espacio reservado) ===
         doc.setFillColor(245, 245, 245);
-        doc.roundedRect(14, 32, 182, 14, 1, 1, 'F');
+        doc.roundedRect(14, 32, 182, 16, 1, 1, 'F'); // Más alto para que quepa texto
         
         doc.setFontSize(8).setTextColor(0).setFont('helvetica','bold');
-        doc.text("FICHA TÉCNICA DE CÁLCULO Y CLASIFICACIÓN:", 16, 37);
+        doc.text("CRITERIOS DE CLASIFICACIÓN:", 16, 37);
         
         doc.setFontSize(7).setTextColor(50).setFont('helvetica','normal');
-        // Columna 1: Fórmula
-        doc.text("• Fórmula: Cobertura = (Inventario Actual) / (Demanda Mensual).", 16, 41);
-        doc.text("• Demanda: Calculada usando la Mediana de consumo de los últimos 90 días (excluye picos atípicos).", 16, 44);
+        doc.text("• Fórmula: Cobertura = Inventario / Demanda Mensual (Mediana 90 días).", 16, 41);
+        doc.text("• Óptimo (4-12m): Balance entre seguridad y costo financiero.", 16, 45);
         
-        // Columna 2: Rangos (Alineado a la derecha del cuadro)
+        // Columna 2 rangos
         const col2 = 110;
-        doc.text("• Agotado: Stock = 0 unidades.", col2, 37);
-        doc.text("• Crítico: 0 < Cobertura < 1 mes.", col2, 40);
-        doc.text("• Bajo: 1 mes ≤ Cobertura < 4 meses.", col2, 43);
-        doc.text("• Óptimo: 4 meses ≤ Cobertura < 12 meses.", col2, 46); // Aquí está la justificación visible
+        doc.text("• Agotado: 0 | Crítico: <1m | Bajo: 1-4m", col2, 37);
+        doc.text("• Óptimo: 4-12m | Exceso: >12m", col2, 41);
         
         // --- KPIs ---
-        const startY = 52; // Bajamos un poco por la ficha técnica
+        const startY = 55; // Bajamos para no solapar
         const drawKpi = (x, label, count, color, rule) => {
           doc.setFillColor(...color);
           doc.roundedRect(x, startY, 34, 32, 2, 2, 'F');
           
           doc.setTextColor(255).setFontSize(18).setFont('helvetica','bold').text(String(count), x+17, startY+12, {align:'center'});
           doc.setFontSize(8).text(label, x+17, startY+18, {align:'center'});
-          
           const pct = Math.round((count/data.length)*100) + '%';
           doc.setFontSize(8).text(pct, x+17, startY+23, {align:'center'});
 
-          // Regla visual
+          // Regla
           doc.setFillColor(255, 255, 255);
           doc.rect(x, startY+26, 34, 6, 'F');
           doc.setTextColor(0,0,0).setFontSize(7).setFont('helvetica','bold');
@@ -949,9 +948,9 @@ async function init(){
         drawKpi(166, "EXCESO", stats.exceso, [37, 99, 235], "> 12 Meses");
 
         // --- DONA ---
-        doc.setTextColor(0).setFontSize(14).setFont('helvetica','bold').text("Distribución del Inventario", 14, 100);
+        doc.setTextColor(0).setFontSize(14).setFont('helvetica','bold').text("Distribución del Inventario", 14, 105);
         
-        const cx = 70, cy = 145, r = 32;
+        const cx = 70, cy = 150, r = 32;
         let startAngle = 0;
         const total = data.length;
         
@@ -967,7 +966,6 @@ async function init(){
           doc.setFillColor(...color);
           for(let i=1; i<points.length-1; i++){ doc.triangle(points[0][0], points[0][1], points[i][0], points[i][1], points[i+1][0], points[i+1][1], 'F'); }
           
-          // Etiqueta %
           if ((val/total) > 0.03) {
             const mid = startAngle + slice/2;
             const textR = r * 0.7;
@@ -990,7 +988,7 @@ async function init(){
         doc.setTextColor(...azul).setFontSize(9).text("Total Renglones", cx, cy-2, {align:'center'});
         doc.setFontSize(12).text(String(total), cx, cy+3, {align:'center'});
 
-        const lx = 120, ly = 125;
+        const lx = 120, ly = 130;
         const legend = (l, c, color, y) => {
           doc.setFillColor(...color); doc.circle(lx, y, 3, 'F');
           doc.setTextColor(50).setFontSize(10).setFont('helvetica','normal').text(`${l} (${c})`, lx+6, y+1);
@@ -1001,70 +999,87 @@ async function init(){
         legend("Óptimo", stats.optimo, [22,163,74], ly+24);
         legend("Exceso", stats.exceso, [37,99,235], ly+32);
 
-        // --- TABLAS (Helper) ---
-        const mapRows = (l) => l.map(r => [
+        // --- FLUJO DE TABLAS CONTINUO ---
+        
+        // Helper para filas estándar
+        const mapStandard = (l) => l.map(r => [
           r.cod, r.sum.substring(0,40), Math.round(r.demanda).toLocaleString(), Math.round(r.stock).toLocaleString(), r.meses+'m', r.status
         ]);
+        
+        // Helper imprimir tabla (inteligente)
+        let cursorY = 195; // Donde empieza la primera tabla
 
-        const printTable = (title, color, rows, startY, checkStatus) => {
-          doc.setTextColor(...azul).setFontSize(12).setFont('helvetica','bold').text(title, 14, startY - 3);
+        const printTable = (title, color, rows, checkStatus) => {
+          // Si estamos muy abajo, nueva página y reset Y
+          if (cursorY > 250) {
+            doc.addPage();
+            drawHeader();
+            cursorY = 40;
+          }
+
+          // Título de sección
+          doc.setTextColor(...azul).setFontSize(12).setFont('helvetica','bold').text(title, 14, cursorY - 3);
+
           doc.autoTable({
-            startY: startY,
+            startY: cursorY,
             head: [['Código','Renglón','Demanda','Stock','Cob.','Estado']],
             body: rows,
             theme: 'grid',
             styles: { fontSize: 8, cellPadding: 2 },
             headStyles: { fillColor: color, textColor: 255, fontStyle:'bold' },
             columnStyles: { 2:{halign:'right'}, 3:{halign:'right'}, 5:{fontStyle:'bold'} },
-            margin: { bottom: 15 },
-            rowPageBreak: 'avoid',
+            margin: { bottom: 20, top: 40 }, // Top por si rompe página
+            didDrawPage: (d) => {
+              // Si rompe página, volver a dibujar header
+              if (d.pageNumber > 1 && d.settings.startY > 200) { // Solo si fue un break automático
+                 // autoTable dibuja header tabla, pero necesitamos el header documento
+              }
+              // Hook para header en nuevas paginas generadas por autotable
+              if (d.cursor.y < 50) drawHeader(); 
+            },
             didParseCell: (d) => {
               if(d.section==='body' && d.column.index===5 && checkStatus) d.cell.styles.textColor = color;
-            }
+            },
+            // IMPORTANTE: Actualizar cursor global al terminar
+            didDrawCell: (data) => { }, 
           });
+          
+          cursorY = doc.lastAutoTable.finalY + 15; // Espacio para siguiente tabla
         };
 
-        // PÁGINA 1: Agotados
-        printTable("1. Top 15 Agotados (Prioridad: Alta Demanda)", [220,38,38], mapRows(tops.agotado), 195, true);
+        // 1. AGOTADOS
+        printTable("1. Top 15 Agotados (Prioridad: Alta Demanda)", [220,38,38], mapStandard(tops.agotado), true);
 
-        // PÁGINA 2: Riesgos
-        doc.addPage();
-        drawHeader("Análisis de Riesgos");
-        printTable("2. Top 15 Críticos (< 1 Mes)", [234,88,12], mapRows(tops.critico), 40, true);
-        let nextY = doc.lastAutoTable.finalY + 20;
-        printTable("3. Top 15 Bajo Stock (1 - 4 Meses)", [234,179,8], mapRows(tops.bajo), nextY, false);
+        // 2. CRÍTICOS
+        printTable("2. Top 15 Críticos (< 1 Mes)", [234,88,12], mapStandard(tops.critico), true);
 
-        // PÁGINA 3: Gestión
+        // 3. BAJO STOCK
+        printTable("3. Top 15 Bajo Stock (1 - 4 Meses)", [234,179,8], mapStandard(tops.bajo), false);
+
+        // 4. ÓPTIMOS
+        printTable("4. Top 15 Óptimos (Alta Demanda Saludable)", [22,163,74], mapStandard(tops.optimo), true);
+
+        // 5. EXCESOS (Formato Unificado)
+        // Usamos el mismo mapStandard para que la tabla sea IDÉNTICA visualmente
+        // Aunque el orden es por Stock, las columnas se mantienen igual para consistencia visual
+        printTable("5. Top 15 Excesos (Control de Costos)", [37,99,235], mapStandard(tops.exceso), true);
+
+
+        // --- LISTADO MAESTRO ---
         doc.addPage();
-        drawHeader("Gestión Financiera y Salud");
-        printTable("4. Top 15 Óptimos (Alta Demanda Saludable)", [22,163,74], mapRows(tops.optimo), 40, true);
-        nextY = doc.lastAutoTable.finalY + 20;
-        doc.setTextColor(...azul).setFontSize(12).text("5. Top 15 Excesos (Control de Costos)", 14, nextY - 3);
-        const rowsExc = tops.exceso.map(r => [r.cod, r.sum.substring(0,45), Math.round(r.stock).toLocaleString(), r.meses+'m']);
+        drawHeader();
+        doc.setTextColor(0).setFontSize(14).text("Listado Maestro Completo", 14, 40);
+        
         doc.autoTable({
-          startY: nextY,
-          head: [['Código','Renglón','Stock Actual','Cobertura']],
-          body: rowsExc,
-          theme: 'striped',
-          styles: { fontSize: 8 },
-          headStyles: { fillColor: [37,99,235] },
-          columnStyles: { 2:{halign:'right'}, 3:{halign:'center'} }
-        });
-
-        // PÁGINA 4+: Maestro
-        doc.addPage();
-        drawHeader("Listado Maestro");
-        const fullRows = data.map(r => [
-          r.cod, r.sum, Math.round(r.demanda).toLocaleString(), Math.round(r.stock).toLocaleString(), r.meses+'m', r.status
-        ]);
-        doc.autoTable({
-          startY: 40,
+          startY: 45,
           head: [['Código','Renglón','Demanda','Stock','Meses','Estado']],
-          body: fullRows,
+          body: mapStandard(data), // Usamos todos los datos
           theme: 'plain',
           styles: { fontSize: 7, cellPadding: 2, lineColor:220, lineWidth:0.1 },
           headStyles: { fillColor:[240,240,240], textColor:50 },
           columnStyles: { 2:{halign:'right'}, 3:{halign:'right'}, 5:{fontStyle:'bold'} },
+          margin: { top: 40 },
+          didDrawPage: () => drawHeader(),
           didParseCell: (d) => {
             if(d.section==='body' && d.column.index===5) {
               if(d.cell.raw.includes('AGOTADO')) d.cell.styles.textColor=[200,0,0];
@@ -1074,6 +1089,7 @@ async function init(){
           }
         });
 
+        // PAGINACIÓN
         const pCount = doc.internal.getNumberOfPages();
         for(let i=1; i<=pCount; i++){
           doc.setPage(i);
@@ -1081,7 +1097,7 @@ async function init(){
           doc.text(`Pág ${i} de ${pCount}`, 196, 285, {align:'right'});
         }
 
-        doc.save(`Reporte_Gerencial_${fechaCorte}.pdf`);
+        doc.save(`Reporte_Abastecimiento_${fechaCorte}.pdf`);
 
       } catch (e) {
         console.error(e);
