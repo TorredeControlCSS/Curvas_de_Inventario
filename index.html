@@ -828,7 +828,7 @@ async function init(){
   await run();
 
   // ===============================================
-  // LÓGICA DEL REPORTE PDF (VERSIÓN GERENCIAL)
+  // LÓGICA DEL REPORTE PDF (VERSIÓN GERENCIAL - CORREGIDA)
   // ===============================================
   const btnPdfReport = document.getElementById('btnPdfReport');
   if (btnPdfReport) {
@@ -844,18 +844,18 @@ async function init(){
 
         // 2. Procesar Datos para el Resumen
         let stats = { agotado:0, critico:0, bajo:0, optimo:0, exceso:0 };
-        let topCritical = []; // Guardará los SKUs más críticos para la portada
+        let topCritical = []; 
         
         res.rows.forEach(r => {
-          const status = r[6] || '';
+          const status = String(r[6] || '').toUpperCase(); // Asegurar mayúsculas
           if(status.includes('AGOTADO')) stats.agotado++;
-          else if(status.includes('CRITICO')) stats.critico++;
+          else if(status.includes('CRITICO') || status.includes('CRÍTICO')) stats.critico++;
           else if(status.includes('BAJO')) stats.bajo++;
           else if(status.includes('EXCESO')) stats.exceso++;
           else stats.optimo++;
 
-          // Guardar para el Top 10 (Solo Agotados y Críticos)
-          if(status.includes('AGOTADO') || status.includes('CRITICO')){
+          // Guardar para el Top 15 (Solo Agotados y Críticos)
+          if(status.includes('AGOTADO') || status.includes('CRITICO') || status.includes('CRÍTICO')){
             if(topCritical.length < 15) topCritical.push(r);
           }
         });
@@ -867,7 +867,7 @@ async function init(){
 
         // --- PÁGINA 1: RESUMEN GERENCIAL ---
         
-        // Logo (si existe)
+        // Logo
         const imgEl = document.querySelector('.topbar img');
         if (imgEl) {
           try {
@@ -884,12 +884,11 @@ async function init(){
         doc.setLineWidth(0.5).setDrawColor(200).line(14, 35, 196, 35);
 
         // 3.1. Cuadros de Resumen (KPIs)
-        const totalSKUs = res.rows.length;
+        const totalSKUs = Math.max(res.rows.length, 1);
         const startY = 45;
         
-        // Función para dibujar tarjeta KPI
         const drawCard = (x, label, value, color, total) => {
-          doc.setFillColor(...color); // Fondo
+          doc.setFillColor(color[0], color[1], color[2]); 
           doc.roundedRect(x, startY, 35, 25, 2, 2, 'F');
           doc.setTextColor(255);
           doc.setFontSize(14).setFont('helvetica','bold').text(String(value), x + 17.5, startY + 10, {align:'center'});
@@ -898,22 +897,21 @@ async function init(){
           doc.setFontSize(6).text(pct, x + 17.5, startY + 22, {align:'center'});
         };
 
-        drawCard(14, "AGOTADOS", stats.agotado, [220, 38, 38], totalSKUs); // Rojo
-        drawCard(53, "CRÍTICOS", stats.critico, [234, 88, 12], totalSKUs); // Naranja
-        drawCard(92, "BAJO STOCK", stats.bajo, [234, 179, 8], totalSKUs); // Amarillo
-        drawCard(131, "ÓPTIMOS", stats.optimo, [22, 163, 74], totalSKUs); // Verde
-        drawCard(170, "EXCESO", stats.exceso, [37, 99, 235], totalSKUs); // Azul
+        drawCard(14, "AGOTADOS", stats.agotado, [220, 38, 38], totalSKUs); 
+        drawCard(53, "CRÍTICOS", stats.critico, [234, 88, 12], totalSKUs); 
+        drawCard(92, "BAJO STOCK", stats.bajo, [234, 179, 8], totalSKUs); 
+        drawCard(131, "ÓPTIMOS", stats.optimo, [22, 163, 74], totalSKUs); 
+        drawCard(170, "EXCESO", stats.exceso, [37, 99, 235], totalSKUs); 
 
-        // 3.2. Tabla Top 15 Atención Inmediata
+        // 3.2. Tabla Top 15
         doc.setTextColor(0).setFontSize(14).setFont('helvetica','bold').text("⚠ Top 15: Atención Inmediata", 14, 85);
         
-        // Mapear datos para la tabla mini
         const topBody = topCritical.map(r => [
-          r[1], // Código
-          r[2].substring(0, 35) + (r[2].length>35?'...':''), // Suministro corto
-          Math.round(r[4]).toLocaleString(), // Stock
-          r[5] + ' m', // Meses
-          r[6] // Status
+          r[1], 
+          String(r[2]).substring(0, 35) + (String(r[2]).length>35?'...':''), 
+          Math.round(r[4]).toLocaleString(), 
+          r[5] + ' m', 
+          r[6] 
         ]);
 
         doc.autoTable({
@@ -926,31 +924,31 @@ async function init(){
           columnStyles: { 0: {cellWidth:25}, 1: {cellWidth:'auto'}, 2: {halign:'right'}, 4: {fontStyle:'bold'} },
           didParseCell: function(data) {
             if (data.section === 'body' && data.column.index === 4) {
-              if (data.cell.raw.includes('AGOTADO')) data.cell.styles.textColor = [200, 0, 0];
+              const t = String(data.cell.raw).toUpperCase();
+              if (t.includes('AGOTADO')) data.cell.styles.textColor = [200, 0, 0];
               else data.cell.styles.textColor = [230, 100, 0];
             }
           }
         });
 
-        // 3.3 Gráfico de Barras Simple (Dibujado a mano con rectángulos)
+        // 3.3 Gráfico de Barras Simple
         const chartY = doc.lastAutoTable.finalY + 15;
-        if (chartY < 250) { // Solo si cabe en la página
+        if (chartY < 250) { 
           doc.setFontSize(12).setTextColor(0).text("Distribución del Inventario", 14, chartY);
           
-          const maxVal = Math.max(stats.agotado, stats.critico, stats.bajo, stats.optimo, stats.exceso);
+          const maxVal = Math.max(stats.agotado, stats.critico, stats.bajo, stats.optimo, stats.exceso, 1);
           const barHeight = 40;
           const barWidth = 20;
           const baseX = 30;
-          const baseY = chartY + 10 + barHeight; // Línea base
+          const baseY = chartY + 10 + barHeight; 
           
-          // Dibujar ejes
-          doc.setDrawColor(150).line(25, baseY, 180, baseY); // Eje X
+          doc.setDrawColor(150).line(25, baseY, 180, baseY); 
 
           const drawBar = (idx, val, color, label) => {
             if (val === 0) return;
             const h = (val / maxVal) * barHeight;
             const x = baseX + (idx * 30);
-            doc.setFillColor(...color);
+            doc.setFillColor(color[0], color[1], color[2]);
             doc.rect(x, baseY - h, barWidth, h, 'F');
             doc.setFontSize(7).setTextColor(100).text(String(val), x + 10, baseY - h - 2, {align:'center'});
             doc.setFontSize(7).setTextColor(0).text(label, x + 10, baseY + 4, {align:'center'});
@@ -986,9 +984,9 @@ async function init(){
           columnStyles: { 0: {cellWidth:20}, 1: {cellWidth:'auto'}, 3: {halign:'right'}, 5: {fontStyle:'bold'} },
           didParseCell: function(data) {
             if (data.section === 'body' && data.column.index === 5) {
-              const txt = data.cell.raw;
+              const txt = String(data.cell.raw).toUpperCase();
               if (txt.includes('AGOTADO')) data.cell.styles.textColor = [220, 38, 38];
-              else if (txt.includes('CRITICO')) data.cell.styles.textColor = [234, 88, 12];
+              else if (txt.includes('CRITICO') || txt.includes('CRÍTICO')) data.cell.styles.textColor = [234, 88, 12];
               else if (txt.includes('OPTIMO')) data.cell.styles.textColor = [22, 163, 74];
             }
           }
