@@ -828,114 +828,191 @@ async function init(){
   await run();
 
   // ===============================================
-  // LÓGICA DEL REPORTE PDF (NUEVA)
+  // LÓGICA DEL REPORTE PDF (VERSIÓN GERENCIAL)
   // ===============================================
   const btnPdfReport = document.getElementById('btnPdfReport');
   if (btnPdfReport) {
     btnPdfReport.addEventListener('click', async () => {
       const originalText = btnPdfReport.innerHTML;
-      btnPdfReport.innerHTML = '⏳ Calculando...';
+      btnPdfReport.innerHTML = '⏳ Generando...';
       btnPdfReport.disabled = true;
 
       try {
-        // 1. Obtener datos del Backend
+        // 1. Obtener datos
         const res = await fetchJSON(API_BASE + '?report=coverage&ts=' + Date.now());
-        
-        if (!res.rows || res.rows.length === 0) {
-          alert('No hay reporte generado. Por favor ejecuta "Actualizar Datos" en la base de datos primero.');
-          throw new Error('No data');
-        }
+        if (!res.rows || res.rows.length === 0) throw new Error('Sin datos.');
 
-        // 2. Configurar PDF
+        // 2. Procesar Datos para el Resumen
+        let stats = { agotado:0, critico:0, bajo:0, optimo:0, exceso:0 };
+        let topCritical = []; // Guardará los SKUs más críticos para la portada
+        
+        res.rows.forEach(r => {
+          const status = r[6] || '';
+          if(status.includes('AGOTADO')) stats.agotado++;
+          else if(status.includes('CRITICO')) stats.critico++;
+          else if(status.includes('BAJO')) stats.bajo++;
+          else if(status.includes('EXCESO')) stats.exceso++;
+          else stats.optimo++;
+
+          // Guardar para el Top 10 (Solo Agotados y Críticos)
+          if(status.includes('AGOTADO') || status.includes('CRITICO')){
+            if(topCritical.length < 15) topCritical.push(r);
+          }
+        });
+
+        // 3. Configurar PDF
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF();
-        const fechaCorte = res.rows[0][0]; // Fecha del primer dato
+        const fechaCorte = res.rows[0][0];
+
+        // --- PÁGINA 1: RESUMEN GERENCIAL ---
         
-        // --- ENCABEZADO PROFESIONAL ---
-        // Intentar usar el logo de la app (si existe en el DOM)
+        // Logo (si existe)
         const imgEl = document.querySelector('.topbar img');
         if (imgEl) {
           try {
-            // Dibujar imagen pequeña a la izquierda
             const canvas = document.createElement('canvas');
             canvas.width = imgEl.naturalWidth; canvas.height = imgEl.naturalHeight;
             canvas.getContext('2d').drawImage(imgEl, 0, 0);
-            const imgData = canvas.toDataURL('image/png');
-            doc.addImage(imgData, 'PNG', 14, 10, 15, 15);
-          } catch(e) { console.warn('No se pudo cargar logo CORS'); }
+            doc.addImage(canvas.toDataURL('image/png'), 'PNG', 14, 10, 15, 15);
+          } catch(e){}
         }
 
-        doc.setFontSize(18);
-        doc.setTextColor(11, 31, 58); // Azul oscuro corporativo
-        doc.text("Reporte de Abastecimiento", 35, 18);
-        
-        doc.setFontSize(10);
-        doc.setTextColor(100);
-        doc.text(`Torre de Control CSS · Generado: ${new Date().toLocaleDateString()}`, 35, 24);
-        
-        doc.setFontSize(10);
-        doc.setTextColor(0);
-        doc.text(`Fecha de Corte de Datos: ${fechaCorte}`, 14, 35);
+        // Títulos
+        doc.setFontSize(22).setTextColor(11, 31, 58).text("Reporte Gerencial de Abastecimiento", 35, 20);
+        doc.setFontSize(12).setTextColor(100).text(`Generado: ${new Date().toLocaleDateString()} | Corte Datos: ${fechaCorte}`, 35, 28);
+        doc.setLineWidth(0.5).setDrawColor(200).line(14, 35, 196, 35);
 
-        // --- TABLA DE DATOS ---
-        // Columnas: [Fecha, Codigo, Suministro, Grupo, Inv, Meses, Status]
-        // Mapeamos a formato para PDF
-        const body = res.rows.map(row => [
-          row[1], // Código
-          row[2], // Suministro
-          row[3], // Grupo
-          Math.round(row[4]).toLocaleString(), // Inv Actual
-          row[5] + ' m', // Meses
-          row[6] // Status
+        // 3.1. Cuadros de Resumen (KPIs)
+        const totalSKUs = res.rows.length;
+        const startY = 45;
+        
+        // Función para dibujar tarjeta KPI
+        const drawCard = (x, label, value, color, total) => {
+          doc.setFillColor(...color); // Fondo
+          doc.roundedRect(x, startY, 35, 25, 2, 2, 'F');
+          doc.setTextColor(255);
+          doc.setFontSize(14).setFont('helvetica','bold').text(String(value), x + 17.5, startY + 10, {align:'center'});
+          doc.setFontSize(7).setFont('helvetica','normal').text(label, x + 17.5, startY + 18, {align:'center'});
+          const pct = Math.round((value/total)*100) + '%';
+          doc.setFontSize(6).text(pct, x + 17.5, startY + 22, {align:'center'});
+        };
+
+        drawCard(14, "AGOTADOS", stats.agotado, [220, 38, 38], totalSKUs); // Rojo
+        drawCard(53, "CRÍTICOS", stats.critico, [234, 88, 12], totalSKUs); // Naranja
+        drawCard(92, "BAJO STOCK", stats.bajo, [234, 179, 8], totalSKUs); // Amarillo
+        drawCard(131, "ÓPTIMOS", stats.optimo, [22, 163, 74], totalSKUs); // Verde
+        drawCard(170, "EXCESO", stats.exceso, [37, 99, 235], totalSKUs); // Azul
+
+        // 3.2. Tabla Top 15 Atención Inmediata
+        doc.setTextColor(0).setFontSize(14).setFont('helvetica','bold').text("⚠ Top 15: Atención Inmediata", 14, 85);
+        
+        // Mapear datos para la tabla mini
+        const topBody = topCritical.map(r => [
+          r[1], // Código
+          r[2].substring(0, 35) + (r[2].length>35?'...':''), // Suministro corto
+          Math.round(r[4]).toLocaleString(), // Stock
+          r[5] + ' m', // Meses
+          r[6] // Status
         ]);
 
         doc.autoTable({
-          startY: 40,
-          head: [['Código', 'Suministro', 'Grupo', 'Stock', 'Cobertura', 'Estatus']],
-          body: body,
-          theme: 'striped',
-          styles: { fontSize: 8, cellPadding: 3 },
-          headStyles: { fillColor: [11, 95, 255] }, // Azul primario
-          columnStyles: {
-            0: { cellWidth: 25 }, // Código
-            1: { cellWidth: 'auto' }, // Suministro (flexible)
-            3: { halign: 'right' }, // Stock numérico
-            4: { halign: 'center' }, // Meses
-            5: { fontStyle: 'bold' } // Status negrita
-          },
+          startY: 90,
+          head: [['Código', 'Suministro', 'Stock', 'Cob.', 'Estatus']],
+          body: topBody,
+          theme: 'grid',
+          styles: { fontSize: 8, cellPadding: 2 },
+          headStyles: { fillColor: [50, 50, 50] },
+          columnStyles: { 0: {cellWidth:25}, 1: {cellWidth:'auto'}, 2: {halign:'right'}, 4: {fontStyle:'bold'} },
           didParseCell: function(data) {
-            // Colorear texto según estatus
-            if (data.section === 'body' && data.column.index === 5) {
-              const txt = data.cell.raw;
-              if (txt.includes('AGOTADO')) data.cell.styles.textColor = [220, 38, 38]; // Rojo
-              else if (txt.includes('CRITICO')) data.cell.styles.textColor = [234, 88, 12]; // Naranja
-              else if (txt.includes('OPTIMO')) data.cell.styles.textColor = [22, 163, 74]; // Verde
+            if (data.section === 'body' && data.column.index === 4) {
+              if (data.cell.raw.includes('AGOTADO')) data.cell.styles.textColor = [200, 0, 0];
+              else data.cell.styles.textColor = [230, 100, 0];
             }
           }
         });
 
-        // Pie de página con número
+        // 3.3 Gráfico de Barras Simple (Dibujado a mano con rectángulos)
+        const chartY = doc.lastAutoTable.finalY + 15;
+        if (chartY < 250) { // Solo si cabe en la página
+          doc.setFontSize(12).setTextColor(0).text("Distribución del Inventario", 14, chartY);
+          
+          const maxVal = Math.max(stats.agotado, stats.critico, stats.bajo, stats.optimo, stats.exceso);
+          const barHeight = 40;
+          const barWidth = 20;
+          const baseX = 30;
+          const baseY = chartY + 10 + barHeight; // Línea base
+          
+          // Dibujar ejes
+          doc.setDrawColor(150).line(25, baseY, 180, baseY); // Eje X
+
+          const drawBar = (idx, val, color, label) => {
+            if (val === 0) return;
+            const h = (val / maxVal) * barHeight;
+            const x = baseX + (idx * 30);
+            doc.setFillColor(...color);
+            doc.rect(x, baseY - h, barWidth, h, 'F');
+            doc.setFontSize(7).setTextColor(100).text(String(val), x + 10, baseY - h - 2, {align:'center'});
+            doc.setFontSize(7).setTextColor(0).text(label, x + 10, baseY + 4, {align:'center'});
+          };
+
+          drawBar(0, stats.agotado, [220,38,38], "Agotado");
+          drawBar(1, stats.critico, [234,88,12], "Crítico");
+          drawBar(2, stats.bajo, [234,179,8], "Bajo");
+          drawBar(3, stats.optimo, [22,163,74], "Óptimo");
+          drawBar(4, stats.exceso, [37,99,235], "Exceso");
+        }
+
+        // --- PÁGINAS SIGUIENTES: LISTADO COMPLETO ---
+        doc.addPage();
+        doc.setFontSize(14).text("Detalle Completo de Inventario", 14, 20);
+
+        const fullBody = res.rows.map(row => [
+          row[1], 
+          row[2], 
+          row[3], 
+          Math.round(row[4]).toLocaleString(), 
+          row[5] + ' m', 
+          row[6] 
+        ]);
+
+        doc.autoTable({
+          startY: 25,
+          head: [['Código', 'Suministro', 'Grupo', 'Stock', 'Meses', 'Estatus']],
+          body: fullBody,
+          theme: 'striped',
+          styles: { fontSize: 7, cellPadding: 2 },
+          headStyles: { fillColor: [11, 95, 255] },
+          columnStyles: { 0: {cellWidth:20}, 1: {cellWidth:'auto'}, 3: {halign:'right'}, 5: {fontStyle:'bold'} },
+          didParseCell: function(data) {
+            if (data.section === 'body' && data.column.index === 5) {
+              const txt = data.cell.raw;
+              if (txt.includes('AGOTADO')) data.cell.styles.textColor = [220, 38, 38];
+              else if (txt.includes('CRITICO')) data.cell.styles.textColor = [234, 88, 12];
+              else if (txt.includes('OPTIMO')) data.cell.styles.textColor = [22, 163, 74];
+            }
+          }
+        });
+
+        // Numeración de páginas
         const pageCount = doc.internal.getNumberOfPages();
         for(let i = 1; i <= pageCount; i++) {
           doc.setPage(i);
-          doc.setFontSize(8);
-          doc.setTextColor(150);
-          doc.text('Página ' + i + ' de ' + pageCount, doc.internal.pageSize.width - 20, doc.internal.pageSize.height - 10, {align:'right'});
+          doc.setFontSize(8).setTextColor(150);
+          doc.text(`Pág ${i} de ${pageCount}`, 196, 285, {align:'right'});
         }
 
-        // 3. Descargar
-        doc.save(`Reporte_Abastecimiento_${fechaCorte}.pdf`);
+        doc.save(`Reporte_Gerencial_${fechaCorte}.pdf`);
 
       } catch (e) {
         console.error(e);
-        alert('Error generando PDF. Verifica la consola.');
+        alert('Error: ' + e.message);
       } finally {
         btnPdfReport.innerHTML = originalText;
         btnPdfReport.disabled = false;
       }
     });
   }
-}
 
 // Header móvil: ocultar/mostrar en scroll
 (function(){
