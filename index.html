@@ -13,7 +13,7 @@
   <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
   
-  <!-- NUEVA LIBRERÍA PARA TABLAS PDF PROFESIONALES -->
+  <!-- LIBRERÍA TABLAS PDF -->
   <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.1/dist/jspdf.plugin.autotable.min.js"></script>
 
   <style>
@@ -193,7 +193,7 @@
       </select>
       <span id="net" class="net"></span>
       
-      <!-- BOTÓN NUEVO -->
+      <!-- BOTÓN REPORTE PDF (Nuevo nombre) -->
       <button id="btnPdfReport" class="btn" style="border-color:#0b5fff; color:#0b5fff; display:flex; gap:6px; align-items:center;">
         <span>📄</span> Reporte de Abastecimiento
       </button>
@@ -560,7 +560,6 @@ async function init(){
   // Si hay suministros, seleccionar el primero y ejecutar
   if(sups.length>0) {
     termInp.value = sups[0];
-    // Ejecutar búsqueda inicial
     await run();
   } else {
     setBtnState(btn, '');
@@ -828,7 +827,7 @@ async function init(){
   await run();
 
   // ===============================================
-  // LÓGICA DEL REPORTE PDF (VERSIÓN GERENCIAL - CORREGIDA)
+  // LÓGICA DEL REPORTE PDF (VERSIÓN GERENCIAL - CORREGIDA Y DEFINITIVA)
   // ===============================================
   const btnPdfReport = document.getElementById('btnPdfReport');
   if (btnPdfReport) {
@@ -1010,7 +1009,9 @@ async function init(){
         btnPdfReport.disabled = false;
       }
     });
-  }
+  } // Fin btn logic
+
+} // Fin init
 
 // Header móvil: ocultar/mostrar en scroll
 (function(){
