@@ -827,46 +827,66 @@ async function init(){
   await run();
 
   // ===============================================
-  // LÓGICA DEL REPORTE PDF (VERSIÓN GERENCIAL - CORREGIDA Y DEFINITIVA)
+  // REPORTE EJECUTIVO PDF (PROFESIONAL)
   // ===============================================
   const btnPdfReport = document.getElementById('btnPdfReport');
   if (btnPdfReport) {
     btnPdfReport.addEventListener('click', async () => {
       const originalText = btnPdfReport.innerHTML;
-      btnPdfReport.innerHTML = '⏳ Generando...';
+      btnPdfReport.innerHTML = '⏳ Calculando...';
       btnPdfReport.disabled = true;
 
       try {
-        // 1. Obtener datos
+        // 1. Obtener datos (incluyendo la nueva columna demanda)
         const res = await fetchJSON(API_BASE + '?report=coverage&ts=' + Date.now());
-        if (!res.rows || res.rows.length === 0) throw new Error('Sin datos.');
+        if (!res.rows || res.rows.length === 0) throw new Error('Sin datos. Ejecute "Regenerar Reporte" en el menú.');
 
-        // 2. Procesar Datos para el Resumen
-        let stats = { agotado:0, critico:0, bajo:0, optimo:0, exceso:0 };
-        let topCritical = []; 
-        
-        res.rows.forEach(r => {
-          const status = String(r[6] || '').toUpperCase(); // Asegurar mayúsculas
-          if(status.includes('AGOTADO')) stats.agotado++;
-          else if(status.includes('CRITICO') || status.includes('CRÍTICO')) stats.critico++;
-          else if(status.includes('BAJO')) stats.bajo++;
-          else if(status.includes('EXCESO')) stats.exceso++;
-          else stats.optimo++;
+        // 2. Mapeo Inteligente
+        // Estructura row: [FECHA, COD, SUM, GRP, STOCK, MESES, STATUS, DEMANDA]
+        const data = res.rows.map(r => ({
+          fecha: r[0],
+          cod: r[1],
+          sum: String(r[2]),
+          grp: r[3],
+          stock: Number(r[4]),
+          meses: parseFloat(r[5]),
+          status: String(r[6]).toUpperCase(),
+          demanda: Number(r[7] || 0) // La nueva columna vital para priorizar
+        }));
 
-          // Guardar para el Top 15 (Solo Agotados y Críticos)
-          if(status.includes('AGOTADO') || status.includes('CRITICO') || status.includes('CRÍTICO')){
-            if(topCritical.length < 15) topCritical.push(r);
-          }
+        // 3. Estadísticas y Clasificación
+        const stats = { agotado:0, critico:0, bajo:0, optimo:0, exceso:0 };
+        const lists = { agotado:[], critico:[], exceso:[] };
+
+        data.forEach(item => {
+          if(item.status.includes('AGOTADO')) { stats.agotado++; lists.agotado.push(item); }
+          else if(item.status.includes('CRITICO')) { stats.critico++; lists.critico.push(item); }
+          else if(item.status.includes('BAJO')) { stats.bajo++; }
+          else if(item.status.includes('EXCESO')) { stats.exceso++; lists.exceso.push(item); }
+          else { stats.optimo++; }
         });
 
-        // 3. Configurar PDF
+        // 4. PRIORIZACIÓN (La clave del reporte gerencial)
+        // Ordenamos por DEMANDA DESCENDENTE (Mayor impacto primero)
+        lists.agotado.sort((a,b) => b.demanda - a.demanda);
+        lists.critico.sort((a,b) => b.demanda - a.demanda);
+        lists.exceso.sort((a,b) => b.demanda - a.demanda); // Exceso: mayor demanda quizás no es tan grave, pero mayor stock sí. 
+        // Para exceso mejor ordenar por STOCK descendente (más bultos parados)
+        lists.exceso.sort((a,b) => b.stock - a.stock);
+
+        // Top 15 Problemas (Mezcla Agotados > Críticos de alta rotación)
+        const topCrisis = [...lists.agotado, ...lists.critico].slice(0, 15);
+        const topExceso = lists.exceso.slice(0, 8); // Top 8 excesos para cuidar costos
+
+        // 5. Configurar PDF
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF();
-        const fechaCorte = res.rows[0][0];
+        const azulCss = [11, 31, 58];
+        const fechaCorte = data[0].fecha;
 
-        // --- PÁGINA 1: RESUMEN GERENCIAL ---
+        // --- PÁGINA 1: DASHBOARD EJECUTIVO ---
         
-        // Logo
+        // Encabezado
         const imgEl = document.querySelector('.topbar img');
         if (imgEl) {
           try {
@@ -876,122 +896,187 @@ async function init(){
             doc.addImage(canvas.toDataURL('image/png'), 'PNG', 14, 10, 15, 15);
           } catch(e){}
         }
-
-        // Títulos
-        doc.setFontSize(22).setTextColor(11, 31, 58).text("Reporte Gerencial de Abastecimiento", 35, 20);
-        doc.setFontSize(12).setTextColor(100).text(`Generado: ${new Date().toLocaleDateString()} | Corte Datos: ${fechaCorte}`, 35, 28);
-        doc.setLineWidth(0.5).setDrawColor(200).line(14, 35, 196, 35);
-
-        // 3.1. Cuadros de Resumen (KPIs)
-        const totalSKUs = Math.max(res.rows.length, 1);
-        const startY = 45;
         
-        const drawCard = (x, label, value, color, total) => {
-          doc.setFillColor(color[0], color[1], color[2]); 
-          doc.roundedRect(x, startY, 35, 25, 2, 2, 'F');
+        doc.setFont('helvetica','bold').setFontSize(20).setTextColor(...azulCss).text("Tablero de Control de Abastecimiento", 35, 18);
+        doc.setFont('helvetica','normal').setFontSize(10).setTextColor(100).text(`Corte de Datos: ${fechaCorte} | Generado: ${new Date().toLocaleDateString()}`, 35, 25);
+        doc.setDrawColor(200).line(14, 30, 196, 30);
+
+        // 5.1 Tarjetas KPI con Reglas de Negocio
+        const totalSKUs = data.length;
+        const startY = 40;
+        
+        const drawKpi = (x, title, count, color, rule) => {
+          // Tarjeta
+          doc.setFillColor(...color);
+          doc.roundedRect(x, startY, 34, 28, 2, 2, 'F');
+          
+          // Valor
           doc.setTextColor(255);
-          doc.setFontSize(14).setFont('helvetica','bold').text(String(value), x + 17.5, startY + 10, {align:'center'});
-          doc.setFontSize(7).setFont('helvetica','normal').text(label, x + 17.5, startY + 18, {align:'center'});
-          const pct = Math.round((value/total)*100) + '%';
-          doc.setFontSize(6).text(pct, x + 17.5, startY + 22, {align:'center'});
+          doc.setFontSize(16).setFont('helvetica','bold').text(String(count), x+17, startY+10, {align:'center'});
+          
+          // Título
+          doc.setFontSize(7).setFont('helvetica','bold').text(title, x+17, startY+16, {align:'center'});
+          
+          // Porcentaje
+          const pct = Math.round((count/totalSKUs)*100) + '%';
+          doc.setFont('helvetica','normal').text(pct, x+17, startY+20, {align:'center'});
+
+          // Regla (Subtítulo explicativo)
+          doc.setFillColor(0,0,0, 0.2); // Sombra suave
+          doc.rect(x, startY+23, 34, 5, 'F');
+          doc.setFontSize(5).text(rule, x+17, startY+26.5, {align:'center'});
         };
 
-        drawCard(14, "AGOTADOS", stats.agotado, [220, 38, 38], totalSKUs); 
-        drawCard(53, "CRÍTICOS", stats.critico, [234, 88, 12], totalSKUs); 
-        drawCard(92, "BAJO STOCK", stats.bajo, [234, 179, 8], totalSKUs); 
-        drawCard(131, "ÓPTIMOS", stats.optimo, [22, 163, 74], totalSKUs); 
-        drawCard(170, "EXCESO", stats.exceso, [37, 99, 235], totalSKUs); 
+        drawKpi(14, "AGOTADOS", stats.agotado, [220, 38, 38], "Stock = 0");
+        drawKpi(52, "CRÍTICOS", stats.critico, [234, 88, 12], "Cob < 1 mes");
+        drawKpi(90, "BAJO", stats.bajo, [234, 179, 8], "1 < Cob < 4 m");
+        drawKpi(128, "ÓPTIMO", stats.optimo, [22, 163, 74], "4 < Cob < 12 m");
+        drawKpi(166, "EXCESO", stats.exceso, [37, 99, 235], "Cob > 12 meses");
 
-        // 3.2. Tabla Top 15
-        doc.setTextColor(0).setFontSize(14).setFont('helvetica','bold').text("⚠ Top 15: Atención Inmediata", 14, 85);
+        // 5.2 Gráfico de Dona (Visualización Estratégica)
+        doc.setTextColor(0).setFontSize(12).setFont('helvetica','bold').text("Estratificación del Inventario", 14, 85);
         
-        const topBody = topCritical.map(r => [
-          r[1], 
-          String(r[2]).substring(0, 35) + (String(r[2]).length>35?'...':''), 
-          Math.round(r[4]).toLocaleString(), 
-          r[5] + ' m', 
-          r[6] 
+        // Lógica simple para dibujar segmentos de dona
+        let currentAngle = 0;
+        const centerX = 55, centerY = 120, radius = 25;
+        const total = stats.agotado + stats.critico + stats.bajo + stats.optimo + stats.exceso;
+        
+        const drawSegment = (val, color) => {
+          if (val === 0) return;
+          const sliceAngle = (val / total) * 2 * Math.PI;
+          const endAngle = currentAngle + sliceAngle;
+          
+          // Dibujar arco (aproximación visual con líneas gruesas es difícil en jsPDF puro sin API compleja)
+          // Usaremos un truco: Lines radiating? No, mejor usar circle sectors si es posible.
+          // jsPDF raw method:
+          doc.setFillColor(...color);
+          doc.lines([[
+            radius * Math.cos(endAngle), 
+            radius * Math.sin(endAngle), 
+            radius * Math.cos(endAngle) - radius * Math.cos(currentAngle),
+            radius * Math.sin(endAngle) - radius * Math.sin(currentAngle),
+            -radius * Math.cos(currentAngle),
+            -radius * Math.sin(currentAngle)
+          ]], centerX, centerY, [1,1], 'F', true); // wedge
+          
+          currentAngle = endAngle;
+        };
+        
+        // Dibujamos pastel
+        drawSegment(stats.agotado, [220, 38, 38]);
+        drawSegment(stats.critico, [234, 88, 12]);
+        drawSegment(stats.bajo, [234, 179, 8]);
+        drawSegment(stats.optimo, [22, 163, 74]);
+        drawSegment(stats.exceso, [37, 99, 235]);
+
+        // Círculo blanco al centro para hacer la "Dona"
+        doc.setFillColor(255,255,255);
+        doc.circle(centerX, centerY, 12, 'F');
+        
+        // Texto central
+        doc.setTextColor(...azulCss);
+        doc.setFontSize(8).text("TOTAL SKUs", centerX, centerY-2, {align:'center'});
+        doc.setFontSize(12).text(String(totalSKUs), centerX, centerY+4, {align:'center'});
+
+        // Leyenda manual al lado de la dona
+        const legendY = 100;
+        const drawLegend = (lbl, color, y) => {
+          doc.setFillColor(...color); doc.circle(100, y, 2, 'F');
+          doc.setTextColor(50); doc.setFontSize(9).text(lbl, 105, y+1);
+        };
+        drawLegend(`Agotados (${stats.agotado})`, [220,38,38], legendY);
+        drawLegend(`Críticos (${stats.critico})`, [234,88,12], legendY+7);
+        drawLegend(`Bajo Stock (${stats.bajo})`, [234,179,8], legendY+14);
+        drawLegend(`Óptimo (${stats.optimo})`, [22,163,74], legendY+21);
+        drawLegend(`Exceso (${stats.exceso})`, [37,99,235], legendY+28);
+
+
+        // 5.3 TABLA 1: PRIORIDAD ALTA (Agotados + Críticos de Alta Rotación)
+        doc.setTextColor(...azulCss).setFontSize(12).setFont('helvetica','bold').text("🔥 Top 15 Prioridad Alta (Por Demanda Mensual)", 14, 165);
+        
+        const rowsCrisis = topCrisis.map(r => [
+          r.cod,
+          r.sum.substring(0, 45) + (r.sum.length>45?'...':''),
+          Math.round(r.demanda).toLocaleString(), // Columna clave nueva
+          Math.round(r.stock).toLocaleString(),
+          r.meses + ' m',
+          r.status.replace(' (0)','')
         ]);
 
         doc.autoTable({
-          startY: 90,
-          head: [['Código', 'Suministro', 'Stock', 'Cob.', 'Estatus']],
-          body: topBody,
+          startY: 170,
+          head: [['Código', 'Suministro', 'Demanda/mes', 'Stock', 'Cob.', 'Estado']],
+          body: rowsCrisis,
           theme: 'grid',
-          styles: { fontSize: 8, cellPadding: 2 },
-          headStyles: { fillColor: [50, 50, 50] },
-          columnStyles: { 0: {cellWidth:25}, 1: {cellWidth:'auto'}, 2: {halign:'right'}, 4: {fontStyle:'bold'} },
+          styles: { fontSize: 8, cellPadding: 2, textColor: 50 },
+          headStyles: { fillColor: [220, 38, 38], textColor: 255, fontStyle:'bold' }, // Cabecera Roja Alerta
+          columnStyles: { 0:{cellWidth:20}, 1:{cellWidth:'auto'}, 2:{halign:'right', fontStyle:'bold'}, 3:{halign:'right'}, 5:{fontStyle:'bold'} },
           didParseCell: function(data) {
-            if (data.section === 'body' && data.column.index === 4) {
-              const t = String(data.cell.raw).toUpperCase();
-              if (t.includes('AGOTADO')) data.cell.styles.textColor = [200, 0, 0];
+            if (data.section === 'body' && data.column.index === 5) {
+              if (data.cell.raw.includes('AGOTADO')) data.cell.styles.textColor = [200, 0, 0];
               else data.cell.styles.textColor = [230, 100, 0];
             }
           }
         });
 
-        // 3.3 Gráfico de Barras Simple
-        const chartY = doc.lastAutoTable.finalY + 15;
-        if (chartY < 250) { 
-          doc.setFontSize(12).setTextColor(0).text("Distribución del Inventario", 14, chartY);
-          
-          const maxVal = Math.max(stats.agotado, stats.critico, stats.bajo, stats.optimo, stats.exceso, 1);
-          const barHeight = 40;
-          const barWidth = 20;
-          const baseX = 30;
-          const baseY = chartY + 10 + barHeight; 
-          
-          doc.setDrawColor(150).line(25, baseY, 180, baseY); 
+        // 5.4 TABLA 2: OJO AL COSTO (Excesos) - Si cabe en pagina 1, sino pág 2
+        let finalY = doc.lastAutoTable.finalY + 15;
+        if (finalY > 260) { doc.addPage(); finalY = 20; }
 
-          const drawBar = (idx, val, color, label) => {
-            if (val === 0) return;
-            const h = (val / maxVal) * barHeight;
-            const x = baseX + (idx * 30);
-            doc.setFillColor(color[0], color[1], color[2]);
-            doc.rect(x, baseY - h, barWidth, h, 'F');
-            doc.setFontSize(7).setTextColor(100).text(String(val), x + 10, baseY - h - 2, {align:'center'});
-            doc.setFontSize(7).setTextColor(0).text(label, x + 10, baseY + 4, {align:'center'});
-          };
+        doc.setTextColor(...azulCss).setFontSize(12).text("💰 Top Excesos de Inventario (Inmovilizado)", 14, finalY);
+        
+        const rowsExceso = topExceso.map(r => [
+          r.cod, r.sum.substring(0, 50), Math.round(r.stock).toLocaleString(), r.meses + ' m'
+        ]);
 
-          drawBar(0, stats.agotado, [220,38,38], "Agotado");
-          drawBar(1, stats.critico, [234,88,12], "Crítico");
-          drawBar(2, stats.bajo, [234,179,8], "Bajo");
-          drawBar(3, stats.optimo, [22,163,74], "Óptimo");
-          drawBar(4, stats.exceso, [37,99,235], "Exceso");
-        }
+        doc.autoTable({
+          startY: finalY + 5,
+          head: [['Código', 'Suministro', 'Stock Actual', 'Cobertura']],
+          body: rowsExceso,
+          theme: 'striped',
+          styles: { fontSize: 8 },
+          headStyles: { fillColor: [37, 99, 235] }, // Azul
+          columnStyles: { 2:{halign:'right'}, 3:{halign:'center'} }
+        });
+
+        // GLOSARIO AL PIE DE PÁGINA 1
+        doc.setFontSize(6).setTextColor(150);
+        const footer = "NOTA TÉCNICA: Cobertura calculada usando la Mediana de consumo diario de los últimos 90 días para excluir picos atípicos. Priorización basada en volumen de demanda.";
+        doc.text(footer, 105, 290, {align:'center'});
+
 
         // --- PÁGINAS SIGUIENTES: LISTADO COMPLETO ---
         doc.addPage();
-        doc.setFontSize(14).text("Detalle Completo de Inventario", 14, 20);
+        doc.setFontSize(14).setTextColor(0).text("Detalle Maestro de Inventario", 14, 20);
 
-        const fullBody = res.rows.map(row => [
-          row[1], 
-          row[2], 
-          row[3], 
-          Math.round(row[4]).toLocaleString(), 
-          row[5] + ' m', 
-          row[6] 
+        const fullBody = data.map(r => [
+          r.cod, 
+          r.sum, 
+          Math.round(r.demanda).toLocaleString(), 
+          Math.round(r.stock).toLocaleString(), 
+          r.meses + ' m', 
+          r.status 
         ]);
 
         doc.autoTable({
           startY: 25,
-          head: [['Código', 'Suministro', 'Grupo', 'Stock', 'Meses', 'Estatus']],
+          head: [['Código', 'Suministro', 'Demanda', 'Stock', 'Meses', 'Estatus']],
           body: fullBody,
-          theme: 'striped',
-          styles: { fontSize: 7, cellPadding: 2 },
-          headStyles: { fillColor: [11, 95, 255] },
-          columnStyles: { 0: {cellWidth:20}, 1: {cellWidth:'auto'}, 3: {halign:'right'}, 5: {fontStyle:'bold'} },
+          theme: 'plain',
+          styles: { fontSize: 7, cellPadding: 2, lineColor: 220, lineWidth: 0.1 }, // Líneas sutiles
+          headStyles: { fillColor: [240, 240, 240], textColor: 50 },
+          columnStyles: { 0: {cellWidth:20}, 1: {cellWidth:'auto'}, 2: {halign:'right'}, 3: {halign:'right'}, 5: {fontStyle:'bold'} },
           didParseCell: function(data) {
             if (data.section === 'body' && data.column.index === 5) {
-              const txt = String(data.cell.raw).toUpperCase();
-              if (txt.includes('AGOTADO')) data.cell.styles.textColor = [220, 38, 38];
-              else if (txt.includes('CRITICO') || txt.includes('CRÍTICO')) data.cell.styles.textColor = [234, 88, 12];
-              else if (txt.includes('OPTIMO')) data.cell.styles.textColor = [22, 163, 74];
+              const t = data.cell.raw;
+              if (t.includes('AGOTADO')) data.cell.styles.textColor = [220, 38, 38];
+              else if (t.includes('CRITICO')) data.cell.styles.textColor = [234, 88, 12];
+              else if (t.includes('OPTIMO')) data.cell.styles.textColor = [22, 163, 74];
             }
           }
         });
 
-        // Numeración de páginas
+        // Numeración
         const pageCount = doc.internal.getNumberOfPages();
         for(let i = 1; i <= pageCount; i++) {
           doc.setPage(i);
@@ -1009,7 +1094,7 @@ async function init(){
         btnPdfReport.disabled = false;
       }
     });
-  } // Fin btn logic
+  }
 
 } // Fin init
 
