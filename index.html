@@ -826,8 +826,8 @@ async function init(){
 
   await run();
 
-   // ===============================================
-  // REPORTE GERENCIAL (VERSION DIRECTOR - COMPLETA)
+  // ===============================================
+  // REPORTE GERENCIAL (VERSION FINAL - MATEMÁTICA VISIBLE)
   // ===============================================
   const btnPdfReport = document.getElementById('btnPdfReport');
   if (btnPdfReport) {
@@ -837,20 +837,21 @@ async function init(){
       btnPdfReport.disabled = true;
 
       try {
-        // 1. Obtener datos
         const res = await fetchJSON(API_BASE + '?report=coverage&ts=' + Date.now());
         if (!res.rows || res.rows.length === 0) throw new Error('Sin datos. Ejecute "Regenerar Reporte".');
 
-        // 2. Mapeo y Clasificación
+        // Mapeo
         const data = res.rows.map(r => ({
           cod: String(r[1]),
           sum: String(r[2]),
+          grp: String(r[3]),
           stock: Number(r[4]||0),
           meses: r[5],
           status: String(r[6]).toUpperCase(),
           demanda: Number(r[7] || 0)
         }));
 
+        // Contadores y Listas
         const stats = { agotado:0, critico:0, bajo:0, optimo:0, exceso:0 };
         const lists = { agotado:[], critico:[], bajo:[], optimo:[], exceso:[] };
 
@@ -862,188 +863,206 @@ async function init(){
           else { stats.optimo++; lists.optimo.push(item); }
         });
 
-        // 3. ORDENAMIENTO ESTRATÉGICO (TOP 15 DE CADA UNO)
-        
-        // Agotados, Críticos, Bajos y ÓPTIMOS -> Por DEMANDA (Impacto en paciente/cliente)
-        // Queremos ver los Óptimos de alta rotación (Buenas noticias reales)
+        // Ordenamiento por Impacto
         const sortByDemand = (a,b) => b.demanda - a.demanda;
         lists.agotado.sort(sortByDemand);
         lists.critico.sort(sortByDemand);
         lists.bajo.sort(sortByDemand);
         lists.optimo.sort(sortByDemand);
+        lists.exceso.sort((a,b) => b.stock - a.stock); // Exceso por Stock
 
-        // Excesos -> Por STOCK (Impacto financiero/espacio)
-        lists.exceso.sort((a,b) => b.stock - a.stock);
+        const tops = {
+          agotado: lists.agotado.slice(0, 15),
+          critico: lists.critico.slice(0, 15),
+          bajo: lists.bajo.slice(0, 15),
+          optimo: lists.optimo.slice(0, 15),
+          exceso: lists.exceso.slice(0, 15)
+        };
 
-        // Recortamos Tops
-        const topAgotado = lists.agotado.slice(0, 15);
-        const topCritico = lists.critico.slice(0, 15);
-        const topBajo    = lists.bajo.slice(0, 15);
-        const topOptimo  = lists.optimo.slice(0, 15);
-        const topExceso  = lists.exceso.slice(0, 15);
-
-        // 4. Configurar PDF
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF();
         const azul = [11, 31, 58];
         const fechaCorte = res.rows[0][0];
 
-        // --- PÁGINA 1: DASHBOARD PRINCIPAL ---
-        
-        // Logo
-        const imgEl = document.querySelector('.topbar img');
-        if (imgEl) {
-          try {
-            const canvas = document.createElement('canvas');
-            canvas.width = imgEl.naturalWidth; canvas.height = imgEl.naturalHeight;
-            canvas.getContext('2d').drawImage(imgEl, 0, 0);
-            doc.addImage(canvas.toDataURL('image/png'), 'PNG', 14, 10, 15, 15);
-          } catch(e){}
-        }
+        // --- HEADER CON LOGO ---
+        const drawHeader = (pageTitle) => {
+          const imgEl = document.querySelector('.topbar img');
+          if (imgEl) {
+            try {
+              const cvs = document.createElement('canvas');
+              cvs.width = imgEl.naturalWidth; cvs.height = imgEl.naturalHeight;
+              cvs.getContext('2d').drawImage(imgEl,0,0);
+              doc.addImage(cvs.toDataURL('image/png'), 'PNG', 14, 10, 15, 15);
+            } catch(e){}
+          }
+          doc.setFont('helvetica','bold').setFontSize(20).setTextColor(...azul).text("Tablero de Abastecimiento", 35, 18);
+          doc.setFont('helvetica','normal').setFontSize(10).setTextColor(80).text(`Corte: ${fechaCorte} | ${pageTitle}`, 35, 24);
+          doc.setDrawColor(200).line(14, 28, 196, 28);
+        };
 
-        doc.setFont('helvetica','bold').setFontSize(22).setTextColor(...azul).text("Tablero de Abastecimiento", 35, 18);
-        doc.setFont('helvetica','normal').setFontSize(10).setTextColor(80).text(`Corte: ${fechaCorte} | Generado: ${new Date().toLocaleDateString()}`, 35, 24);
-        
-        doc.setFontSize(8).setTextColor(100).setFont('helvetica','italic');
-        doc.text("Nota: Priorización basada en demanda mensual (impacto) y stock inmovilizado (costo).", 35, 29);
-        doc.setDrawColor(200).line(14, 33, 196, 33);
+        // --- PÁGINA 1 ---
+        drawHeader("Resumen Ejecutivo");
 
-        // KPI CARDS
-        const startY = 42;
+        // === FICHA TÉCNICA DE CÁLCULO (VISIBLE) ===
+        // Un cuadro gris claro con las reglas matemáticas explícitas
+        doc.setFillColor(245, 245, 245);
+        doc.roundedRect(14, 32, 182, 14, 1, 1, 'F');
+        
+        doc.setFontSize(8).setTextColor(0).setFont('helvetica','bold');
+        doc.text("FICHA TÉCNICA DE CÁLCULO Y CLASIFICACIÓN:", 16, 37);
+        
+        doc.setFontSize(7).setTextColor(50).setFont('helvetica','normal');
+        // Columna 1: Fórmula
+        doc.text("• Fórmula: Cobertura = (Inventario Actual) / (Demanda Mensual).", 16, 41);
+        doc.text("• Demanda: Calculada usando la Mediana de consumo de los últimos 90 días (excluye picos atípicos).", 16, 44);
+        
+        // Columna 2: Rangos (Alineado a la derecha del cuadro)
+        const col2 = 110;
+        doc.text("• Agotado: Stock = 0 unidades.", col2, 37);
+        doc.text("• Crítico: 0 < Cobertura < 1 mes.", col2, 40);
+        doc.text("• Bajo: 1 mes ≤ Cobertura < 4 meses.", col2, 43);
+        doc.text("• Óptimo: 4 meses ≤ Cobertura < 12 meses.", col2, 46); // Aquí está la justificación visible
+        
+        // --- KPIs ---
+        const startY = 52; // Bajamos un poco por la ficha técnica
         const drawKpi = (x, label, count, color, rule) => {
           doc.setFillColor(...color);
-          doc.roundedRect(x, startY, 34, 30, 2, 2, 'F');
+          doc.roundedRect(x, startY, 34, 32, 2, 2, 'F');
+          
           doc.setTextColor(255).setFontSize(18).setFont('helvetica','bold').text(String(count), x+17, startY+12, {align:'center'});
           doc.setFontSize(8).text(label, x+17, startY+18, {align:'center'});
+          
           const pct = Math.round((count/data.length)*100) + '%';
           doc.setFontSize(8).text(pct, x+17, startY+23, {align:'center'});
+
+          // Regla visual
           doc.setFillColor(255, 255, 255);
-          doc.rect(x, startY+25, 34, 5, 'F');
-          doc.setTextColor(0,0,0).setFontSize(6).setFont('helvetica','bold');
-          doc.text(rule, x+17, startY+28.5, {align:'center'});
+          doc.rect(x, startY+26, 34, 6, 'F');
+          doc.setTextColor(0,0,0).setFontSize(7).setFont('helvetica','bold');
+          doc.text(rule, x+17, startY+30, {align:'center'});
         };
 
         drawKpi(14, "AGOTADOS", stats.agotado, [220, 38, 38], "Stock = 0");
-        drawKpi(52, "CRÍTICOS", stats.critico, [234, 88, 12], "< 1 Mes Cob.");
+        drawKpi(52, "CRÍTICOS", stats.critico, [234, 88, 12], "< 1 Mes");
         drawKpi(90, "BAJO", stats.bajo, [234, 179, 8], "1 - 4 Meses");
         drawKpi(128, "ÓPTIMO", stats.optimo, [22, 163, 74], "4 - 12 Meses");
         drawKpi(166, "EXCESO", stats.exceso, [37, 99, 235], "> 12 Meses");
 
-        // DONA
-        doc.setTextColor(0).setFontSize(14).setFont('helvetica','bold').text("Estado de Salud de Renglones", 14, 90);
+        // --- DONA ---
+        doc.setTextColor(0).setFontSize(14).setFont('helvetica','bold').text("Distribución del Inventario", 14, 100);
         
-        const cx = 70, cy = 130, r = 30;
+        const cx = 70, cy = 145, r = 32;
         let startAngle = 0;
         const total = data.length;
         
-        const drawArc = (val, color) => {
+        const drawSlice = (val, color) => {
           if (val === 0) return;
           const slice = (val / total) * 2 * Math.PI;
           const endAngle = startAngle + slice;
-          const points = [[cx, cy]]; 
+          
+          const points = [[cx, cy]];
           for (let a = startAngle; a <= endAngle; a += 0.05) { points.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]); }
           points.push([cx + r * Math.cos(endAngle), cy + r * Math.sin(endAngle)]);
+          
           doc.setFillColor(...color);
-          let lines = points.map((p, i) => (i===0 ? 'M' : 'L') + ` ${p[0].toFixed(2)} ${p[1].toFixed(2)}`).join(' ');
-          lines += ' Z'; 
           for(let i=1; i<points.length-1; i++){ doc.triangle(points[0][0], points[0][1], points[i][0], points[i][1], points[i+1][0], points[i+1][1], 'F'); }
+          
+          // Etiqueta %
+          if ((val/total) > 0.03) {
+            const mid = startAngle + slice/2;
+            const textR = r * 0.7;
+            const tx = cx + textR * Math.cos(mid);
+            const ty = cy + textR * Math.sin(mid);
+            const pctVal = Math.round((val/total)*100) + '%';
+            doc.setTextColor(255).setFontSize(8).setFont('helvetica','bold');
+            doc.text(pctVal, tx, ty, {align:'center', baseline:'middle'});
+          }
           startAngle = endAngle;
         };
 
-        drawArc(stats.agotado, [220, 38, 38]);
-        drawArc(stats.critico, [234, 88, 12]);
-        drawArc(stats.bajo, [234, 179, 8]);
-        drawArc(stats.optimo, [22, 163, 74]);
-        drawArc(stats.exceso, [37, 99, 235]);
+        drawSlice(stats.agotado, [220, 38, 38]);
+        drawSlice(stats.critico, [234, 88, 12]);
+        drawSlice(stats.bajo, [234, 179, 8]);
+        drawSlice(stats.optimo, [22, 163, 74]);
+        drawSlice(stats.exceso, [37, 99, 235]);
 
         doc.setFillColor(255,255,255); doc.circle(cx, cy, 14, 'F');
-        doc.setTextColor(...azul); doc.setFontSize(9).text("TOTAL", cx, cy-2, {align:'center'});
-        doc.setFontSize(14).text(String(total), cx, cy+4, {align:'center'});
+        doc.setTextColor(...azul).setFontSize(9).text("Total Renglones", cx, cy-2, {align:'center'});
+        doc.setFontSize(12).text(String(total), cx, cy+3, {align:'center'});
 
-        const legX = 120, legY = 110;
-        const legend = (lbl, count, color, y) => {
-          doc.setFillColor(...color); doc.circle(legX, y, 2.5, 'F');
-          doc.setTextColor(50).setFontSize(10).setFont('helvetica','normal').text(`${lbl} (${count})`, legX+6, y+1);
+        const lx = 120, ly = 125;
+        const legend = (l, c, color, y) => {
+          doc.setFillColor(...color); doc.circle(lx, y, 3, 'F');
+          doc.setTextColor(50).setFontSize(10).setFont('helvetica','normal').text(`${l} (${c})`, lx+6, y+1);
         };
-        legend("Agotados", stats.agotado, [220,38,38], legY);
-        legend("Críticos", stats.critico, [234,88,12], legY+8);
-        legend("Bajo Stock", stats.bajo, [234,179,8], legY+16);
-        legend("Óptimo", stats.optimo, [22,163,74], legY+24);
-        legend("Exceso", stats.exceso, [37,99,235], legY+32);
+        legend("Agotados", stats.agotado, [220,38,38], ly);
+        legend("Críticos", stats.critico, [234,88,12], ly+8);
+        legend("Bajo Stock", stats.bajo, [234,179,8], ly+16);
+        legend("Óptimo", stats.optimo, [22,163,74], ly+24);
+        legend("Exceso", stats.exceso, [37,99,235], ly+32);
 
-        // TABLA 1: AGOTADOS (Pág 1)
-        doc.setTextColor(...azul).setFontSize(14).setFont('helvetica','bold').text("1. Top 15 Agotados (Prioridad Máxima)", 14, 175);
-        
-        const genTable = (startY, titleColor, bodyData, statusCheck) => {
+        // --- TABLAS (Helper) ---
+        const mapRows = (l) => l.map(r => [
+          r.cod, r.sum.substring(0,40), Math.round(r.demanda).toLocaleString(), Math.round(r.stock).toLocaleString(), r.meses+'m', r.status
+        ]);
+
+        const printTable = (title, color, rows, startY, checkStatus) => {
+          doc.setTextColor(...azul).setFontSize(12).setFont('helvetica','bold').text(title, 14, startY - 3);
           doc.autoTable({
             startY: startY,
-            head: [['Código','Renglón / Suministro','Demanda/mes','Stock','Cob.','Estado']],
-            body: bodyData,
+            head: [['Código','Renglón','Demanda','Stock','Cob.','Estado']],
+            body: rows,
             theme: 'grid',
-            styles: { fontSize: 8, cellPadding: 2, textColor: 20 },
-            headStyles: { fillColor: titleColor, fontStyle:'bold' },
-            columnStyles: { 2:{halign:'right', fontStyle:'bold'}, 3:{halign:'right'}, 5:{fontStyle:'bold'} },
+            styles: { fontSize: 8, cellPadding: 2 },
+            headStyles: { fillColor: color, textColor: 255, fontStyle:'bold' },
+            columnStyles: { 2:{halign:'right'}, 3:{halign:'right'}, 5:{fontStyle:'bold'} },
+            margin: { bottom: 15 },
+            rowPageBreak: 'avoid',
             didParseCell: (d) => {
-              if(d.section==='body' && d.column.index===5 && statusCheck) d.cell.styles.textColor = titleColor;
+              if(d.section==='body' && d.column.index===5 && checkStatus) d.cell.styles.textColor = color;
             }
           });
         };
 
-        const mapData = (list) => list.map(r => [
-          r.cod, r.sum.substring(0,40), Math.round(r.demanda).toLocaleString(), Math.round(r.stock).toLocaleString(), r.meses+'m', r.status
-        ]);
+        // PÁGINA 1: Agotados
+        printTable("1. Top 15 Agotados (Prioridad: Alta Demanda)", [220,38,38], mapRows(tops.agotado), 195, true);
 
-        genTable(180, [220, 38, 38], mapData(topAgotado), true);
-
-        // --- PÁGINA 2: RIESGOS (Críticos y Bajos) ---
+        // PÁGINA 2: Riesgos
         doc.addPage();
-        doc.setTextColor(...azul).setFontSize(14).text("2. Análisis de Riesgos (Por alta demanda)", 14, 20);
+        drawHeader("Análisis de Riesgos");
+        printTable("2. Top 15 Críticos (< 1 Mes)", [234,88,12], mapRows(tops.critico), 40, true);
+        let nextY = doc.lastAutoTable.finalY + 20;
+        printTable("3. Top 15 Bajo Stock (1 - 4 Meses)", [234,179,8], mapRows(tops.bajo), nextY, false);
 
-        doc.setFontSize(12).setTextColor(234, 88, 12).text("Top 15 Críticos (< 1 Mes)", 14, 30);
-        genTable(35, [234, 88, 12], mapData(topCritico), true);
-
-        let nextY = doc.lastAutoTable.finalY + 15;
-        doc.setFontSize(12).setTextColor(234, 179, 8).text("Top 15 Bajo Stock (1 - 4 Meses)", 14, nextY);
-        genTable(nextY+5, [234, 179, 8], mapData(topBajo), false); // Amarillo es dificil de leer en texto, dejamos default
-
-        // --- PÁGINA 3: BUENAS NOTICIAS Y CONTROL ---
+        // PÁGINA 3: Gestión
         doc.addPage();
-        doc.setTextColor(...azul).setFontSize(14).text("3. Salud y Control Financiero", 14, 20);
-
-        // ÓPTIMOS (VERDE)
-        doc.setFontSize(12).setTextColor(22, 163, 74).text("✅ Top 15 Óptimos de Alta Rotación (Buenas Noticias)", 14, 30);
-        genTable(35, [22, 163, 74], mapData(topOptimo), true);
-
-        // EXCESOS (AZUL)
-        nextY = doc.lastAutoTable.finalY + 15;
-        doc.setFontSize(12).setTextColor(37, 99, 235).text("💰 Top 15 Excesos (Mayor Stock Inmovilizado)", 14, nextY);
-        
-        // Tabla Excesos (Columnas diferentes: Stock es el rey aqui)
-        const rowsExceso = topExceso.map(r => [ r.cod, r.sum.substring(0,45), Math.round(r.stock).toLocaleString(), r.meses+'m', r.status ]);
+        drawHeader("Gestión Financiera y Salud");
+        printTable("4. Top 15 Óptimos (Alta Demanda Saludable)", [22,163,74], mapRows(tops.optimo), 40, true);
+        nextY = doc.lastAutoTable.finalY + 20;
+        doc.setTextColor(...azul).setFontSize(12).text("5. Top 15 Excesos (Control de Costos)", 14, nextY - 3);
+        const rowsExc = tops.exceso.map(r => [r.cod, r.sum.substring(0,45), Math.round(r.stock).toLocaleString(), r.meses+'m']);
         doc.autoTable({
-          startY: nextY+5,
-          head: [['Código','Renglón / Suministro','Stock Actual','Cobertura', 'Estado']],
-          body: rowsExceso,
+          startY: nextY,
+          head: [['Código','Renglón','Stock Actual','Cobertura']],
+          body: rowsExc,
           theme: 'striped',
           styles: { fontSize: 8 },
-          headStyles: { fillColor: [37, 99, 235] },
-          columnStyles: { 2:{halign:'right', fontStyle:'bold'}, 3:{halign:'center'} }
+          headStyles: { fillColor: [37,99,235] },
+          columnStyles: { 2:{halign:'right'}, 3:{halign:'center'} }
         });
 
-        // --- PÁGINAS DETALLE ---
+        // PÁGINA 4+: Maestro
         doc.addPage();
-        doc.setFontSize(16).setTextColor(0).text("Listado Maestro Completo", 14, 20);
-        
-        const fullBody = data.map(r => [
-          r.cod, r.sum, Math.round(r.demanda).toLocaleString(), Math.round(r.stock).toLocaleString(), r.meses+' m', r.status
+        drawHeader("Listado Maestro");
+        const fullRows = data.map(r => [
+          r.cod, r.sum, Math.round(r.demanda).toLocaleString(), Math.round(r.stock).toLocaleString(), r.meses+'m', r.status
         ]);
-
         doc.autoTable({
-          startY: 25,
+          startY: 40,
           head: [['Código','Renglón','Demanda','Stock','Meses','Estado']],
-          body: fullBody,
+          body: fullRows,
           theme: 'plain',
-          styles: { fontSize: 7, cellPadding: 2, lineColor:200, lineWidth:0.1 },
+          styles: { fontSize: 7, cellPadding: 2, lineColor:220, lineWidth:0.1 },
           headStyles: { fillColor:[240,240,240], textColor:50 },
           columnStyles: { 2:{halign:'right'}, 3:{halign:'right'}, 5:{fontStyle:'bold'} },
           didParseCell: (d) => {
@@ -1055,12 +1074,11 @@ async function init(){
           }
         });
 
-        // Numeración
-        const pageCount = doc.internal.getNumberOfPages();
-        for(let i = 1; i <= pageCount; i++) {
+        const pCount = doc.internal.getNumberOfPages();
+        for(let i=1; i<=pCount; i++){
           doc.setPage(i);
           doc.setFontSize(8).setTextColor(150);
-          doc.text(`Pág ${i} de ${pageCount}`, 196, 285, {align:'right'});
+          doc.text(`Pág ${i} de ${pCount}`, 196, 285, {align:'right'});
         }
 
         doc.save(`Reporte_Gerencial_${fechaCorte}.pdf`);
