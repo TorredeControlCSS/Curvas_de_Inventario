@@ -898,7 +898,7 @@ async function init(){
               doc.addImage(cvs.toDataURL('image/png'), 'PNG', 14, 10, 15, 15);
             } catch(e){}
           }
-          doc.setFont('helvetica','bold').setFontSize(20).setTextColor(...azul).text("Tablero de Abastecimiento", 35, 18);
+          doc.setFont('helvetica','bold').setFontSize(20).setTextColor(...azul).text("Tablero de Abastecimiento | CEDIS Panamá", 35, 18);
           // Subtitulo estándar: Corte y Generado
           doc.setFont('helvetica','normal').setFontSize(10).setTextColor(80).text(`Corte Datos: ${fechaCorte} | Generado: ${new Date().toLocaleDateString()}`, 35, 24);
           doc.setDrawColor(200).line(14, 28, 196, 28);
@@ -1062,7 +1062,7 @@ async function init(){
         // 5. EXCESOS (Formato Unificado)
         // Usamos el mismo mapStandard para que la tabla sea IDÉNTICA visualmente
         // Aunque el orden es por Stock, las columnas se mantienen igual para consistencia visual
-        printTable("5. Top 15 Excesos (Control de Costos)", [37,99,235], mapStandard(tops.exceso), true);
+        printTable("5. Top 15 Excesos (Control de Costos y Risgos de Vencimiento)", [37,99,235], mapStandard(tops.exceso), true);
 
 
         // --- LISTADO MAESTRO ---
