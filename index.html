@@ -915,8 +915,8 @@ async function init(){
         doc.text("CRITERIOS DE CLASIFICACIÓN:", 16, 37);
         
         doc.setFontSize(7).setTextColor(50).setFont('helvetica','normal');
-        doc.text("• Fórmula: Cobertura = Inventario / Demanda Mensual (Mediana 90 días).", 16, 41);
-        doc.text("• Óptimo (4-12m): Balance entre seguridad y costo financiero.", 16, 45);
+        doc.text("• Demanda Mensual = Mediana(Consumo Diario ult. 90 días) x 30.", 16, 41);
+        doc.text("• Cobertura (Meses) = Stock Actual / Demanda Mensual.", 16, 45);
         
         // Columna 2 rangos
         const col2 = 110;
