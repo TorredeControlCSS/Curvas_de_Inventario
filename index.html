@@ -1017,31 +1017,44 @@ if (btnExpiredPdf) {
       });
 
       // Maestro completo
-      const yAfterTop = doc.lastAutoTable.finalY + 10;
-      doc.setFont('helvetica', 'bold').setFontSize(14).setTextColor(...azul);
-      doc.text('Listado Maestro (corte)', 14, yAfterTop);
-
-      doc.autoTable({
-        startY: yAfterTop + 4,
-        head: [['Código', 'Suministro', 'Grupo', 'F. Vencimiento', 'Vencido']],
-        body: itemsPos.map(x => ([
-          x.codigo,
-          x.suministro,
-          x.grupo,
-          x.primeraFecha || '—',
-          Math.round(x.vencido).toLocaleString()
-        ])),
-        theme: 'grid',
-        styles: { fontSize: 8, cellPadding: 2, overflow: 'linebreak' },
-        headStyles: { fillColor: [80, 80, 80], textColor: 255, fontStyle: 'bold' },
-        columnStyles: {
-          0: { cellWidth: 22 },                   // Código
-          1: { cellWidth: 98 },                   // Suministro
-          2: { cellWidth: 34 },                   // Grupo
-          3: { cellWidth: 22, halign: 'center' }, // F. Vencimiento
-          4: { cellWidth: 22, halign: 'right' }   // Vencido
+        let yAfterTop = doc.lastAutoTable.finalY + 10;
+        
+        // Si no hay espacio para el título + cabecera de tabla, salto de página
+        const pageH = doc.internal.pageSize.getHeight();
+        const needed = 18;
+        if (yAfterTop + needed > pageH - 20) {
+          doc.addPage();
+          drawHeader();
+          yAfterTop = 34;
         }
-      });
+        
+        doc.setFont('helvetica', 'bold').setFontSize(14).setTextColor(...azul);
+        doc.text('Listado Maestro (corte)', 14, yAfterTop);
+        
+        doc.autoTable({
+          startY: yAfterTop + 6,
+          head: [['Código', 'Suministro', 'Grupo', 'F. Vencimiento', 'Vencido']],
+          body: itemsPos.map(x => ([
+            x.codigo,
+            x.suministro,
+            x.grupo,
+            x.primeraFecha || '—',
+            Math.round(x.vencido).toLocaleString()
+          ])),
+          theme: 'grid',
+          styles: { fontSize: 8, cellPadding: 2, overflow: 'linebreak' },
+          headStyles: { fillColor: [80, 80, 80], textColor: 255, fontStyle: 'bold' },
+          columnStyles: {
+            0: { cellWidth: 22 },                   // Código
+            1: { cellWidth: 98 },                   // Suministro
+            2: { cellWidth: 34 },                   // Grupo
+            3: { cellWidth: 22, halign: 'center' }, // F. Vencimiento
+            4: { cellWidth: 22, halign: 'right' }   // Vencido
+          },
+          didDrawPage: (data) => {
+            if (data.pageNumber > 1) drawHeader();
+          }
+        });
 
       // Guardar
       const safeCorte = (corte || 'SIN_CORTE').replace(/[^\d\-]/g, '_');
