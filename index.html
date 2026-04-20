@@ -919,7 +919,7 @@ async function init(){
         
         doc.setFontSize(7).setTextColor(50).setFont('helvetica','normal');
         doc.text("• Demanda Mensual = Mediana(Consumo Diario ult. 90 días) x 30.", 16, 41);
-        doc.text("• Inventario Proyectado = Inv. Actual + Recepción (≤7d) + Tránsito (ETA ≥ hoy).", 16, 45);
+        doc.text("• Inventario Proyectado = Inv. Actual + Recepción (<=7d) + Tránsito (ETA >= hoy).", 16, 45);
         doc.text("• Cobertura (Meses) = Inventario Proyectado / Demanda Mensual.", 16, 49);
         
         // Columna 2 rangos
