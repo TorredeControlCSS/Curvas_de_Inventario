@@ -845,10 +845,13 @@ async function init(){
           cod: String(r[1]),
           sum: String(r[2]),
           grp: String(r[3]),
-          stock: Number(r[4]||0),
-          meses: r[5],
-          status: String(r[6]).toUpperCase(),
-          demanda: Number(r[7] || 0)
+          inv_actual: Number(r[4] || 0),
+          recepcion: Number(r[5] || 0),
+          transito: Number(r[6] || 0),
+          stock: Number(r[7] || 0),           // <- usa INV_PROY como stock principal del reporte
+          meses: r[8],
+          status: String(r[9]).toUpperCase(),
+          demanda: Number(r[10] || 0)
         }));
 
         // Contadores y Listas
