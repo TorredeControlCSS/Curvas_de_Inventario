@@ -836,109 +836,165 @@ async function init(){
   });
 
   await run();
-  // ===============================================
-// REPORTE PDF: INVENTARIO VENCIDO (Serie actual)
-// ===============================================
+// ======================================================
+// REPORTE PDF: INVENTARIO VENCIDO (GLOBAL - CORTE ÚLTIMO)
+// Top 15 + Maestro completo
+// Fuente: API_BASE ?report=expired
+// ======================================================
 const btnExpiredPdf = document.getElementById('btnExpiredPdf');
 if (btnExpiredPdf) {
   btnExpiredPdf.addEventListener('click', async () => {
-    if (!lastSerieForReports || !lastSerieForReports.serie || !lastSerieForReports.serie.length) {
-      alert('Primero selecciona un suministro y presiona "Mostrar".');
-      return;
-    }
+    try {
+      // 1) Traer data global del backend
+      const rep = await fetchJSON(API_BASE + '?report=expired&ts=' + Date.now());
+      // rep esperado: { corte: "YYYY-MM-DD", rows: [ [corte,codigo,suministro,grupo,vencido], ... ] }
 
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF(); // portrait A4
-    const azul = [11, 31, 58];
-    const rojo = [239, 68, 68];
-
-    const { meta, graphTitle, serie, invHist, invExpired, invAvailable, lastDateStr } = lastSerieForReports;
-
-    // KPIs
-    const sum = (a)=> a.reduce((x,y)=> x + (Number(y)||0), 0);
-    const maxWithIdx = (a)=>{
-      let m = -Infinity, idx = -1;
-      for (let i=0;i<a.length;i++){
-        const v = Number(a[i])||0;
-        if (v > m){ m=v; idx=i; }
+      if (!rep || !Array.isArray(rep.rows) || rep.rows.length === 0) {
+        alert('No hay datos en DataVenc para generar el reporte.');
+        return;
       }
-      return { m, idx };
-    };
 
-    const totalExpired = sum(invExpired);
-    const avgExpired = invExpired.length ? totalExpired / invExpired.length : 0;
-    const lastExpired = Number(invExpired[invExpired.length-1] || 0);
-    const lastTotal = Number(invHist[invHist.length-1] || 0);
-    const lastPct = lastTotal > 0 ? (lastExpired / lastTotal) * 100 : 0;
+      const corte = String(rep.corte || rep.rows[0]?.[0] || '').trim();
+      const rows = rep.rows;
 
-    const { m: maxExpired, idx: idxMax } = maxWithIdx(invExpired);
-    const maxExpiredDate = (idxMax >= 0 && serie[idxMax]) ? serie[idxMax].fecha : '';
+      // 2) Mapear a objetos (más legible)
+      const items = rows.map(r => ({
+        corte: String(r[0] || '').trim(),
+        codigo: String(r[1] || '').trim(),
+        suministro: String(r[2] || '').trim(),
+        grupo: String(r[3] || '').trim(),
+        vencido: Number(r[4] || 0) || 0
+      }));
 
-    // Header
-    doc.setFont('helvetica','bold').setFontSize(16).setTextColor(...azul)
-      .text('Reporte de Inventario Vencido', 14, 18);
+      // Filtrar solo los que tienen vencido > 0 (por si llegan ceros)
+      const itemsPos = items.filter(x => x.vencido > 0);
 
-    doc.setFont('helvetica','normal').setFontSize(10).setTextColor(80)
-      .text(`Serie: ${graphTitle || '—'}`, 14, 24);
+      if (itemsPos.length === 0) {
+        alert('El corte no tiene vencidos > 0. (No se genera PDF)');
+        return;
+      }
 
-    const corte = (meta && meta.max_fecha) ? String(meta.max_fecha) : (lastDateStr || '');
-    doc.text(`Corte Datos: ${corte} | Generado: ${new Date().toLocaleDateString()}`, 14, 29);
+      // Orden desc por vencido
+      itemsPos.sort((a, b) => b.vencido - a.vencido);
 
-    doc.setDrawColor(200).line(14, 32, 196, 32);
+      const top15 = itemsPos.slice(0, 15);
 
-    // KPIs box
-    doc.setFillColor(245,245,245);
-    doc.roundedRect(14, 36, 182, 26, 2, 2, 'F');
+      // 3) KPIs
+      const sum = (a) => a.reduce((acc, x) => acc + (Number(x) || 0), 0);
+      const totalVencido = sum(itemsPos.map(x => x.vencido));
+      const nCodigos = itemsPos.length;
+      const maxItem = itemsPos[0];
 
-    doc.setTextColor(0).setFont('helvetica','bold').setFontSize(10).text('KPIs', 18, 44);
-    doc.setFont('helvetica','normal').setFontSize(9).setTextColor(50);
+      // 4) PDF base
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
 
-    doc.text(`Vencido total (periodo): ${Math.round(totalExpired).toLocaleString()}`, 18, 50);
-    doc.text(`Promedio vencido/día: ${Math.round(avgExpired).toLocaleString()}`, 18, 55);
-    doc.text(`Último día vencido: ${Math.round(lastExpired).toLocaleString()} (${lastPct.toFixed(1)}%)`, 110, 50);
-    doc.text(`Máximo vencido: ${Math.round(maxExpired).toLocaleString()} en ${maxExpiredDate || '—'}`, 110, 55);
+      // Colores (alineados con tu estilo de abastecimiento)
+      const azul = [11, 31, 58];
+      const rojo = [239, 68, 68];
+      const grisTxt = 70;
 
-    // Tabla
-    const rows = serie.map((p, i) => {
-      const total = Number(invHist[i] || 0);
-      const exp = Number(invExpired[i] || 0);
-      const avail = Number(invAvailable[i] || 0);
-      const pct = total > 0 ? (exp / total) * 100 : 0;
-      return [
-        p.fecha,
-        Math.round(total).toLocaleString(),
-        Math.round(avail).toLocaleString(),
-        Math.round(exp).toLocaleString(),
-        pct.toFixed(1) + '%'
-      ];
-    });
+      // ---- Header “profesional”
+      // Si ya tienes un drawHeader() en tu PDF de abastecimiento, puedes reemplazar
+      // este bloque por: drawHeader(doc, corte, 'Tablero de Vencidos | CEDIS Panamá');
+      // Mantengo esto autocontenido para que funcione ya.
+      doc.setFont('helvetica', 'bold').setFontSize(20).setTextColor(...azul);
+      doc.text('Tablero de Vencidos | CEDIS Panamá', 14, 18);
 
-    doc.setTextColor(...rojo).setFont('helvetica','bold').setFontSize(12)
-      .text('Detalle diario', 14, 72);
+      doc.setFont('helvetica', 'normal').setFontSize(11).setTextColor(grisTxt);
+      doc.text(`Corte Datos: ${corte || '—'} | Generado: ${new Date().toLocaleDateString()}`, 14, 25);
 
-    doc.autoTable({
-      startY: 76,
-      head: [['Fecha', 'Total', 'Disponible', 'Vencido', '% Vencido']],
-      body: rows,
-      theme: 'grid',
-      styles: { fontSize: 8, cellPadding: 2 },
-      headStyles: { fillColor: rojo, textColor: 255, fontStyle: 'bold' },
-      columnStyles: {
-        1: { halign:'right' },
-        2: { halign:'right' },
-        3: { halign:'right' },
-        4: { halign:'right' }
-      },
-      didParseCell: (d) => {
-        // Pintar vencido en rojo si > 0
-        if (d.section === 'body' && d.column.index === 3) {
-          const v = Number(String(d.cell.raw).replace(/,/g,'')) || 0;
-          if (v > 0) d.cell.styles.textColor = rojo;
+      doc.setDrawColor(200);
+      doc.line(14, 28, 196, 28);
+
+      // ---- Caja de criterios
+      doc.setFillColor(245, 245, 245);
+      doc.roundedRect(14, 32, 182, 18, 2, 2, 'F');
+
+      doc.setFont('helvetica', 'bold').setFontSize(10).setTextColor(0);
+      doc.text('CRITERIO:', 18, 39);
+
+      doc.setFont('helvetica', 'normal').setFontSize(9).setTextColor(50);
+      doc.text('• Vencido = Unidades vencidas registradas en hoja DataVenc (corte último día).', 18, 45);
+
+      // ---- Tarjetas KPI (simple, 3 tarjetas)
+      const startY = 56;
+      const cardW = 58;
+      const cardH = 22;
+      const gap = 4;
+
+      const drawCard = (x, label, value, colorRGB) => {
+        doc.setFillColor(...colorRGB);
+        doc.roundedRect(x, startY, cardW, cardH, 2, 2, 'F');
+        doc.setTextColor(255);
+        doc.setFont('helvetica', 'bold').setFontSize(16);
+        doc.text(String(value), x + cardW / 2, startY + 12, { align: 'center' });
+        doc.setFont('helvetica', 'bold').setFontSize(9);
+        doc.text(label, x + cardW / 2, startY + 18, { align: 'center' });
+      };
+
+      drawCard(14, 'TOTAL VENCIDO', Math.round(totalVencido).toLocaleString(), rojo);
+      drawCard(14 + cardW + gap, 'CÓDIGOS', String(nCodigos), [234, 88, 12]); // naranja
+      drawCard(14 + (cardW + gap) * 2, 'MÁX. VENCIDO', Math.round(maxItem.vencido).toLocaleString(), [59, 130, 246]); // azul claro
+
+      // ---- Tabla Top 15
+      doc.setFont('helvetica', 'bold').setFontSize(14).setTextColor(...azul);
+      doc.text('Top 15 Vencidos', 14, 88);
+
+      doc.autoTable({
+        startY: 92,
+        head: [['#', 'Código', 'Suministro', 'Grupo', 'Vencido']],
+        body: top15.map((x, i) => ([
+          i + 1,
+          x.codigo,
+          x.suministro,
+          x.grupo,
+          Math.round(x.vencido).toLocaleString()
+        ])),
+        theme: 'grid',
+        styles: { fontSize: 8, cellPadding: 2 },
+        headStyles: { fillColor: azul, textColor: 255, fontStyle: 'bold' },
+        columnStyles: {
+          0: { halign: 'right', cellWidth: 8 },
+          1: { cellWidth: 22 },
+          2: { cellWidth: 88 },
+          3: { cellWidth: 30 },
+          4: { halign: 'right', cellWidth: 24 }
         }
-      }
-    });
+      });
 
-    doc.save(`Inventario_Vencido_${(graphTitle||'serie').replace(/[^\w\-]+/g,'_')}_${corte}.pdf`);
+      // ---- Maestro completo (puede ir en nuevas páginas)
+      const yAfterTop = doc.lastAutoTable.finalY + 10;
+      doc.setFont('helvetica', 'bold').setFontSize(14).setTextColor(...azul);
+      doc.text('Listado Maestro (corte)', 14, yAfterTop);
+
+      doc.autoTable({
+        startY: yAfterTop + 4,
+        head: [['Código', 'Suministro', 'Grupo', 'Vencido']],
+        body: itemsPos.map(x => ([
+          x.codigo,
+          x.suministro,
+          x.grupo,
+          Math.round(x.vencido).toLocaleString()
+        ])),
+        theme: 'grid',
+        styles: { fontSize: 8, cellPadding: 2 },
+        headStyles: { fillColor: [80, 80, 80], textColor: 255, fontStyle: 'bold' },
+        columnStyles: {
+          0: { cellWidth: 24 },
+          1: { cellWidth: 108 },
+          2: { cellWidth: 32 },
+          3: { halign: 'right', cellWidth: 24 }
+        }
+      });
+
+      // Nombre de archivo
+      const safeCorte = (corte || 'SIN_CORTE').replace(/[^\d\-]/g, '_');
+      doc.save(`Tablero_Vencidos_CEDIS_${safeCorte}.pdf`);
+    } catch (e) {
+      console.error(e);
+      alert('Error generando PDF de vencidos (global). Revisa consola.');
+    }
   });
 }
   
