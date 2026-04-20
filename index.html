@@ -1007,13 +1007,13 @@ if (btnExpiredPdf) {
         styles: { fontSize: 8, cellPadding: 2, overflow: 'linebreak' },
         headStyles: { fillColor: azul, textColor: 255, fontStyle: 'bold' },
         columnStyles: {
-          0: { halign: 'right', cellWidth: 8 },   // #
-          1: { cellWidth: 22 },                   // Código
-          2: { cellWidth: 86 },                   // Suministro (la más larga)
-          3: { cellWidth: 34 },                   // Grupo
-          4: { cellWidth: 22, halign: 'center' }, // F. Vencimiento
-          5: { cellWidth: 18, halign: 'right' }   // Vencido
-        }
+          0: { halign: 'center', cellWidth: 8  },  // #         → 8
+          1: { cellWidth: 20 },                    // Código    → 20
+          2: { cellWidth: 80 },                    // Suministro→ 80
+          3: { cellWidth: 32 },                    // Grupo     → 32
+          4: { cellWidth: 24, halign: 'center' },  // F. Vencim.→ 24
+          5: { cellWidth: 18, halign: 'right'  }   // Vencido   → 18
+        }                                          // TOTAL     = 182 ✅
       });
 
       // Maestro completo
@@ -1045,12 +1045,12 @@ if (btnExpiredPdf) {
           styles: { fontSize: 8, cellPadding: 2, overflow: 'linebreak' },
           headStyles: { fillColor: [80, 80, 80], textColor: 255, fontStyle: 'bold' },
           columnStyles: {
-            0: { cellWidth: 22 },                   // Código
-            1: { cellWidth: 98 },                   // Suministro
-            2: { cellWidth: 34 },                   // Grupo
-            3: { cellWidth: 22, halign: 'center' }, // F. Vencimiento
-            4: { cellWidth: 22, halign: 'right' }   // Vencido
-          },
+            0: { cellWidth: 22 },                   // Código    → 22
+            1: { cellWidth: 88 },                   // Suministro→ 88
+            2: { cellWidth: 30 },                   // Grupo     → 30
+            3: { cellWidth: 22, halign: 'center' }, // F. Vencim.→ 22
+            4: { cellWidth: 20, halign: 'right'  }  // Vencido   → 20
+          },                                        // TOTAL     = 182 ✅
           didDrawPage: (data) => {
             if (data.pageNumber > 1) drawHeader();
           }
