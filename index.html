@@ -867,7 +867,8 @@ if (btnExpiredPdf) {
         codigo: String(r[1] || '').trim(),
         suministro: String(r[2] || '').trim(),
         grupo: String(r[3] || '').trim(),
-        vencido: Number(r[4] || 0) || 0
+        vencido: Number(r[4] || 0) || 0,
+        primeraFecha: String(r[5] || '').trim()
       }));
 
       // Solo vencidos > 0
@@ -955,12 +956,13 @@ if (btnExpiredPdf) {
 
       doc.autoTable({
         startY: 92,
-        head: [['#', 'Código', 'Suministro', 'Grupo', 'Vencido']],
+        head: [['#', 'Código', 'Suministro', 'Grupo', '1ra Fecha', 'Vencido']],
         body: top15.map((x, i) => ([
           i + 1,
           x.codigo,
           x.suministro,
           x.grupo,
+          x.primeraFecha || '—',
           Math.round(x.vencido).toLocaleString()
         ])),
         theme: 'grid',
@@ -982,11 +984,12 @@ if (btnExpiredPdf) {
 
       doc.autoTable({
         startY: yAfterTop + 4,
-        head: [['Código', 'Suministro', 'Grupo', 'Vencido']],
+        head: [['Código', 'Suministro', 'Grupo', '1ra Fecha', 'Vencido']],
         body: itemsPos.map(x => ([
           x.codigo,
           x.suministro,
           x.grupo,
+          x.primeraFecha || '—',
           Math.round(x.vencido).toLocaleString()
         ])),
         theme: 'grid',
