@@ -894,18 +894,30 @@ if (btnExpiredPdf) {
       const rojo = [239, 68, 68];
       const grisTxt = 70;
 
-      // ---- Header “profesional”
-      // Si ya tienes un drawHeader() en tu PDF de abastecimiento, puedes reemplazar
-      // este bloque por: drawHeader(doc, corte, 'Tablero de Vencidos | CEDIS Panamá');
-      // Mantengo esto autocontenido para que funcione ya.
-      doc.setFont('helvetica', 'bold').setFontSize(20).setTextColor(...azul);
-      doc.text('Tablero de Vencidos | CEDIS Panamá', 14, 18);
-
-      doc.setFont('helvetica', 'normal').setFontSize(11).setTextColor(grisTxt);
-      doc.text(`Corte Datos: ${corte || '—'} | Generado: ${new Date().toLocaleDateString()}`, 14, 25);
-
-      doc.setDrawColor(200);
-      doc.line(14, 28, 196, 28);
+      // --- HEADER UNIFICADO (idéntico al de Abastecimiento) ---
+      const drawHeader = () => {
+        const imgEl = document.querySelector('.topbar img');
+        if (imgEl) {
+          try {
+            const cvs = document.createElement('canvas');
+            cvs.width = imgEl.naturalWidth;
+            cvs.height = imgEl.naturalHeight;
+            cvs.getContext('2d').drawImage(imgEl, 0, 0);
+            doc.addImage(cvs.toDataURL('image/png'), 'PNG', 14, 10, 15, 15);
+          } catch (e) {}
+        }
+      
+        doc.setFont('helvetica', 'bold').setFontSize(20).setTextColor(...azul)
+          .text("Tablero de Vencidos | CEDIS Panamá", 35, 18);
+      
+        doc.setFont('helvetica', 'normal').setFontSize(10).setTextColor(80)
+          .text(`Corte Datos: ${corte} | Generado: ${new Date().toLocaleDateString()}`, 35, 24);
+      
+        doc.setDrawColor(200).line(14, 28, 196, 28);
+      };
+      
+      // Página 1
+drawHeader();
 
       // ---- Caja de criterios
       doc.setFillColor(245, 245, 245);
