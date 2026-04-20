@@ -1052,6 +1052,7 @@ if (btnExpiredPdf) {
             3: { cellWidth: 22, halign: 'center' }, // F. Vencim.→ 22
             4: { cellWidth: 20, halign: 'right'  }  // Vencido   → 20
           },                                        // TOTAL     = 182 ✅
+          margin: { top: 34 },
           didDrawPage: (data) => {
             if (data.pageNumber > 1) drawHeader();
           }
