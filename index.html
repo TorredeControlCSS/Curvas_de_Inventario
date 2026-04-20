@@ -1060,7 +1060,8 @@ async function init(){
               if (d.section === 'body' && d.column.index === 8 && checkStatus) {
                 d.cell.styles.textColor = color;
               }
-            // IMPORTANTE: Actualizar cursor global al terminar
+            },
+            // Hook opcional por celdas dibujada
             didDrawCell: (data) => { }, 
           });
           
