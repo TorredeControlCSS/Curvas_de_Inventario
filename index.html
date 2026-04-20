@@ -176,6 +176,44 @@
     }
     .input-clear > .clear-btn:hover{ opacity: 1; }
 
+        /* --- Feedback (spinner) para botones .btn (Reportes) --- */
+    button.btn{
+      position: relative;
+      transition: background-color .18s ease, border-color .18s ease, box-shadow .18s ease;
+    }
+    
+    button.btn.is-loading{
+      background:#6b7280;
+      border-color:#6b7280 !important;
+      color:#fff !important;
+      pointer-events:none;
+    }
+    
+    button.btn.is-loading::after{
+      content:"";
+      position:absolute; right:12px; top:50%; transform:translateY(-50%);
+      width:14px; height:14px; border-radius:50%;
+      border:2px solid rgba(255,255,255,.35);
+      border-top-color:#fff;
+      animation: spin .8s linear infinite;
+    }
+    
+    button.btn.is-ok{
+      background:#16a34a;
+      border-color:#16a34a !important;
+      color:#fff !important;
+    }
+    
+    button.btn.is-error{
+      background:#dc2626;
+      border-color:#dc2626 !important;
+      color:#fff !important;
+    }
+    
+    button.btn:disabled{
+      opacity:.85;
+      cursor:not-allowed;
+    }
   </style>
 </head>
 <body>
