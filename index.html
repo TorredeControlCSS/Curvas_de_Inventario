@@ -848,7 +848,7 @@ async function init(){
           inv_actual: Number(r[4] || 0),
           recepcion: Number(r[5] || 0),
           transito: Number(r[6] || 0),
-          stock: Number(r[7] || 0),           // <- usa INV_PROY como stock principal del reporte
+          inv_proy: Number(r[7] || 0),           // <- usa INV_PROY como stock principal del reporte
           meses: r[8],
           status: String(r[9]).toUpperCase(),
           demanda: Number(r[10] || 0)
@@ -1013,7 +1013,7 @@ async function init(){
           Math.round(r.inv_actual).toLocaleString(),
           Math.round(r.recepcion).toLocaleString(),
           Math.round(r.transito).toLocaleString(),
-          Math.round(r.stock).toLocaleString(),     // INV_PROY
+          Math.round(r.inv_proy).toLocaleString(),     // INV_PROY
           (r.meses || '') + 'm',
           r.status
         ]);
