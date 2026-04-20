@@ -836,14 +836,18 @@ async function init(){
   });
 
   await run();
-// ======================================================
+
+  // ======================================================
 // REPORTE PDF: INVENTARIO VENCIDO (GLOBAL - CORTE ÚLTIMO)
 // Top 15 + Maestro completo
-// Fuente: API_BASE ?report=expired
 // ======================================================
 const btnExpiredPdf = document.getElementById('btnExpiredPdf');
 if (btnExpiredPdf) {
   btnExpiredPdf.addEventListener('click', async () => {
+    // Estado visual igual que Abastecimiento
+    setBtnState(btnExpiredPdf, 'is-loading');
+    btnExpiredPdf.disabled = true;
+
     try {
       // 1) Traer data global del backend
       const rep = await fetchJSON(API_BASE + '?report=expired&ts=' + Date.now());
@@ -866,35 +870,35 @@ if (btnExpiredPdf) {
         vencido: Number(r[4] || 0) || 0
       }));
 
-      // Filtrar solo los que tienen vencido > 0 (por si llegan ceros)
+      // Solo vencidos > 0
       const itemsPos = items.filter(x => x.vencido > 0);
-
       if (itemsPos.length === 0) {
         alert('El corte no tiene vencidos > 0. (No se genera PDF)');
         return;
       }
 
-      // Orden desc por vencido
+      // Orden desc
       itemsPos.sort((a, b) => b.vencido - a.vencido);
-
       const top15 = itemsPos.slice(0, 15);
 
-      // 3) KPIs
-      const sum = (a) => a.reduce((acc, x) => acc + (Number(x) || 0), 0);
-      const totalVencido = sum(itemsPos.map(x => x.vencido));
+      // KPIs
+      const totalVencido = itemsPos.reduce((acc, x) => acc + x.vencido, 0);
       const nCodigos = itemsPos.length;
       const maxItem = itemsPos[0];
 
-      // 4) PDF base
+      // 3) PDF
       const { jsPDF } = window.jspdf;
       const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
 
-      // Colores (alineados con tu estilo de abastecimiento)
+      // Validación fuerte: si esto falla, antes “parecía que no hacía nada”
+      if (typeof doc.autoTable !== 'function') {
+        throw new Error('autoTable no está disponible. Verifica que jspdf-autotable esté cargado.');
+      }
+
       const azul = [11, 31, 58];
       const rojo = [239, 68, 68];
-      const grisTxt = 70;
 
-      // --- HEADER UNIFICADO (idéntico al de Abastecimiento) ---
+      // Header IDÉNTICO al de Abastecimiento (logo + posiciones)
       const drawHeader = () => {
         const imgEl = document.querySelector('.topbar img');
         if (imgEl) {
@@ -906,34 +910,30 @@ if (btnExpiredPdf) {
             doc.addImage(cvs.toDataURL('image/png'), 'PNG', 14, 10, 15, 15);
           } catch (e) {}
         }
-      
+
         doc.setFont('helvetica', 'bold').setFontSize(20).setTextColor(...azul)
-          .text("Tablero de Vencidos | CEDIS Panamá", 35, 18);
-      
+          .text('Tablero de Vencidos | CEDIS Panamá', 35, 18);
+
         doc.setFont('helvetica', 'normal').setFontSize(10).setTextColor(80)
-          .text(`Corte Datos: ${corte} | Generado: ${new Date().toLocaleDateString()}`, 35, 24);
-      
+          .text(`Corte Datos: ${corte || '—'} | Generado: ${new Date().toLocaleDateString()}`, 35, 24);
+
         doc.setDrawColor(200).line(14, 28, 196, 28);
       };
-      
-      // Página 1
-drawHeader();
 
-      // ---- Caja de criterios
+      // Página 1
+      drawHeader();
+
+      // Caja criterio
       doc.setFillColor(245, 245, 245);
       doc.roundedRect(14, 32, 182, 18, 2, 2, 'F');
-
       doc.setFont('helvetica', 'bold').setFontSize(10).setTextColor(0);
       doc.text('CRITERIO:', 18, 39);
-
       doc.setFont('helvetica', 'normal').setFontSize(9).setTextColor(50);
       doc.text('• Vencido = Unidades vencidas registradas en hoja DataVenc (corte último día).', 18, 45);
 
-      // ---- Tarjetas KPI (simple, 3 tarjetas)
+      // Tarjetas KPI (3)
       const startY = 56;
-      const cardW = 58;
-      const cardH = 22;
-      const gap = 4;
+      const cardW = 58, cardH = 22, gap = 4;
 
       const drawCard = (x, label, value, colorRGB) => {
         doc.setFillColor(...colorRGB);
@@ -946,10 +946,10 @@ drawHeader();
       };
 
       drawCard(14, 'TOTAL VENCIDO', Math.round(totalVencido).toLocaleString(), rojo);
-      drawCard(14 + cardW + gap, 'CÓDIGOS', String(nCodigos), [234, 88, 12]); // naranja
-      drawCard(14 + (cardW + gap) * 2, 'MÁX. VENCIDO', Math.round(maxItem.vencido).toLocaleString(), [59, 130, 246]); // azul claro
+      drawCard(14 + cardW + gap, 'CÓDIGOS', String(nCodigos), [234, 88, 12]);
+      drawCard(14 + (cardW + gap) * 2, 'MÁX. VENCIDO', Math.round(maxItem.vencido).toLocaleString(), [59, 130, 246]);
 
-      // ---- Tabla Top 15
+      // Tabla Top 15
       doc.setFont('helvetica', 'bold').setFontSize(14).setTextColor(...azul);
       doc.text('Top 15 Vencidos', 14, 88);
 
@@ -975,7 +975,7 @@ drawHeader();
         }
       });
 
-      // ---- Maestro completo (puede ir en nuevas páginas)
+      // Maestro completo
       const yAfterTop = doc.lastAutoTable.finalY + 10;
       doc.setFont('helvetica', 'bold').setFontSize(14).setTextColor(...azul);
       doc.text('Listado Maestro (corte)', 14, yAfterTop);
@@ -1000,12 +1000,19 @@ drawHeader();
         }
       });
 
-      // Nombre de archivo
+      // Guardar
       const safeCorte = (corte || 'SIN_CORTE').replace(/[^\d\-]/g, '_');
       doc.save(`Tablero_Vencidos_CEDIS_${safeCorte}.pdf`);
+
+      setBtnState(btnExpiredPdf, 'is-ok');
     } catch (e) {
       console.error(e);
-      alert('Error generando PDF de vencidos (global). Revisa consola.');
+      setBtnState(btnExpiredPdf, 'is-error');
+      alert('Error generando Reporte de Vencidos. Revisa consola.');
+    } finally {
+      // limpiar estado y re-habilitar
+      setTimeout(() => setBtnState(btnExpiredPdf, ''), 900);
+      btnExpiredPdf.disabled = false;
     }
   });
 }
