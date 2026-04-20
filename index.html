@@ -197,7 +197,8 @@
       <button id="btnPdfReport" class="btn" style="border-color:#0b5fff; color:#0b5fff; display:flex; gap:6px; align-items:center;">
         <span>📄</span> Reporte de Abastecimiento
       </button>
-
+      <button id="btnExpiredPdf" class="btn" style="border-color:#ef4444; color:#ef4444; display:flex; gap:6px; align-items:center;">
+      Vencidos (PDF)
       <button id="refreshBtn" class="btn ghost">Actualizar</button>
       <button id="exportPdfBtn" class="btn">Descargar PDF</button>
       <button id="installBtn" class="btn install hidden">Instalar app</button>
@@ -321,6 +322,8 @@ const horizon = (Q)=> Number(Q) > 0 ? LEAD + EXTRA_AFTER_ORDER : LEAD;
 
 let chartInstance=null, deferredPrompt=null;
 let codes=[], sups=[], groups=[];
+let lastSerieForReports = null; 
+// { meta, graphTitle, serie, invHist, invExpired, invAvailable, lastDateStr }
 
 const fmtInt = (n)=> Number(n||0).toLocaleString();
 const fmtPct = (x)=> (Number.isFinite(x)? (Math.round(x*10)/10).toLocaleString(undefined,{maximumFractionDigits:1})+'%' : '–');
@@ -725,7 +728,15 @@ async function init(){
       if (data.subject_code && data.subject_name) graphTitle = `${data.subject_code} — ${data.subject_name}`;
       else if (data.subject_code) graphTitle = `Código: ${data.subject_code}`;
       else graphTitle = data.subject_label || 'Serie seleccionada';
-
+      lastSerieForReports = {
+        meta,
+        graphTitle,
+        serie,
+        invHist,
+        invExpired,
+        invAvailable,
+        lastDateStr
+      };
       $('projTitle').textContent = `Dinámica de proyección (${H} días)`;
 
       const ctx = document.getElementById('chart').getContext('2d');
@@ -825,7 +836,112 @@ async function init(){
   });
 
   await run();
+  // ===============================================
+// REPORTE PDF: INVENTARIO VENCIDO (Serie actual)
+// ===============================================
+const btnExpiredPdf = document.getElementById('btnExpiredPdf');
+if (btnExpiredPdf) {
+  btnExpiredPdf.addEventListener('click', async () => {
+    if (!lastSerieForReports || !lastSerieForReports.serie || !lastSerieForReports.serie.length) {
+      alert('Primero selecciona un suministro y presiona "Mostrar".');
+      return;
+    }
 
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF(); // portrait A4
+    const azul = [11, 31, 58];
+    const rojo = [239, 68, 68];
+
+    const { meta, graphTitle, serie, invHist, invExpired, invAvailable, lastDateStr } = lastSerieForReports;
+
+    // KPIs
+    const sum = (a)=> a.reduce((x,y)=> x + (Number(y)||0), 0);
+    const maxWithIdx = (a)=>{
+      let m = -Infinity, idx = -1;
+      for (let i=0;i<a.length;i++){
+        const v = Number(a[i])||0;
+        if (v > m){ m=v; idx=i; }
+      }
+      return { m, idx };
+    };
+
+    const totalExpired = sum(invExpired);
+    const avgExpired = invExpired.length ? totalExpired / invExpired.length : 0;
+    const lastExpired = Number(invExpired[invExpired.length-1] || 0);
+    const lastTotal = Number(invHist[invHist.length-1] || 0);
+    const lastPct = lastTotal > 0 ? (lastExpired / lastTotal) * 100 : 0;
+
+    const { m: maxExpired, idx: idxMax } = maxWithIdx(invExpired);
+    const maxExpiredDate = (idxMax >= 0 && serie[idxMax]) ? serie[idxMax].fecha : '';
+
+    // Header
+    doc.setFont('helvetica','bold').setFontSize(16).setTextColor(...azul)
+      .text('Reporte de Inventario Vencido', 14, 18);
+
+    doc.setFont('helvetica','normal').setFontSize(10).setTextColor(80)
+      .text(`Serie: ${graphTitle || '—'}`, 14, 24);
+
+    const corte = (meta && meta.max_fecha) ? String(meta.max_fecha) : (lastDateStr || '');
+    doc.text(`Corte Datos: ${corte} | Generado: ${new Date().toLocaleDateString()}`, 14, 29);
+
+    doc.setDrawColor(200).line(14, 32, 196, 32);
+
+    // KPIs box
+    doc.setFillColor(245,245,245);
+    doc.roundedRect(14, 36, 182, 26, 2, 2, 'F');
+
+    doc.setTextColor(0).setFont('helvetica','bold').setFontSize(10).text('KPIs', 18, 44);
+    doc.setFont('helvetica','normal').setFontSize(9).setTextColor(50);
+
+    doc.text(`Vencido total (periodo): ${Math.round(totalExpired).toLocaleString()}`, 18, 50);
+    doc.text(`Promedio vencido/día: ${Math.round(avgExpired).toLocaleString()}`, 18, 55);
+    doc.text(`Último día vencido: ${Math.round(lastExpired).toLocaleString()} (${lastPct.toFixed(1)}%)`, 110, 50);
+    doc.text(`Máximo vencido: ${Math.round(maxExpired).toLocaleString()} en ${maxExpiredDate || '—'}`, 110, 55);
+
+    // Tabla
+    const rows = serie.map((p, i) => {
+      const total = Number(invHist[i] || 0);
+      const exp = Number(invExpired[i] || 0);
+      const avail = Number(invAvailable[i] || 0);
+      const pct = total > 0 ? (exp / total) * 100 : 0;
+      return [
+        p.fecha,
+        Math.round(total).toLocaleString(),
+        Math.round(avail).toLocaleString(),
+        Math.round(exp).toLocaleString(),
+        pct.toFixed(1) + '%'
+      ];
+    });
+
+    doc.setTextColor(...rojo).setFont('helvetica','bold').setFontSize(12)
+      .text('Detalle diario', 14, 72);
+
+    doc.autoTable({
+      startY: 76,
+      head: [['Fecha', 'Total', 'Disponible', 'Vencido', '% Vencido']],
+      body: rows,
+      theme: 'grid',
+      styles: { fontSize: 8, cellPadding: 2 },
+      headStyles: { fillColor: rojo, textColor: 255, fontStyle: 'bold' },
+      columnStyles: {
+        1: { halign:'right' },
+        2: { halign:'right' },
+        3: { halign:'right' },
+        4: { halign:'right' }
+      },
+      didParseCell: (d) => {
+        // Pintar vencido en rojo si > 0
+        if (d.section === 'body' && d.column.index === 3) {
+          const v = Number(String(d.cell.raw).replace(/,/g,'')) || 0;
+          if (v > 0) d.cell.styles.textColor = rojo;
+        }
+      }
+    });
+
+    doc.save(`Inventario_Vencido_${(graphTitle||'serie').replace(/[^\w\-]+/g,'_')}_${corte}.pdf`);
+  });
+}
+  
   // ===============================================
   // REPORTE GERENCIAL (VERSION FINAL - CORREGIDA Y UNIFICADA)
   // ===============================================
