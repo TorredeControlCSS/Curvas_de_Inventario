@@ -994,7 +994,7 @@ if (btnExpiredPdf) {
 
       doc.autoTable({
         startY: 92,
-        head: [['#', 'Código', 'Suministro', 'Grupo', '1ra Fecha', 'Vencido']],
+        head: [['#', 'Código', 'Suministro', 'Grupo', 'F. Vencimiento', 'Vencido']],
         body: top15.map((x, i) => ([
           i + 1,
           x.codigo,
@@ -1011,7 +1011,7 @@ if (btnExpiredPdf) {
           1: { cellWidth: 22 },                   // Código
           2: { cellWidth: 86 },                   // Suministro (la más larga)
           3: { cellWidth: 34 },                   // Grupo
-          4: { cellWidth: 22, halign: 'center' }, // 1ra Fecha
+          4: { cellWidth: 22, halign: 'center' }, // F. Vencimiento
           5: { cellWidth: 18, halign: 'right' }   // Vencido
         }
       });
@@ -1023,7 +1023,7 @@ if (btnExpiredPdf) {
 
       doc.autoTable({
         startY: yAfterTop + 4,
-        head: [['Código', 'Suministro', 'Grupo', '1ra Fecha', 'Vencido']],
+        head: [['Código', 'Suministro', 'Grupo', 'F. Vencimiento', 'Vencido']],
         body: itemsPos.map(x => ([
           x.codigo,
           x.suministro,
@@ -1038,7 +1038,7 @@ if (btnExpiredPdf) {
           0: { cellWidth: 22 },                   // Código
           1: { cellWidth: 98 },                   // Suministro
           2: { cellWidth: 34 },                   // Grupo
-          3: { cellWidth: 22, halign: 'center' }, // 1ra Fecha
+          3: { cellWidth: 22, halign: 'center' }, // F. Vencimiento
           4: { cellWidth: 22, halign: 'right' }   // Vencido
         }
       });
