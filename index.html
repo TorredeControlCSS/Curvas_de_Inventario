@@ -912,14 +912,15 @@ async function init(){
 
         // === FICHA TÉCNICA (Espacio reservado) ===
         doc.setFillColor(245, 245, 245);
-        doc.roundedRect(14, 32, 182, 16, 1, 1, 'F'); // Más alto para que quepa texto
+        doc.roundedRect(14, 32, 182, 24, 1, 1, 'F'); // Más alto para que quepa texto
         
         doc.setFontSize(8).setTextColor(0).setFont('helvetica','bold');
         doc.text("CRITERIOS DE CLASIFICACIÓN:", 16, 37);
         
         doc.setFontSize(7).setTextColor(50).setFont('helvetica','normal');
         doc.text("• Demanda Mensual = Mediana(Consumo Diario ult. 90 días) x 30.", 16, 41);
-        doc.text("• Cobertura (Meses) = Stock Actual / Demanda Mensual.", 16, 45);
+        doc.text("• Inventario Proyectado = Inv. Actual + Recepción (≤7d) + Tránsito (ETA ≥ hoy).", 16, 45);
+        doc.text("• Cobertura (Meses) = Inventario Proyectado / Demanda Mensual.", 16, 49);
         
         // Columna 2 rangos
         const col2 = 110;
@@ -927,7 +928,7 @@ async function init(){
         doc.text("• Óptimo: 4-12m | Exceso: >12m", col2, 41);
         
         // --- KPIs ---
-        const startY = 55; // Bajamos para no solapar
+        const startY = 63; // Bajamos para no solapar
         const drawKpi = (x, label, count, color, rule) => {
           doc.setFillColor(...color);
           doc.roundedRect(x, startY, 34, 32, 2, 2, 'F');
@@ -1006,7 +1007,15 @@ async function init(){
         
         // Helper para filas estándar
         const mapStandard = (l) => l.map(r => [
-          r.cod, r.sum.substring(0,40), Math.round(r.demanda).toLocaleString(), Math.round(r.stock).toLocaleString(), r.meses+'m', r.status
+          r.cod,
+          (r.sum || '').substring(0,40),
+          Math.round(r.demanda).toLocaleString(),
+          Math.round(r.inv_actual).toLocaleString(),
+          Math.round(r.recepcion).toLocaleString(),
+          Math.round(r.transito).toLocaleString(),
+          Math.round(r.stock).toLocaleString(),     // INV_PROY
+          (r.meses || '') + 'm',
+          r.status
         ]);
         
         // Helper imprimir tabla (inteligente)
@@ -1025,12 +1034,19 @@ async function init(){
 
           doc.autoTable({
             startY: cursorY,
-            head: [['Código','Renglón','Demanda','Stock','Cob.','Estado']],
+            head: [['Código','Renglón','Demanda','Inv.Act','Recep','Tránsito','Inv.Proy','Cob.','Estado']],
             body: rows,
             theme: 'grid',
-            styles: { fontSize: 8, cellPadding: 2 },
+            styles: { fontSize: 7, cellPadding: 1.5 },
             headStyles: { fillColor: color, textColor: 255, fontStyle:'bold' },
-            columnStyles: { 2:{halign:'right'}, 3:{halign:'right'}, 5:{fontStyle:'bold'} },
+            columnStyles: {
+              2: { halign: 'right' }, // Demanda
+              3: { halign: 'right' }, // Inv.Act
+              4: { halign: 'right' }, // Recep
+              5: { halign: 'right' }, // Tránsito
+              6: { halign: 'right' }, // Inv.Proy
+              8: { fontStyle: 'bold' } // Estado
+            },
             margin: { bottom: 20, top: 40 }, // Top por si rompe página
             didDrawPage: (d) => {
               // Si rompe página, volver a dibujar header
@@ -1041,8 +1057,9 @@ async function init(){
               if (d.cursor.y < 50) drawHeader(); 
             },
             didParseCell: (d) => {
-              if(d.section==='body' && d.column.index===5 && checkStatus) d.cell.styles.textColor = color;
-            },
+              if (d.section === 'body' && d.column.index === 8 && checkStatus) {
+                d.cell.styles.textColor = color;
+              }
             // IMPORTANTE: Actualizar cursor global al terminar
             didDrawCell: (data) => { }, 
           });
@@ -1075,19 +1092,27 @@ async function init(){
         
         doc.autoTable({
           startY: 45,
-          head: [['Código','Renglón','Demanda','Stock','Meses','Estado']],
+          head: [['Código','Renglón','Demanda','Inv.Act','Recep','Tránsito','Inv.Proy','Cob.','Estado']],
           body: mapStandard(data), // Usamos todos los datos
           theme: 'plain',
           styles: { fontSize: 7, cellPadding: 2, lineColor:220, lineWidth:0.1 },
           headStyles: { fillColor:[240,240,240], textColor:50 },
-          columnStyles: { 2:{halign:'right'}, 3:{halign:'right'}, 5:{fontStyle:'bold'} },
+          columnStyles: {
+            2:{halign:'right'},
+            3:{halign:'right'},
+            4:{halign:'right'},
+            5:{halign:'right'},
+            6:{halign:'right'},
+            8:{fontStyle:'bold'}
+          },
           margin: { top: 40 },
           didDrawPage: () => drawHeader(),
           didParseCell: (d) => {
-            if(d.section==='body' && d.column.index===5) {
-              if(d.cell.raw.includes('AGOTADO')) d.cell.styles.textColor=[200,0,0];
-              else if(d.cell.raw.includes('CRITICO')) d.cell.styles.textColor=[234,88,12];
-              else if(d.cell.raw.includes('OPTIMO')) d.cell.styles.textColor=[22,163,74];
+            if(d.section==='body' && d.column.index===8) {
+              const s = String(d.cell.raw || '');
+              if (s.includes('AGOTADO')) d.cell.styles.textColor=[200,0,0];
+              else if (s.includes('CRITICO')) d.cell.styles.textColor=[234,88,12];
+              else if (s.includes('OPTIMO')) d.cell.styles.textColor=[22,163,74];
             }
           }
         });
