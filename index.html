@@ -1004,14 +1004,15 @@ if (btnExpiredPdf) {
           Math.round(x.vencido).toLocaleString()
         ])),
         theme: 'grid',
-        styles: { fontSize: 8, cellPadding: 2 },
+        styles: { fontSize: 8, cellPadding: 2, overflow: 'linebreak' },
         headStyles: { fillColor: azul, textColor: 255, fontStyle: 'bold' },
         columnStyles: {
-          0: { halign: 'right', cellWidth: 8 },
-          1: { cellWidth: 22 },
-          2: { cellWidth: 88 },
-          3: { cellWidth: 30 },
-          4: { halign: 'right', cellWidth: 24 }
+          0: { halign: 'right', cellWidth: 8 },   // #
+          1: { cellWidth: 22 },                   // Código
+          2: { cellWidth: 86 },                   // Suministro (la más larga)
+          3: { cellWidth: 34 },                   // Grupo
+          4: { cellWidth: 22, halign: 'center' }, // 1ra Fecha
+          5: { cellWidth: 18, halign: 'right' }   // Vencido
         }
       });
 
@@ -1031,13 +1032,14 @@ if (btnExpiredPdf) {
           Math.round(x.vencido).toLocaleString()
         ])),
         theme: 'grid',
-        styles: { fontSize: 8, cellPadding: 2 },
+        styles: { fontSize: 8, cellPadding: 2, overflow: 'linebreak' },
         headStyles: { fillColor: [80, 80, 80], textColor: 255, fontStyle: 'bold' },
         columnStyles: {
-          0: { cellWidth: 24 },
-          1: { cellWidth: 108 },
-          2: { cellWidth: 32 },
-          3: { halign: 'right', cellWidth: 24 }
+          0: { cellWidth: 22 },                   // Código
+          1: { cellWidth: 98 },                   // Suministro
+          2: { cellWidth: 34 },                   // Grupo
+          3: { cellWidth: 22, halign: 'center' }, // 1ra Fecha
+          4: { cellWidth: 22, halign: 'right' }   // Vencido
         }
       });
 
