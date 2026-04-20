@@ -236,7 +236,8 @@
         <span>📄</span> Reporte de Abastecimiento
       </button>
       <button id="btnExpiredPdf" class="btn" style="border-color:#ef4444; color:#ef4444; display:flex; gap:6px; align-items:center;">
-      Reporte de Vencidos</button>
+        <span>🔴</span> Reporte de Vencidos
+      </button>
       <button id="refreshBtn" class="btn ghost">Actualizar</button>
       <button id="exportPdfBtn" class="btn">Descargar PDF</button>
       <button id="installBtn" class="btn install hidden">Instalar app</button>
@@ -1079,8 +1080,7 @@ if (btnExpiredPdf) {
   const btnPdfReport = document.getElementById('btnPdfReport');
   if (btnPdfReport) {
     btnPdfReport.addEventListener('click', async () => {
-      const originalText = btnPdfReport.innerHTML;
-      btnPdfReport.innerHTML = '⏳ Generando...';
+      setBtnState(btnPdfReport, 'is-loading');
       btnPdfReport.disabled = true;
 
       try {
@@ -1379,7 +1379,8 @@ if (btnExpiredPdf) {
         console.error(e);
         alert('Error: ' + e.message);
       } finally {
-        btnPdfReport.innerHTML = originalText;
+        setBtnState(btnPdfReport, 'is-ok');
+        setTimeout(() => setBtnState(btnPdfReport, ''), 900);
         btnPdfReport.disabled = false;
       }
     });
