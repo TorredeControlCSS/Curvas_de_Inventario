@@ -1436,6 +1436,9 @@ function generarTableroVencimientosPDF(rep){
   const NEVER_SHIP_THRESHOLD_DAYS = -365;
   const PAGE_OVERFLOW_Y = 240;
   const NEW_PAGE_START_Y = 34;
+  const PAGE1_DONUT_MIN_Y = 176;
+  const DEFAULT_KPI_BOTTOM_Y = 160;
+  const DONUT_CANVAS_SIZE = 420;
 
   const normStatus = (r) => String(r?.status || '').trim().toUpperCase();
   const valorLote = (r) => {
@@ -1563,6 +1566,7 @@ function generarTableroVencimientosPDF(rep){
         3: { cellWidth: 34, halign: 'right' },
         4: { cellWidth: 30, halign: 'right' }
       },
+      margin: { top: 38 },
       didParseCell: (d) => {
         if (d.section === 'body' && d.column.index === 0) d.cell.text = [`   ${String(d.cell.raw || '')}`];
       },
@@ -1588,7 +1592,14 @@ function generarTableroVencimientosPDF(rep){
     return 'SIN_RIESGO';
   };
   const cardCounters = { VENCIDO: 0, SE_VENCERA: 0, INCUMPLE_FMD: 0, NUNCA_DESPACHARA: 0, SIN_RIESGO: 0 };
-  rows.forEach((r) => { cardCounters[cardClass(r)] += 1; });
+  const cardQty = { VENCIDO: 0, SE_VENCERA: 0, INCUMPLE_FMD: 0, NUNCA_DESPACHARA: 0, SIN_RIESGO: 0 };
+  const cardValor = { VENCIDO: 0, SE_VENCERA: 0, INCUMPLE_FMD: 0, NUNCA_DESPACHARA: 0, SIN_RIESGO: 0 };
+  rows.forEach((r) => {
+    const cls = cardClass(r);
+    cardCounters[cls] += 1;
+    cardQty[cls] += n(r?.cantidad);
+    cardValor[cls] += valorLote(r);
+  });
   let totalCards = totalRep;
   const sumCards = Object.values(cardCounters).reduce((a, b) => a + b, 0);
   if (totalCards < sumCards) totalCards = sumCards;
@@ -1625,39 +1636,42 @@ function generarTableroVencimientosPDF(rep){
   doc.text('CRITERIOS DE CLASIFICACIÓN:', 17, 38);
   doc.setTextColor(35).setFont('helvetica', 'normal').setFontSize(8.1);
   doc.text([
-    '• FMD (Fecha Máxima de Despacho) = Fecha_VTO - 60 días (MED) o - 30 días (LAB/MQ). Es la fecha límite para despachar el lote garantizando vida útil al paciente.',
-    '• Demanda Mensual = Mediana del consumo diario (ult. 90 días) x 30.',
-    '• Cobertura del lote (meses) = Cantidad del lote / Demanda Mensual del código.',
-    '• STATUS se asigna comparando dias_a_FMD y dias_a_VTO: VENCIDO (<0), SE VENCERA (0-30), INCUMPLE FMD (dias_a_FMD <= 0 sin vencer), SIN RIESGO (>90 dias_a_FMD).',
-    '• Orden FEFO (First Expired First Out): lotes ordenados por fecha VTO ascendente.',
-    '• Acción sugerida: BAJA ADMINISTRATIVA | DESPACHO URGENTE | REDISTRIBUIR | MONITOREAR.'
+    '• FMD (Fecha Máxima de Despacho): fecha límite para despachar un lote antes del vencimiento.',
+    '• Demanda Mensual: consumo promedio mensual del código. Cobertura: meses que cubre el lote (Cantidad / Demanda Mensual).',
+    `• STATUS del tablero: VENCIDO, SE VENCERA (visible como "SE VENCERÁ"), INCUMPLE FMD, NUNCA DESPACHARÁ (más de ${Math.abs(NEVER_SHIP_THRESHOLD_DAYS)} días vencido) y SIN RIESGO.`,
+    '• FEFO: se usa primero el lote que vence antes (fecha VTO más cercana).',
+    '• Umbrales de acción (según días a VTO): BAJA ADMINISTRATIVA (<0), DESPACHO URGENTE (0-30), REDISTRIBUIR (31-90), MONITOREAR (>90).'
   ], 17, 42, { maxWidth: 176, lineHeightFactor: 1.2 });
 
   const cardY = 86;
   const cardGap = 3;
   const cardW = (182 - (cardGap * 4)) / 5;
-  const cardH = 26;
+  const cardH = 38;
+  const CARD_TEXT_Y = { count: 7, label: 12.5, lots: 17, units: 22, value: 27, pct: 32 };
   cardItems.forEach((item, idx) => {
     const x = 14 + idx * (cardW + cardGap);
     doc.setFillColor(...item.color);
     doc.rect(x, cardY, cardW, cardH, 'F');
-    doc.setTextColor(255).setFont('helvetica', 'bold').setFontSize(11);
-    doc.text(fmtInt(cardCounters[item.key]), x + (cardW / 2), cardY + 7, { align: 'center' });
-    doc.setFontSize(7.2).text(item.label, x + (cardW / 2), cardY + 13, { align: 'center' });
-    doc.setFontSize(7).text('lotes', x + (cardW / 2), cardY + 18, { align: 'center' });
-    doc.setFontSize(7).text(fmtPct(pctRounded[idx]), x + (cardW / 2), cardY + 23, { align: 'center' });
+    doc.setTextColor(255).setFont('helvetica', 'bold').setFontSize(10.5);
+    doc.text(fmtInt(cardCounters[item.key]), x + (cardW / 2), cardY + CARD_TEXT_Y.count, { align: 'center' });
+    doc.setFontSize(6.6).text(item.label, x + (cardW / 2), cardY + CARD_TEXT_Y.label, { align: 'center' });
+    doc.setFontSize(6.2).text('lotes', x + (cardW / 2), cardY + CARD_TEXT_Y.lots, { align: 'center' });
+    doc.setFontSize(6.2).text(`${fmtInt(cardQty[item.key])} unid`, x + (cardW / 2), cardY + CARD_TEXT_Y.units, { align: 'center' });
+    doc.setFontSize(6.2).text(`B/. ${fmtMoney(cardValor[item.key])}`, x + (cardW / 2), cardY + CARD_TEXT_Y.value, { align: 'center' });
+    doc.setFontSize(6.2).text(fmtPct(pctRounded[idx]), x + (cardW / 2), cardY + CARD_TEXT_Y.pct, { align: 'center' });
   });
 
   doc.setTextColor(...azul).setFont('helvetica', 'bold').setFontSize(12);
-  doc.text('KPIs', 14, 118);
+  doc.text('KPIs', 14, 131);
   doc.autoTable({
-    startY: 121,
+    startY: 134,
     head: [['Indicador', 'Valor']],
     body: [
-      ['Valor total en riesgo (B/.) — Suma Cantidad x Costo de lotes con STATUS distinto de SIN RIESGO', `B/. ${fmtMoney(valorTotalRiesgo)}`],
-      ['% inventario en riesgo — Cantidad en riesgo / Cantidad total del corte x 100', fmtPct(qtyTotal > 0 ? (qtyRiesgo * 100 / qtyTotal) : 0)],
-      ['Días promedio al vencimiento (ponderado por cantidad) — Promedio ponderado de dias_a_vto solo para lotes activos (dias_a_vto >= 0)', fmtNum(diasPromPond)],
-      ['Cumplimiento FMD % — Lotes con dias_a_fmd > 0 / Total lotes con fecha VTO x 100', fmtPct(cumplimientoFmd)]
+      ['Valor en riesgo', `B/. ${fmtMoney(valorTotalRiesgo)}`],
+      ['% inventario en riesgo', fmtPct(qtyTotal > 0 ? (qtyRiesgo * 100 / qtyTotal) : 0)],
+      ['Cantidad en riesgo (unid.)', fmtInt(qtyRiesgo)],
+      ['Días prom. al vencimiento', `${fmtNum(diasPromPond)} días`],
+      ['Cumplimiento FMD', fmtPct(cumplimientoFmd)]
     ],
     theme: 'grid',
     styles: { fontSize: 8.2, cellPadding: 2.6, overflow: 'linebreak', font: 'helvetica' },
@@ -1666,8 +1680,49 @@ function generarTableroVencimientosPDF(rep){
       0: { cellWidth: 138, overflow: 'linebreak' },
       1: { cellWidth: 44, halign: 'right' }
     },
+    margin: { top: 38 },
     didDrawPage: () => drawHeader()
   });
+
+  let donutDataUrl = null;
+  const kpiTableFinalY = doc.lastAutoTable?.finalY || DEFAULT_KPI_BOTTOM_Y;
+  try {
+    if (typeof window.Chart === 'function') {
+      const donutCanvas = document.createElement('canvas');
+      donutCanvas.width = DONUT_CANVAS_SIZE;
+      donutCanvas.height = DONUT_CANVAS_SIZE;
+      const donutCtx = donutCanvas.getContext('2d');
+      if (!donutCtx) throw new Error('No se pudo obtener contexto 2D del canvas. Verifique compatibilidad del navegador.');
+      const donutChart = new window.Chart(donutCtx, {
+        type: 'doughnut',
+        data: {
+          labels: cardItems.map((c) => c.label),
+          datasets: [{
+            data: cardItems.map((c) => cardCounters[c.key]),
+            backgroundColor: cardItems.map((c) => `rgb(${c.color[0]}, ${c.color[1]}, ${c.color[2]})`),
+            borderColor: '#ffffff',
+            borderWidth: 2
+          }]
+        },
+        options: {
+          responsive: false,
+          animation: false,
+          plugins: { legend: { display: false }, tooltip: { enabled: false } },
+          cutout: '58%'
+        }
+      });
+      donutChart.update();
+      donutDataUrl = donutCanvas.toDataURL('image/png');
+      donutChart.destroy();
+    }
+  } catch (e) { console.warn('No se pudo generar gráfico de dona para el PDF:', e); }
+
+  if (donutDataUrl) {
+    const donutY = Math.max(PAGE1_DONUT_MIN_Y, kpiTableFinalY + 4);
+    doc.setTextColor(...azul).setFont('helvetica', 'bold').setFontSize(11);
+    doc.text('Distribución de lotes por estado', 14, donutY);
+    try { doc.addImage(donutDataUrl, 'PNG', 67, donutY + 3, 74, 74); } catch (e) { console.warn('No se pudo insertar gráfico de dona en PDF:', e); }
+  }
 
   doc.addPage();
   drawHeader();
@@ -1733,7 +1788,7 @@ function generarTableroVencimientosPDF(rep){
 
     doc.autoTable({
       startY: y + 2,
-      head: [['Código', 'Suministro', 'Lote', 'Vence en', 'Días a VTO', 'Demanda/mes', 'Cobertura lote (m)', 'Valor B/.', 'Criterio', 'Acción sugerida']],
+      head: [['Código', 'Suministro', 'Lote', 'Fecha VTO', 'FMD', 'Días FMD', 'Días VTO', 'Cantidad', 'Demanda/mes', 'Cobertura (m)', 'Valor B/.', 'Criterio', 'Acción sugerida']],
       body: criticos.map((r) => {
         const dm = demandaMensual(r);
         return [
@@ -1741,7 +1796,10 @@ function generarTableroVencimientosPDF(rep){
           String(r?.suministro || ''),
           String(r?.lote || ''),
           String(r?.fecha_vto || ''),
+          String(r?.fmd || ''),
+          fmtInt(r?.dias_a_fmd),
           fmtInt(r?.dias_a_vto),
+          fmtInt(r?.cantidad),
           fmtDemand(dm),
           fmtCov(coberturaLote(r, dm)),
           fmtMoney(valorLote(r)),
@@ -1753,19 +1811,23 @@ function generarTableroVencimientosPDF(rep){
       styles: { fontSize: 6.7, cellPadding: 1.8, overflow: 'linebreak', font: 'helvetica' },
       headStyles: { fillColor: azul, textColor: 255, fontStyle: 'bold', font: 'helvetica' },
       columnStyles: {
-        0: { cellWidth: 15 },
-        1: { cellWidth: 42, overflow: 'linebreak' },
-        2: { cellWidth: 16 },
-        3: { cellWidth: 16 },
-        4: { cellWidth: 14, halign: 'right' },
-        5: { cellWidth: 16, halign: 'right' },
-        6: { cellWidth: 18, halign: 'right' },
-        7: { cellWidth: 17, halign: 'right' },
-        8: { cellWidth: 15 },
-        9: { cellWidth: 13, halign: 'center' }
+        0: { cellWidth: 11 },
+        1: { cellWidth: 26, overflow: 'linebreak' },
+        2: { cellWidth: 11 },
+        3: { cellWidth: 14 },
+        4: { cellWidth: 14 },
+        5: { cellWidth: 10, halign: 'right' },
+        6: { cellWidth: 10, halign: 'right' },
+        7: { cellWidth: 12, halign: 'right' },
+        8: { cellWidth: 14, halign: 'right' },
+        9: { cellWidth: 14, halign: 'right' },
+        10: { cellWidth: 12, halign: 'right' },
+        11: { cellWidth: 17, overflow: 'linebreak' },
+        12: { cellWidth: 17, halign: 'center' }
       },
+      margin: { top: 38 },
       didParseCell: (d) => {
-        if (d.section === 'body' && d.column.index === 9) {
+        if (d.section === 'body' && d.column.index === 12) {
           const a = String(d.cell.raw || '');
           d.cell.styles.fillColor = colorAccion(a);
           d.cell.styles.textColor = [255, 255, 255];
@@ -1831,6 +1893,7 @@ function generarTableroVencimientosPDF(rep){
         10: { cellWidth: 14, halign: 'right' },
         11: { cellWidth: 9, halign: 'center' }
       },
+      margin: { top: 38 },
       didParseCell: (d) => {
         if (d.section === 'body' && d.column.index === 11) {
           const color = colorStatus({ status: d.cell.raw });
