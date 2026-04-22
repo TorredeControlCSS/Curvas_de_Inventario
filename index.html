@@ -235,7 +235,7 @@
       <button id="btnPdfReport" class="btn" style="border-color:#0b5fff; color:#0b5fff; display:flex; gap:6px; align-items:center;">
         <span>📄</span> Reporte de Abastecimiento
       </button>
-      <button id="btnVencimientosPdf" class="btn" style="border-color:#f97316; color:#f97316; display:flex; gap:6px; align-items:center;">
+      <button id="btnVencimientosPdf" class="btn" aria-label="Generar reporte PDF del tablero de vencimientos" style="border-color:#f97316; color:#f97316; display:flex; gap:6px; align-items:center;">
         <span>📋</span> Tablero de Vencimientos
       </button>
       <button id="btnExpiredPdf" class="btn" style="border-color:#ef4444; color:#ef4444; display:flex; gap:6px; align-items:center;">
@@ -1421,9 +1421,11 @@ function generarTableroVencimientosPDF(rep){
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   if (typeof doc.autoTable !== 'function') throw new Error('autoTable no está disponible.');
 
+  const NEVER_DISPATCH_DAYS_THRESHOLD = -365;
   const azul = [11, 31, 58];
   const rows = Array.isArray(rep?.rows) ? rep.rows : [];
-  const corte = String(rows[0]?.fecha_corte || '').slice(0, 10) || new Date().toISOString().slice(0, 10);
+  const firstRow = rows.length > 0 ? rows[0] : null;
+  const corte = String(firstRow?.fecha_corte || '').slice(0, 10) || new Date().toISOString().slice(0, 10);
   const hoy = new Date().toISOString().slice(0, 10);
 
   const n = (v) => Number(v || 0) || 0;
@@ -1433,8 +1435,8 @@ function generarTableroVencimientosPDF(rep){
   const sumPesoDias = rows.reduce((a, r) => a + (n(r.dias_a_vto) * n(r.cantidad)), 0);
   const promDiasPond = qtyTotal > 0 ? (sumPesoDias / qtyTotal) : 0;
   const withFechaVto = rows.filter(r => String(r.fecha_vto || '').trim() !== '');
-  const cumpleFmd = withFechaVto.filter(r => n(r.dias_a_fmd) > 0).length;
-  const cumplimientoFmdPct = withFechaVto.length ? (cumpleFmd * 100 / withFechaVto.length) : 0;
+  const cumpleFmdCount = withFechaVto.filter(r => n(r.dias_a_fmd) > 0).length;
+  const cumplimientoFmdPct = withFechaVto.length ? (cumpleFmdCount * 100 / withFechaVto.length) : 0;
 
   const kpi = {
     vencido: rows.filter(r => String(r.status || '').toUpperCase() === 'VENCIDO').length,
@@ -1443,7 +1445,7 @@ function generarTableroVencimientosPDF(rep){
       return st === 'CRITICO' || st === 'RIESGO';
     }).length,
     incumpleFmd: rows.filter(r => n(r.dias_a_fmd) <= 0 && String(r.status || '').toUpperCase() !== 'VENCIDO').length,
-    nuncaDespachara: rows.filter(r => n(r.dias_a_vto) < -365).length,
+    nuncaDespachara: rows.filter(r => n(r.dias_a_vto) < NEVER_DISPATCH_DAYS_THRESHOLD).length,
     sinRiesgo: rows.filter(r => String(r.status || '').toUpperCase() === 'OK').length
   };
 
@@ -1469,14 +1471,6 @@ function generarTableroVencimientosPDF(rep){
   const fmtNum = (v) => n(v).toLocaleString('es-PA', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
   const fmtMoney = (v) => n(v).toLocaleString('es-PA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const fmtPct = (v) => `${n(v).toFixed(1)}%`;
-  const estadoColor = (st) => {
-    const s = String(st || '').toUpperCase();
-    if (s === 'VENCIDO') return [239, 68, 68];
-    if (s === 'CRITICO') return [249, 115, 22];
-    if (s === 'RIESGO') return [234, 179, 8];
-    if (s === 'ALERTA') return [245, 158, 11];
-    return [34, 197, 94];
-  };
 
   // Página 1: Resumen ejecutivo
   drawHeader();
@@ -1591,8 +1585,10 @@ function generarTableroVencimientosPDF(rep){
         else d.cell.styles.textColor = [31, 41, 55];
       }
       if (d.section === 'body' && d.column.index === 6) {
-        const row = top20[d.row.index];
-        d.cell.styles.textColor = estadoColor(row?.status);
+        const dias = Number(String(d.row.raw?.[6] || '').replace(/,/g, ''));
+        d.cell.styles.textColor = Number.isFinite(dias)
+          ? (dias < 0 ? [239, 68, 68] : dias <= 30 ? [234, 88, 12] : [22, 163, 74])
+          : [31, 41, 55];
       }
     }
   });
