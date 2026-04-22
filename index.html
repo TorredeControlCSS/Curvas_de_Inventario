@@ -1638,7 +1638,7 @@ function generarTableroVencimientosPDF(rep){
   doc.text([
     '• FMD (Fecha Máxima de Despacho): fecha límite para despachar un lote antes del vencimiento.',
     '• Demanda Mensual: consumo promedio mensual del código. Cobertura: meses que cubre el lote (Cantidad / Demanda Mensual).',
-    `• STATUS del tablero: VENCIDO, SE VENCERÁ (clave técnica SE_VENCERA), INCUMPLE FMD, NUNCA DESPACHARÁ (más de ${Math.abs(NEVER_SHIP_THRESHOLD_DAYS)} días vencido) y SIN RIESGO.`,
+    `• STATUS del tablero: VENCIDO, SE VENCERÁ, INCUMPLE FMD, NUNCA DESPACHARÁ (más de ${Math.abs(NEVER_SHIP_THRESHOLD_DAYS)} días vencido) y SIN RIESGO.`,
     '• FEFO: se usa primero el lote que vence antes (fecha VTO más cercana).',
     '• Umbrales de acción (según días a VTO): BAJA ADMINISTRATIVA (<0), DESPACHO URGENTE (0-30), REDISTRIBUIR (31-90), MONITOREAR (>90).'
   ], 17, 42, { maxWidth: 176, lineHeightFactor: 1.2 });
@@ -1647,17 +1647,18 @@ function generarTableroVencimientosPDF(rep){
   const cardGap = 3;
   const cardW = (182 - (cardGap * 4)) / 5;
   const cardH = 38;
+  const CARD_TEXT_Y = { count: 7, label: 12.5, lots: 17, units: 22, value: 27, pct: 32 };
   cardItems.forEach((item, idx) => {
     const x = 14 + idx * (cardW + cardGap);
     doc.setFillColor(...item.color);
     doc.rect(x, cardY, cardW, cardH, 'F');
     doc.setTextColor(255).setFont('helvetica', 'bold').setFontSize(10.5);
-    doc.text(fmtInt(cardCounters[item.key]), x + (cardW / 2), cardY + 7, { align: 'center' });
-    doc.setFontSize(6.6).text(item.label, x + (cardW / 2), cardY + 12.5, { align: 'center' });
-    doc.setFontSize(6.2).text('lotes', x + (cardW / 2), cardY + 17, { align: 'center' });
-    doc.setFontSize(6.2).text(`${fmtInt(cardQty[item.key])} unid`, x + (cardW / 2), cardY + 22, { align: 'center' });
-    doc.setFontSize(6.2).text(`B/. ${fmtMoney(cardValor[item.key])}`, x + (cardW / 2), cardY + 27, { align: 'center' });
-    doc.setFontSize(6.2).text(fmtPct(pctRounded[idx]), x + (cardW / 2), cardY + 32, { align: 'center' });
+    doc.text(fmtInt(cardCounters[item.key]), x + (cardW / 2), cardY + CARD_TEXT_Y.count, { align: 'center' });
+    doc.setFontSize(6.6).text(item.label, x + (cardW / 2), cardY + CARD_TEXT_Y.label, { align: 'center' });
+    doc.setFontSize(6.2).text('lotes', x + (cardW / 2), cardY + CARD_TEXT_Y.lots, { align: 'center' });
+    doc.setFontSize(6.2).text(`${fmtInt(cardQty[item.key])} unid`, x + (cardW / 2), cardY + CARD_TEXT_Y.units, { align: 'center' });
+    doc.setFontSize(6.2).text(`B/. ${fmtMoney(cardValor[item.key])}`, x + (cardW / 2), cardY + CARD_TEXT_Y.value, { align: 'center' });
+    doc.setFontSize(6.2).text(fmtPct(pctRounded[idx]), x + (cardW / 2), cardY + CARD_TEXT_Y.pct, { align: 'center' });
   });
 
   doc.setTextColor(...azul).setFont('helvetica', 'bold').setFontSize(12);
