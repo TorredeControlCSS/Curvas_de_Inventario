@@ -1436,6 +1436,7 @@ function generarTableroVencimientosPDF(rep){
   const NEVER_SHIP_THRESHOLD_DAYS = -365;
   const PAGE_OVERFLOW_Y = 240;
   const NEW_PAGE_START_Y = 34;
+  const PAGE1_DONUT_MIN_Y = 176;
 
   const normStatus = (r) => String(r?.status || '').trim().toUpperCase();
   const valorLote = (r) => {
@@ -1635,9 +1636,9 @@ function generarTableroVencimientosPDF(rep){
   doc.text([
     '• FMD (Fecha Máxima de Despacho): fecha límite para despachar un lote antes del vencimiento.',
     '• Demanda Mensual: consumo promedio mensual del código. Cobertura: meses que cubre el lote (Cantidad / Demanda Mensual).',
-    '• STATUS por días a vencimiento y FMD: VENCIDO (<0), CRÍTICO (0-30), RIESGO (31-90), ALERTA (91-180), SIN RIESGO (>180 y cumple FMD).',
+    '• STATUS del tablero: VENCIDO (días a VTO < 0), SE VENCERÁ (0-30 días), INCUMPLE FMD (días a FMD <= 0), NUNCA DESPACHARÁ (muy vencido), SIN RIESGO.',
     '• FEFO: se usa primero el lote que vence antes (fecha VTO más cercana).',
-    '• Umbrales de acción: BAJA ADMINISTRATIVA (<0), DESPACHO URGENTE (0-30), REDISTRIBUIR (31-90), MONITOREAR (>90).'
+    '• Umbrales de acción (según días a VTO): BAJA ADMINISTRATIVA (<0), DESPACHO URGENTE (0-30), REDISTRIBUIR (31-90), MONITOREAR (>90).'
   ], 17, 42, { maxWidth: 176, lineHeightFactor: 1.2 });
 
   const cardY = 86;
@@ -1713,7 +1714,7 @@ function generarTableroVencimientosPDF(rep){
 
   if (donutDataUrl) {
     const kpiBottomY = doc.lastAutoTable?.finalY || 160;
-    const donutY = Math.max(176, kpiBottomY + 4);
+    const donutY = Math.max(PAGE1_DONUT_MIN_Y, kpiBottomY + 4);
     doc.setTextColor(...azul).setFont('helvetica', 'bold').setFontSize(11);
     doc.text('Distribución de lotes por estado', 14, donutY);
     try { doc.addImage(donutDataUrl, 'PNG', 67, donutY + 3, 74, 74); } catch (_) {}
