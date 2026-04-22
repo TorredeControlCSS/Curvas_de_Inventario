@@ -1691,6 +1691,7 @@ function generarTableroVencimientosPDF(rep){
       donutCanvas.width = DONUT_CANVAS_SIZE;
       donutCanvas.height = DONUT_CANVAS_SIZE;
       const donutCtx = donutCanvas.getContext('2d');
+      if (!donutCtx) throw new Error('No se pudo obtener contexto 2D del canvas.');
       const donutChart = new window.Chart(donutCtx, {
         type: 'doughnut',
         data: {
