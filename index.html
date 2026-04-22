@@ -1437,6 +1437,8 @@ function generarTableroVencimientosPDF(rep){
   const PAGE_OVERFLOW_Y = 240;
   const NEW_PAGE_START_Y = 34;
   const PAGE1_DONUT_MIN_Y = 176;
+  const DEFAULT_KPI_BOTTOM_Y = 160;
+  const DONUT_CANVAS_SIZE = 420;
 
   const normStatus = (r) => String(r?.status || '').trim().toUpperCase();
   const valorLote = (r) => {
@@ -1636,7 +1638,7 @@ function generarTableroVencimientosPDF(rep){
   doc.text([
     '• FMD (Fecha Máxima de Despacho): fecha límite para despachar un lote antes del vencimiento.',
     '• Demanda Mensual: consumo promedio mensual del código. Cobertura: meses que cubre el lote (Cantidad / Demanda Mensual).',
-    '• STATUS del tablero: VENCIDO (días a VTO < 0), SE VENCERÁ (0-30 días), INCUMPLE FMD (días a FMD <= 0), NUNCA DESPACHARÁ (muy vencido), SIN RIESGO.',
+    `• STATUS del tablero: VENCIDO (días a VTO < 0), SE VENCERÁ (0-30 días), INCUMPLE FMD (días a FMD <= 0), NUNCA DESPACHARÁ (más de ${Math.abs(NEVER_SHIP_THRESHOLD_DAYS)} días vencido), SIN RIESGO.`,
     '• FEFO: se usa primero el lote que vence antes (fecha VTO más cercana).',
     '• Umbrales de acción (según días a VTO): BAJA ADMINISTRATIVA (<0), DESPACHO URGENTE (0-30), REDISTRIBUIR (31-90), MONITOREAR (>90).'
   ], 17, 42, { maxWidth: 176, lineHeightFactor: 1.2 });
@@ -1685,8 +1687,8 @@ function generarTableroVencimientosPDF(rep){
   try {
     if (typeof window.Chart === 'function') {
       const donutCanvas = document.createElement('canvas');
-      donutCanvas.width = 420;
-      donutCanvas.height = 420;
+      donutCanvas.width = DONUT_CANVAS_SIZE;
+      donutCanvas.height = DONUT_CANVAS_SIZE;
       const donutCtx = donutCanvas.getContext('2d');
       const donutChart = new window.Chart(donutCtx, {
         type: 'doughnut',
@@ -1713,7 +1715,7 @@ function generarTableroVencimientosPDF(rep){
   } catch (_) {}
 
   if (donutDataUrl) {
-    const kpiBottomY = doc.lastAutoTable?.finalY || 160;
+    const kpiBottomY = doc.lastAutoTable?.finalY || DEFAULT_KPI_BOTTOM_Y;
     const donutY = Math.max(PAGE1_DONUT_MIN_Y, kpiBottomY + 4);
     doc.setTextColor(...azul).setFont('helvetica', 'bold').setFontSize(11);
     doc.text('Distribución de lotes por estado', 14, donutY);
