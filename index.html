@@ -1423,6 +1423,8 @@ function generarTableroVencimientosPDF(rep){
 
   const ACTION_URGENT_MAX_DAYS = 30;
   const ACTION_REDISTRIBUIR_MAX_DAYS = 90;
+  const SECTION_TITLE_GAP = 2;
+  const SECTION_BOTTOM_GAP = 7;
   const azul = [11, 31, 58];
   const rojo = [239, 68, 68];
   const naranja = [249, 115, 22];
@@ -1462,7 +1464,7 @@ function generarTableroVencimientosPDF(rep){
 
   const colorSemaforo = (dias) => {
     const d = n(dias);
-    if (d < 0 || d <= 15) return rojo;
+    if (d <= 15) return rojo;
     if (d <= 30) return naranja;
     if (d <= 120) return amarillo;
     return verde;
@@ -1613,7 +1615,7 @@ function generarTableroVencimientosPDF(rep){
       y = 34;
     }
     doc.setTextColor(...azul).setFont('helvetica', 'bold').setFontSize(11).text(`Tipo ${tipo} (${fmtInt(criticos.length)} lotes críticos)`, 14, y);
-    y += 2;
+    y += SECTION_TITLE_GAP;
 
     if (!criticos.length) {
       doc.setFont('helvetica', 'normal').setFontSize(9).setTextColor(80).text('Sin lotes críticos para este tipo.', 14, y + 5);
@@ -1652,7 +1654,7 @@ function generarTableroVencimientosPDF(rep){
       },
       didDrawPage: () => drawHeader()
     });
-    y = (doc.lastAutoTable?.finalY || y) + 7;
+    y = (doc.lastAutoTable?.finalY || y) + SECTION_BOTTOM_GAP;
   });
 
   // Página final: Inventario completo por categoría
@@ -1670,7 +1672,7 @@ function generarTableroVencimientosPDF(rep){
       y = 34;
     }
     doc.setTextColor(...azul).setFont('helvetica', 'bold').setFontSize(11).text(`Tipo ${tipo} (${fmtInt(inventarioTipo.length)} lotes)`, 14, y);
-    y += 2;
+    y += SECTION_TITLE_GAP;
 
     if (!inventarioTipo.length) {
       doc.setFont('helvetica', 'normal').setFontSize(9).setTextColor(80).text('Sin lotes para este tipo.', 14, y + 5);
@@ -1712,7 +1714,7 @@ function generarTableroVencimientosPDF(rep){
       },
       didDrawPage: () => drawHeader()
     });
-    y = (doc.lastAutoTable?.finalY || y) + 7;
+    y = (doc.lastAutoTable?.finalY || y) + SECTION_BOTTOM_GAP;
   });
 
   const totalPages = doc.internal.getNumberOfPages();
@@ -1721,8 +1723,8 @@ function generarTableroVencimientosPDF(rep){
     doc.setFontSize(8).setTextColor(150).text(`Pág ${i} de ${totalPages}`, 196, 285, { align: 'right' });
   }
 
-  const safeDate = String(corte || hoy).replace(/[^\d\-]/g, '_');
-  doc.save(`Tablero_Vencimientos_${safeDate}.pdf`);
+  const filenameSafeDate = String(corte || hoy).replace(/[^\d\-]/g, '_');
+  doc.save(`Tablero_Vencimientos_${filenameSafeDate}.pdf`);
 }
 
 // Header móvil: ocultar/mostrar en scroll
