@@ -1638,7 +1638,7 @@ function generarTableroVencimientosPDF(rep){
   doc.text([
     '• FMD (Fecha Máxima de Despacho): fecha límite para despachar un lote antes del vencimiento.',
     '• Demanda Mensual: consumo promedio mensual del código. Cobertura: meses que cubre el lote (Cantidad / Demanda Mensual).',
-    `• STATUS del tablero: VENCIDO, SE VENCERÁ, INCUMPLE FMD, NUNCA DESPACHARÁ (más de ${Math.abs(NEVER_SHIP_THRESHOLD_DAYS)} días vencido) y SIN RIESGO.`,
+    `• STATUS del tablero: VENCIDO, SE VENCERA (visible como "SE VENCERÁ"), INCUMPLE FMD, NUNCA DESPACHARÁ (más de ${Math.abs(NEVER_SHIP_THRESHOLD_DAYS)} días vencido) y SIN RIESGO.`,
     '• FEFO: se usa primero el lote que vence antes (fecha VTO más cercana).',
     '• Umbrales de acción (según días a VTO): BAJA ADMINISTRATIVA (<0), DESPACHO URGENTE (0-30), REDISTRIBUIR (31-90), MONITOREAR (>90).'
   ], 17, 42, { maxWidth: 176, lineHeightFactor: 1.2 });
@@ -1667,7 +1667,7 @@ function generarTableroVencimientosPDF(rep){
     startY: 134,
     head: [['Indicador', 'Valor']],
     body: [
-      ['Valor en riesgo (B/.)', `B/. ${fmtMoney(valorTotalRiesgo)}`],
+      ['Valor en riesgo', `B/. ${fmtMoney(valorTotalRiesgo)}`],
       ['% inventario en riesgo', fmtPct(qtyTotal > 0 ? (qtyRiesgo * 100 / qtyTotal) : 0)],
       ['Cantidad en riesgo (unid.)', fmtInt(qtyRiesgo)],
       ['Días prom. al vencimiento', `${fmtNum(diasPromPond)} días`],
@@ -1692,7 +1692,7 @@ function generarTableroVencimientosPDF(rep){
       donutCanvas.width = DONUT_CANVAS_SIZE;
       donutCanvas.height = DONUT_CANVAS_SIZE;
       const donutCtx = donutCanvas.getContext('2d');
-      if (!donutCtx) throw new Error('No se pudo obtener contexto 2D del canvas.');
+      if (!donutCtx) throw new Error('No se pudo obtener contexto 2D del canvas. Verifique compatibilidad del navegador.');
       const donutChart = new window.Chart(donutCtx, {
         type: 'doughnut',
         data: {
