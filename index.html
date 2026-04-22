@@ -1638,7 +1638,7 @@ function generarTableroVencimientosPDF(rep){
   doc.text([
     '• FMD (Fecha Máxima de Despacho): fecha límite para despachar un lote antes del vencimiento.',
     '• Demanda Mensual: consumo promedio mensual del código. Cobertura: meses que cubre el lote (Cantidad / Demanda Mensual).',
-    `• STATUS del tablero: VENCIDO (días a VTO < 0), SE VENCERÁ (0-30 días), INCUMPLE FMD (días a FMD <= 0), NUNCA DESPACHARÁ (más de ${Math.abs(NEVER_SHIP_THRESHOLD_DAYS)} días vencido), SIN RIESGO.`,
+    `• STATUS del tablero: VENCIDO, SE VENCERÁ (clave técnica SE_VENCERA), INCUMPLE FMD, NUNCA DESPACHARÁ (más de ${Math.abs(NEVER_SHIP_THRESHOLD_DAYS)} días vencido) y SIN RIESGO.`,
     '• FEFO: se usa primero el lote que vence antes (fecha VTO más cercana).',
     '• Umbrales de acción (según días a VTO): BAJA ADMINISTRATIVA (<0), DESPACHO URGENTE (0-30), REDISTRIBUIR (31-90), MONITOREAR (>90).'
   ], 17, 42, { maxWidth: 176, lineHeightFactor: 1.2 });
@@ -1684,8 +1684,9 @@ function generarTableroVencimientosPDF(rep){
   });
 
   let donutDataUrl = null;
+  const kpiTableFinalY = doc.lastAutoTable?.finalY || DEFAULT_KPI_BOTTOM_Y;
   try {
-    if (typeof window.Chart === 'function' && window.Chart.prototype) {
+    if (typeof window.Chart === 'function') {
       const donutCanvas = document.createElement('canvas');
       donutCanvas.width = DONUT_CANVAS_SIZE;
       donutCanvas.height = DONUT_CANVAS_SIZE;
@@ -1715,8 +1716,7 @@ function generarTableroVencimientosPDF(rep){
   } catch (e) { console.warn('No se pudo generar gráfico de dona para el PDF:', e); }
 
   if (donutDataUrl) {
-    const kpiBottomY = doc.lastAutoTable?.finalY || DEFAULT_KPI_BOTTOM_Y;
-    const donutY = Math.max(PAGE1_DONUT_MIN_Y, kpiBottomY + 4);
+    const donutY = Math.max(PAGE1_DONUT_MIN_Y, kpiTableFinalY + 4);
     doc.setTextColor(...azul).setFont('helvetica', 'bold').setFontSize(11);
     doc.text('Distribución de lotes por estado', 14, donutY);
     try { doc.addImage(donutDataUrl, 'PNG', 67, donutY + 3, 74, 74); } catch (e) { console.warn('No se pudo insertar gráfico de dona en PDF:', e); }
