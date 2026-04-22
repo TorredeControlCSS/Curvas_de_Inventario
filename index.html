@@ -1438,7 +1438,7 @@ function generarTableroVencimientosPDF(rep){
   const hoy = ymdNow();
 
   const n = (v) => Number(v || 0) || 0;
-  const normalizaTipo = (v) => String(v || '').trim().toUpperCase();
+  const normalizarTipo = (v) => String(v || '').trim().toUpperCase();
   const valorLote = (r) => {
     const qty = n(r.cantidad);
     const costo = n(r.costo_unit);
@@ -1607,7 +1607,7 @@ function generarTableroVencimientosPDF(rep){
   let y = 44;
   tipos.forEach((tipo) => {
     const criticos = rows
-      .filter(r => normalizaTipo(r.tipo) === tipo && ['VENCIDO', 'CRITICO', 'RIESGO'].includes(String(r.status || '').toUpperCase()))
+      .filter(r => normalizarTipo(r.tipo) === tipo && ['VENCIDO', 'CRITICO', 'RIESGO'].includes(String(r.status || '').toUpperCase()))
       .sort((a, b) => valorLote(b) - valorLote(a));
 
     if (y > 255) {
@@ -1664,7 +1664,7 @@ function generarTableroVencimientosPDF(rep){
   y = 44;
   tipos.forEach((tipo) => {
     const inventarioTipo = rows
-      .filter(r => normalizaTipo(r.tipo) === tipo)
+      .filter(r => normalizarTipo(r.tipo) === tipo)
       .sort((a, b) => valorLote(b) - valorLote(a));
 
     if (y > 255) {
@@ -1723,8 +1723,8 @@ function generarTableroVencimientosPDF(rep){
     doc.setFontSize(8).setTextColor(150).text(`Pág ${i} de ${totalPages}`, 196, 285, { align: 'right' });
   }
 
-  const filenameSafeDate = String(corte || hoy).replace(/[^\d\-]/g, '_');
-  doc.save(`Tablero_Vencimientos_${filenameSafeDate}.pdf`);
+  const sanitizedDateForFilename = String(corte || hoy).replace(/[^\d\-]/g, '_');
+  doc.save(`Tablero_Vencimientos_${sanitizedDateForFilename}.pdf`);
 }
 
 // Header móvil: ocultar/mostrar en scroll
