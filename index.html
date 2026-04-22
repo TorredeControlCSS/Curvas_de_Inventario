@@ -236,7 +236,7 @@
         <span>📄</span> Reporte de Abastecimiento
       </button>
       <button id="btnVencimientosPdf" class="btn" aria-label="Generar reporte PDF del tablero de vencimientos" style="border-color:#f97316; color:#f97316; display:flex; gap:6px; align-items:center;">
-        <span>📋</span> Tablero de Vencimientos
+        <span role="img" aria-hidden="true">📋</span> Tablero de Vencimientos
       </button>
       <button id="btnExpiredPdf" class="btn" style="border-color:#ef4444; color:#ef4444; display:flex; gap:6px; align-items:center;">
         <span>🔴</span> Reporte de Vencidos
@@ -1422,11 +1422,15 @@ function generarTableroVencimientosPDF(rep){
   if (typeof doc.autoTable !== 'function') throw new Error('autoTable no está disponible.');
 
   const NEVER_DISPATCH_DAYS_THRESHOLD = -365;
+  const ACTION_URGENT_MAX_DAYS = 30;
+  const ACTION_REDISTRIBUIR_MAX_DAYS = 90;
+  const COL_DIAS_VTO = 6;
   const azul = [11, 31, 58];
   const rows = Array.isArray(rep?.rows) ? rep.rows : [];
+  const ymdNow = () => new Date().toISOString().slice(0, 10);
   const firstRow = rows.length > 0 ? rows[0] : null;
-  const corte = String(firstRow?.fecha_corte || '').slice(0, 10) || new Date().toISOString().slice(0, 10);
-  const hoy = new Date().toISOString().slice(0, 10);
+  const corte = String(firstRow?.fecha_corte || '').slice(0, 10) || ymdNow();
+  const hoy = ymdNow();
 
   const n = (v) => Number(v || 0) || 0;
   const qtyTotal = rows.reduce((a, r) => a + n(r.cantidad), 0);
@@ -1550,8 +1554,8 @@ function generarTableroVencimientosPDF(rep){
     .slice(0, 20);
   const accion = (d) => {
     if (d < 0) return 'BAJA ADMINISTRATIVA';
-    if (d <= 30) return 'DESPACHO URGENTE';
-    if (d <= 90) return 'REDISTRIBUIR';
+    if (d <= ACTION_URGENT_MAX_DAYS) return 'DESPACHO URGENTE';
+    if (d <= ACTION_REDISTRIBUIR_MAX_DAYS) return 'REDISTRIBUIR';
     return 'MONITOREAR';
   };
 
@@ -1584,10 +1588,10 @@ function generarTableroVencimientosPDF(rep){
         else if (text === 'REDISTRIBUIR') d.cell.styles.textColor = [202, 138, 4];
         else d.cell.styles.textColor = [31, 41, 55];
       }
-      if (d.section === 'body' && d.column.index === 6) {
-        const dias = Number(String(d.row.raw?.[6] || '').replace(/,/g, ''));
+      if (d.section === 'body' && d.column.index === COL_DIAS_VTO) {
+        const dias = Number(String(d.row.raw?.[COL_DIAS_VTO] || '').replace(/,/g, ''));
         d.cell.styles.textColor = Number.isFinite(dias)
-          ? (dias < 0 ? [239, 68, 68] : dias <= 30 ? [234, 88, 12] : [22, 163, 74])
+          ? (dias < 0 ? [239, 68, 68] : dias <= ACTION_URGENT_MAX_DAYS ? [234, 88, 12] : [22, 163, 74])
           : [31, 41, 55];
       }
     }
