@@ -1421,12 +1421,6 @@ function generarTableroVencimientosPDF(rep){
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   if (typeof doc.autoTable !== 'function') throw new Error('autoTable no está disponible.');
 
-  const ACTION_URGENT_MAX_DAYS = 30;
-  const ACTION_REDISTRIBUIR_MAX_DAYS = 90;
-  const SECTION_TITLE_GAP = 2;
-  const SECTION_BOTTOM_GAP = 7;
-  const PAGE_OVERFLOW_THRESHOLD = 255;
-  const NEW_PAGE_START_Y = 34;
   const azul = [11, 31, 58];
   const rojo = [239, 68, 68];
   const naranja = [249, 115, 22];
@@ -1434,299 +1428,430 @@ function generarTableroVencimientosPDF(rep){
   const verde = [34, 197, 94];
   const gris = [107, 114, 128];
   const rows = Array.isArray(rep?.rows) ? rep.rows : [];
-  const ymdNow = () => new Date().toISOString().slice(0, 10);
-  const firstRow = rows.length > 0 ? rows[0] : null;
-  const corte = String(firstRow?.fecha_corte || '').slice(0, 10) || ymdNow();
-  const hoy = ymdNow();
-
   const n = (v) => Number(v || 0) || 0;
-  const normalizarTipo = (v) => String(v || '').trim().toUpperCase();
+  const fechaHoyIso = new Date().toISOString().slice(0, 10);
+  const corteRaw = String((rows.length > 0 ? rows[0].fecha_corte : '') || fechaHoyIso);
+  const corte = (corteRaw.match(/\d{4}-\d{2}-\d{2}/) || [fechaHoyIso])[0];
+  const totalRep = Math.max(0, Math.round(n(rep?.total))) || rows.length;
+  const NEVER_SHIP_THRESHOLD_DAYS = -365;
+  const PAGE_OVERFLOW_Y = 240;
+  const NEW_PAGE_START_Y = 34;
+
+  const normStatus = (r) => String(r?.status || '').trim().toUpperCase();
   const valorLote = (r) => {
-    const qty = n(r.cantidad);
-    const costo = n(r.costo_unit);
-    return costo > 0 ? qty * costo : n(r.valor_riesgo);
+    const qty = n(r?.cantidad);
+    const costo = n(r?.costo_unit);
+    return costo > 0 ? (qty * costo) : n(r?.valor_riesgo);
   };
-  const esSinRiesgo = (r) => n(r.dias_a_fmd) > 90;
-  const qtyTotal = rows.reduce((a, r) => a + n(r.cantidad), 0);
-  const qtyRiesgo = rows.reduce((a, r) => a + (!esSinRiesgo(r) ? n(r.cantidad) : 0), 0);
-  const valorRiesgo = rows.reduce((a, r) => a + (!esSinRiesgo(r) ? valorLote(r) : 0), 0);
-  const sumPesoDias = rows.reduce((a, r) => a + (n(r.dias_a_vto) * n(r.cantidad)), 0);
-  const promDiasPond = qtyTotal > 0 ? (sumPesoDias / qtyTotal) : 0;
-  const withFechaVto = rows.filter(r => String(r.fecha_vto || '').trim() !== '');
-  const cumpleFmdCount = withFechaVto.filter(r => n(r.dias_a_fmd) > 0).length;
-  const cumplimientoFmdPct = withFechaVto.length ? (cumpleFmdCount * 100 / withFechaVto.length) : 0;
-
-  const kpi = {
-    totalLotes: rows.length,
-    vencido: rows.filter(r => n(r.dias_a_vto) < 0).length,
-    seVencera: rows.filter(r => n(r.dias_a_vto) >= 0 && n(r.dias_a_vto) <= 30).length,
-    incumpleFmd: rows.filter(r => n(r.dias_a_fmd) <= 0 && String(r.status || '').toUpperCase() !== 'VENCIDO').length,
-    sinRiesgo: rows.filter(r => n(r.dias_a_fmd) > 90).length
+  const parseFecha = (v) => {
+    const s = String(v || '').trim();
+    if (!s) return Number.POSITIVE_INFINITY;
+    const t = new Date(s).getTime();
+    return Number.isFinite(t) ? t : Number.POSITIVE_INFINITY;
   };
-
-  const colorSemaforo = (dias) => {
+  const demandaMensual = (r) => {
+    const direct = [r?.demanda_mensual, r?.demanda_mes, r?.demanda, r?.demandaMensual];
+    for (const v of direct) {
+      const num = n(v);
+      if (num > 0) return num;
+    }
+    const qty = n(r?.cantidad);
+    const dias = n(r?.dias_a_vto);
+    const vr = n(r?.valor_riesgo);
+    const divisor = qty * (dias / 30);
+    if (qty > 0 && dias > 0 && vr > 0 && divisor > 0) return vr / divisor;
+    return null;
+  };
+  const coberturaLote = (r, dm) => {
+    const d = dm ?? demandaMensual(r);
+    return d && d > 0 ? (n(r?.cantidad) / d) : null;
+  };
+  const accionSugerida = (dias) => {
     const d = n(dias);
-    if (d <= 15) return rojo;
-    if (d <= 30) return naranja;
-    if (d <= 120) return amarillo;
+    if (d < 0) return 'BAJA ADMINISTRATIVA';
+    if (d <= 30) return 'DESPACHO URGENTE';
+    if (d <= 90) return 'REDISTRIBUIR';
+    return 'MONITOREAR';
+  };
+  const criterioClasificacion = (dias) => {
+    const d = n(dias);
+    if (d < 0) return 'dias_a_VTO < 0';
+    if (d <= 30) return 'dias_a_VTO 0-30';
+    if (d <= 90) return 'dias_a_VTO 31-90';
+    return 'dias_a_VTO > 90';
+  };
+  const colorAccion = (accion) => {
+    if (accion === 'BAJA ADMINISTRATIVA') return rojo;
+    if (accion === 'DESPACHO URGENTE') return naranja;
+    if (accion === 'REDISTRIBUIR') return amarillo;
     return verde;
   };
   const statusVisible = (r) => {
-    const st = String(r.status || '').toUpperCase();
+    const st = normStatus(r);
     if (st === 'OK') return 'SIN RIESGO';
     return st || 'SIN DATO';
   };
-
-  const drawHeader = () => {
-    const imgEl = document.querySelector('.topbar img');
-    if (imgEl) {
-      try {
-        const cvs = document.createElement('canvas');
-        cvs.width = imgEl.naturalWidth;
-        cvs.height = imgEl.naturalHeight;
-        cvs.getContext('2d').drawImage(imgEl, 0, 0);
-        doc.addImage(cvs.toDataURL('image/png'), 'PNG', 14, 10, 15, 15);
-      } catch (_) {}
-    }
-    doc.setFont('helvetica', 'bold').setFontSize(18).setTextColor(...azul)
-      .text('Tablero de Vencimientos | CEDIS Panamá', 35, 18);
-    doc.setFont('helvetica', 'normal').setFontSize(10).setTextColor(80)
-      .text(`Corte Datos: ${corte} | Generado: ${new Date().toLocaleDateString()}`, 35, 24);
-    doc.setDrawColor(200).line(14, 28, 196, 28);
+  const colorStatus = (r) => {
+    const st = statusVisible(r);
+    if (st === 'VENCIDO') return rojo;
+    if (st === 'CRITICO' || st === 'RIESGO') return naranja;
+    if (st === 'ALERTA' || st === 'INCUMPLE FMD') return amarillo;
+    if (st === 'SIN RIESGO') return verde;
+    return gris;
   };
-
   const fmtInt = (v) => Math.round(n(v)).toLocaleString('es-PA');
   const fmtNum = (v) => n(v).toLocaleString('es-PA', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
   const fmtMoney = (v) => n(v).toLocaleString('es-PA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const fmtPct = (v) => `${n(v).toFixed(1)}%`;
+  const fmtDemand = (v) => (v && Number.isFinite(v) && v > 0 ? fmtNum(v) : 'N/D');
+  const fmtCov = (v) => (v && Number.isFinite(v) && v > 0 ? fmtNum(v) : 'N/D');
 
-  // Página 1: Resumen ejecutivo
-  drawHeader();
-  doc.setFillColor(245, 245, 245);
-  doc.roundedRect(14, 33, 182, 30, 2, 2, 'F');
-  doc.setTextColor(20).setFont('helvetica', 'bold').setFontSize(8.6);
-  doc.text('CRITERIOS DE CLASIFICACIÓN:', 17, 39);
-  doc.setFont('helvetica', 'normal').setFontSize(8).setTextColor(40);
-  doc.text([
-    '• FMD (Fecha Máxima de Despacho) = Fecha_VTO - 60 días (MED) o - 30 días (LAB/MQ). Es la fecha límite para despachar el lote garantizando vida útil al paciente.',
-    '• VENCIDO: dias_a_VTO < 0 | SE VENCERÁ: 0 a 30 días | INCUMPLE FMD: dias_a_FMD ≤ 0 y no vencido',
-    '• SIN RIESGO: dias_a_FMD > 90 | Valor en Riesgo (B/.) = Cantidad × Costo Unitario (SALMI)'
-  ], 17, 44, { maxWidth: 176 });
-
-  const cards = [
-    ['VENCIDO', kpi.vencido, rojo],
-    ['SE VENCERÁ', kpi.seVencera, naranja],
-    ['INCUMPLE FMD', kpi.incumpleFmd, amarillo],
-    ['SIN RIESGO', kpi.sinRiesgo, verde]
+  const rangoDefs = [
+    { label: 'VENCIDO', color: rojo, cond: (d) => d < 0 },
+    { label: '1-15 días', color: rojo, cond: (d) => d >= 0 && d <= 15 },
+    { label: '16-30 días', color: naranja, cond: (d) => d >= 16 && d <= 30 },
+    { label: '31-60 días', color: amarillo, cond: (d) => d >= 31 && d <= 60 },
+    { label: '61-120 días', color: amarillo, cond: (d) => d >= 61 && d <= 120 },
+    { label: '121-180 días', color: verde, cond: (d) => d >= 121 && d <= 180 },
+    { label: '181+ días', color: verde, cond: (d) => d >= 181 }
   ];
-  const startX = 14, startY = 68, gap = 4, cardW = 42.5, cardH = 31;
-  cards.forEach((c, i) => {
-    const x = startX + i * (cardW + gap);
-    const pct = kpi.totalLotes ? (n(c[1]) * 100 / kpi.totalLotes) : 0;
-    doc.setFillColor(...c[2]);
-    doc.roundedRect(x, startY, cardW, cardH, 2, 2, 'F');
-    doc.setTextColor(255).setFont('helvetica', 'bold').setFontSize(14).text(fmtInt(c[1]), x + cardW / 2, startY + 10, { align: 'center' });
-    doc.setFontSize(7.7).text(String(c[0]), x + cardW / 2, startY + 17, { align: 'center' });
-    doc.setFontSize(7.2).text('lotes', x + cardW / 2, startY + 23, { align: 'center' });
-    doc.setFontSize(7).text(fmtPct(pct), x + cardW / 2, startY + 28, { align: 'center' });
+  const semaforoBody = (sourceRows) => rangoDefs.map((rg) => {
+    const grp = sourceRows.filter((r) => rg.cond(n(r?.dias_a_vto)));
+    const qty = grp.reduce((acc, r) => acc + n(r?.cantidad), 0);
+    const val = grp.reduce((acc, r) => acc + valorLote(r), 0);
+    const qtyTot = sourceRows.reduce((acc, r) => acc + n(r?.cantidad), 0);
+    const pctInv = qtyTot > 0 ? (qty * 100 / qtyTot) : 0;
+    return [rg.label, fmtInt(grp.length), fmtInt(qty), `B/. ${fmtMoney(val)}`, fmtPct(pctInv)];
   });
 
-  doc.setTextColor(...azul).setFont('helvetica', 'bold').setFontSize(12).text('KPIs', 14, 107);
-  doc.autoTable({
-    startY: 111,
-    head: [['Indicador', 'Valor']],
-    body: [
-      ['Valor total en riesgo (B/.) — Suma de Cantidad × Costo de lotes con STATUS ≠ SIN RIESGO', `B/. ${fmtMoney(valorRiesgo)}`],
-      ['% inventario en riesgo — Cantidad en riesgo / Cantidad total del corte × 100', fmtPct(qtyTotal ? ((qtyRiesgo * 100) / qtyTotal) : 0)],
-      ['Días prom. al vencimiento (ponderado por cantidad) — Tiempo promedio restante de todos los lotes activos', fmtNum(promDiasPond)],
-      ['Cumplimiento FMD % — Lotes donde dias_a_FMD > 0 / Total lotes con fecha VTO × 100', fmtPct(cumplimientoFmdPct)]
-    ],
-    theme: 'grid',
-    styles: { fontSize: 8.5, cellPadding: 3, overflow: 'linebreak' },
-    headStyles: { fillColor: azul, textColor: 255, fontStyle: 'bold' },
-    columnStyles: { 0: { cellWidth: 138 }, 1: { halign: 'right', cellWidth: 44 } },
-    didDrawPage: () => drawHeader()
-  });
+  let logoDataUrl = null;
+  try {
+    const imgEl = document.querySelector('.topbar img');
+    if (imgEl && imgEl.naturalWidth > 0 && imgEl.naturalHeight > 0) {
+      const cvs = document.createElement('canvas');
+      cvs.width = imgEl.naturalWidth;
+      cvs.height = imgEl.naturalHeight;
+      cvs.getContext('2d').drawImage(imgEl, 0, 0);
+      logoDataUrl = cvs.toDataURL('image/png');
+    }
+  } catch (_) {}
 
-  // Página 2: Semáforo por rangos
-  doc.addPage();
-  drawHeader();
-  doc.setTextColor(...azul).setFont('helvetica', 'bold').setFontSize(14).text('Semáforo por Rango de Vencimiento', 14, 38);
-
-  const rangos = [
-    { label: 'VENCIDO', color: rojo, cond: d => d < 0 },
-    { label: '1-15 días', color: rojo, cond: d => d >= 0 && d <= 15 },
-    { label: '16-30 días', color: naranja, cond: d => d >= 16 && d <= 30 },
-    { label: '31-60 días', color: amarillo, cond: d => d >= 31 && d <= 60 },
-    { label: '61-120 días', color: amarillo, cond: d => d >= 61 && d <= 120 },
-    { label: '121-180 días', color: verde, cond: d => d >= 121 && d <= 180 },
-    { label: '181+ días', color: verde, cond: d => d >= 181 }
-  ];
-
-  const bodyRangos = rangos.map(r => {
-    const g = rows.filter(x => r.cond(n(x.dias_a_vto)));
-    const renglones = g.length;
-    const cant = g.reduce((a, x) => a + n(x.cantidad), 0);
-    const val = g.reduce((a, x) => a + valorLote(x), 0);
-    const pctInv = qtyTotal ? (cant * 100 / qtyTotal) : 0;
-    return [r.label, fmtInt(renglones), fmtInt(cant), `B/. ${fmtMoney(val)}`, fmtPct(pctInv)];
-  });
-
-  doc.autoTable({
-    startY: 44,
-    head: [['RANGO', 'Renglones', 'Cantidad total', 'Valor B/.', '% del inventario']],
-    body: bodyRangos,
-    theme: 'grid',
-    styles: { fontSize: 10, cellPadding: 3 },
-    headStyles: { fillColor: azul, textColor: 255, fontStyle: 'bold' },
-    columnStyles: { 0: { cellWidth: 62 }, 1: { halign: 'right' }, 2: { halign: 'right' }, 3: { halign: 'right' }, 4: { halign: 'right' } },
-    didParseCell: (d) => {
-      if (d.section === 'body' && d.column.index === 0) {
-        d.cell.text = [`   ${String(d.cell.raw || '')}`];
-      }
-    },
-    didDrawCell: (d) => {
-      if (d.section === 'body' && d.column.index === 0) {
-        const c = rangos[d.row.index]?.color || gris;
-        doc.setFillColor(...c);
-        doc.roundedRect(d.cell.x + 1.4, d.cell.y + 2.4, 4.2, 4.2, 0.8, 0.8, 'F');
-      }
-    },
-    didDrawPage: () => drawHeader()
-  });
-
-  // Página 3+: Críticos por categoría
-  doc.addPage();
-  drawHeader();
-  doc.setTextColor(...azul).setFont('helvetica', 'bold').setFontSize(14).text('Lotes críticos por categoría', 14, 38);
-  const accion = (d) => {
-    if (d < 0) return 'BAJA ADMINISTRATIVA';
-    if (d <= ACTION_URGENT_MAX_DAYS) return 'DESPACHO URGENTE';
-    if (d <= ACTION_REDISTRIBUIR_MAX_DAYS) return 'REDISTRIBUIR';
-    return 'MONITOREAR';
+  const drawHeader = () => {
+    if (logoDataUrl) {
+      try { doc.addImage(logoDataUrl, 'PNG', 14, 10, 15, 15); } catch (_) {}
+    }
+    doc.setFont('helvetica', 'bold').setFontSize(17).setTextColor(...azul);
+    doc.text('Tablero de Vencimientos | CEDIS Panamá', 35, 18);
+    doc.setFont('helvetica', 'normal').setFontSize(9.5).setTextColor(80);
+    doc.text(`Corte Datos: ${corte} | Generado: ${fechaHoyIso}`, 35, 24);
+    doc.setDrawColor(200);
+    doc.line(14, 28, 196, 28);
   };
-  const tipos = ['LAB', 'MED', 'MQ'];
-  let y = 44;
-  tipos.forEach((tipo) => {
-    const criticos = rows
-      .filter(r => normalizarTipo(r.tipo) === tipo && ['VENCIDO', 'CRITICO', 'RIESGO'].includes(String(r.status || '').toUpperCase()))
-      .sort((a, b) => valorLote(b) - valorLote(a));
 
-    if (y > PAGE_OVERFLOW_THRESHOLD) {
-      doc.addPage();
-      y = NEW_PAGE_START_Y;
-    }
-    doc.setTextColor(...azul).setFont('helvetica', 'bold').setFontSize(11).text(`Tipo ${tipo} (${fmtInt(criticos.length)} lotes críticos)`, 14, y);
-    y += SECTION_TITLE_GAP;
-
-    if (!criticos.length) {
-      doc.setFont('helvetica', 'normal').setFontSize(9).setTextColor(80).text('Sin lotes críticos para este tipo.', 14, y + 5);
-      y += 12;
-      return;
-    }
-
+  const drawSemaforoTable = (startY, sourceRows) => {
     doc.autoTable({
-      startY: y + 2,
-      head: [['Código', 'Suministro', 'Grupo', 'Lote', 'Vence en', 'Días a VTO', 'Valor B/.', 'Acción sugerida']],
-      body: criticos.map(r => ([
-        String(r.codigo || ''),
-        String(r.suministro || ''),
-        String(r.grupo || ''),
-        String(r.lote || ''),
-        String(r.fecha_vto || ''),
-        fmtInt(r.dias_a_vto),
-        fmtMoney(valorLote(r)),
-        accion(n(r.dias_a_vto))
-      ])),
+      startY,
+      head: [['RANGO', 'Renglones', 'Cantidad total', 'Valor B/.', '% del inventario']],
+      body: semaforoBody(sourceRows),
       theme: 'grid',
-      styles: { fontSize: 7.2, cellPadding: 2, overflow: 'linebreak' },
-      headStyles: { fillColor: azul, textColor: 255, fontStyle: 'bold' },
+      styles: { fontSize: 9, cellPadding: 2.5, overflow: 'linebreak', font: 'helvetica' },
+      headStyles: { fillColor: azul, textColor: 255, fontStyle: 'bold', font: 'helvetica' },
       columnStyles: {
-        5: { halign: 'right' },
-        6: { halign: 'right' }
+        0: { cellWidth: 56 },
+        1: { cellWidth: 28, halign: 'right' },
+        2: { cellWidth: 34, halign: 'right' },
+        3: { cellWidth: 34, halign: 'right' },
+        4: { cellWidth: 30, halign: 'right' }
       },
       didParseCell: (d) => {
-        if (d.section === 'body' && d.column.index === 7) {
-          const text = String(d.cell.raw || '');
-          if (text === 'BAJA ADMINISTRATIVA') d.cell.styles.textColor = rojo;
-          else if (text === 'DESPACHO URGENTE') d.cell.styles.textColor = naranja;
-          else if (text === 'REDISTRIBUIR') d.cell.styles.textColor = amarillo;
-          else d.cell.styles.textColor = [31, 41, 55];
+        if (d.section === 'body' && d.column.index === 0) d.cell.text = [`   ${String(d.cell.raw || '')}`];
+      },
+      didDrawCell: (d) => {
+        if (d.section === 'body' && d.column.index === 0) {
+          const c = rangoDefs[d.row.index]?.color || gris;
+          doc.setFillColor(...c);
+          doc.rect(d.cell.x + 1.6, d.cell.y + 2.3, 3.8, 3.8, 'F');
         }
       },
       didDrawPage: () => drawHeader()
     });
-    y = (doc.lastAutoTable?.finalY || y) + SECTION_BOTTOM_GAP;
+    return doc.lastAutoTable?.finalY || startY;
+  };
+
+  const cardClass = (r) => {
+    const dVto = n(r?.dias_a_vto);
+    const st = normStatus(r);
+    if (dVto < NEVER_SHIP_THRESHOLD_DAYS) return 'NUNCA_DESPACHARA';
+    if (st === 'VENCIDO' || dVto < 0) return 'VENCIDO';
+    if (st === 'CRITICO' || st === 'RIESGO' || (dVto >= 0 && dVto <= 30)) return 'SE_VENCERA';
+    if (n(r?.dias_a_fmd) <= 0) return 'INCUMPLE_FMD';
+    return 'SIN_RIESGO';
+  };
+  const cardCounters = { VENCIDO: 0, SE_VENCERA: 0, INCUMPLE_FMD: 0, NUNCA_DESPACHARA: 0, SIN_RIESGO: 0 };
+  rows.forEach((r) => { cardCounters[cardClass(r)] += 1; });
+  let totalCards = totalRep;
+  const sumCards = Object.values(cardCounters).reduce((a, b) => a + b, 0);
+  if (totalCards < sumCards) totalCards = sumCards;
+  if (totalCards > sumCards) cardCounters.SIN_RIESGO += (totalCards - sumCards);
+
+  const cardItems = [
+    { key: 'VENCIDO', label: 'VENCIDO', color: rojo },
+    { key: 'SE_VENCERA', label: 'SE VENCERÁ', color: naranja },
+    { key: 'INCUMPLE_FMD', label: 'INCUMPLE FMD', color: amarillo },
+    { key: 'NUNCA_DESPACHARA', label: 'NUNCA DESPACHARÁ', color: gris },
+    { key: 'SIN_RIESGO', label: 'SIN RIESGO', color: verde }
+  ];
+  const rawPcts = cardItems.map((c) => (totalCards > 0 ? (cardCounters[c.key] * 100 / totalCards) : 0));
+  const pctRounded = rawPcts.map((p, idx) => (idx < rawPcts.length - 1 ? Math.round(p * 10) / 10 : 0));
+  pctRounded[pctRounded.length - 1] = Math.max(0, Math.round((100 - pctRounded.slice(0, -1).reduce((a, b) => a + b, 0)) * 10) / 10);
+
+  const qtyTotal = rows.reduce((acc, r) => acc + n(r?.cantidad), 0);
+  const statusNoRiesgo = (r) => {
+    const st = normStatus(r);
+    return st === 'OK' || st === 'SIN RIESGO';
+  };
+  const qtyRiesgo = rows.reduce((acc, r) => acc + (statusNoRiesgo(r) ? 0 : n(r?.cantidad)), 0);
+  const valorTotalRiesgo = rows.reduce((acc, r) => acc + (statusNoRiesgo(r) ? 0 : valorLote(r)), 0);
+  const activos = rows.filter((r) => n(r?.dias_a_vto) >= 0);
+  const qtyActivos = activos.reduce((acc, r) => acc + n(r?.cantidad), 0);
+  const diasPromPond = qtyActivos > 0 ? (activos.reduce((acc, r) => acc + (n(r?.dias_a_vto) * n(r?.cantidad)), 0) / qtyActivos) : 0;
+  const conVto = rows.filter((r) => String(r?.fecha_vto || '').trim() !== '');
+  const cumplimientoFmd = conVto.length > 0 ? (conVto.filter((r) => n(r?.dias_a_fmd) > 0).length * 100 / conVto.length) : 0;
+
+  drawHeader();
+  doc.setFillColor(245, 245, 245);
+  doc.roundedRect(14, 33, 182, 49, 2, 2, 'F');
+  doc.setTextColor(20).setFont('helvetica', 'bold').setFontSize(9);
+  doc.text('CRITERIOS DE CLASIFICACIÓN:', 17, 38);
+  doc.setTextColor(35).setFont('helvetica', 'normal').setFontSize(8.1);
+  doc.text([
+    '• FMD (Fecha Máxima de Despacho) = Fecha_VTO - 60 días (MED) o - 30 días (LAB/MQ). Es la fecha límite para despachar el lote garantizando vida útil al paciente.',
+    '• Demanda Mensual = Mediana del consumo diario (ult. 90 días) x 30.',
+    '• Cobertura del lote (meses) = Cantidad del lote / Demanda Mensual del código.',
+    '• STATUS se asigna comparando dias_a_FMD y dias_a_VTO: VENCIDO (<0), SE VENCERA (0-30), INCUMPLE FMD (dias_a_FMD <= 0 sin vencer), SIN RIESGO (>90 dias_a_FMD).',
+    '• Orden FEFO (First Expired First Out): lotes ordenados por fecha VTO ascendente.',
+    '• Acción sugerida: BAJA ADMINISTRATIVA | DESPACHO URGENTE | REDISTRIBUIR | MONITOREAR.'
+  ], 17, 42, { maxWidth: 176, lineHeightFactor: 1.2 });
+
+  const cardY = 86;
+  const cardGap = 3;
+  const cardW = (182 - (cardGap * 4)) / 5;
+  const cardH = 26;
+  cardItems.forEach((item, idx) => {
+    const x = 14 + idx * (cardW + cardGap);
+    doc.setFillColor(...item.color);
+    doc.rect(x, cardY, cardW, cardH, 'F');
+    doc.setTextColor(255).setFont('helvetica', 'bold').setFontSize(11);
+    doc.text(fmtInt(cardCounters[item.key]), x + (cardW / 2), cardY + 7, { align: 'center' });
+    doc.setFontSize(7.2).text(item.label, x + (cardW / 2), cardY + 13, { align: 'center' });
+    doc.setFontSize(7).text('lotes', x + (cardW / 2), cardY + 18, { align: 'center' });
+    doc.setFontSize(7).text(fmtPct(pctRounded[idx]), x + (cardW / 2), cardY + 23, { align: 'center' });
   });
 
-  // Página final: Inventario completo por categoría
+  doc.setTextColor(...azul).setFont('helvetica', 'bold').setFontSize(12);
+  doc.text('KPIs', 14, 118);
+  doc.autoTable({
+    startY: 121,
+    head: [['Indicador', 'Valor']],
+    body: [
+      ['Valor total en riesgo (B/.) — Suma Cantidad x Costo de lotes con STATUS distinto de SIN RIESGO', `B/. ${fmtMoney(valorTotalRiesgo)}`],
+      ['% inventario en riesgo — Cantidad en riesgo / Cantidad total del corte x 100', fmtPct(qtyTotal > 0 ? (qtyRiesgo * 100 / qtyTotal) : 0)],
+      ['Días promedio al vencimiento (ponderado por cantidad) — Promedio ponderado de dias_a_vto solo para lotes activos (dias_a_vto >= 0)', fmtNum(diasPromPond)],
+      ['Cumplimiento FMD % — Lotes con dias_a_fmd > 0 / Total lotes con fecha VTO x 100', fmtPct(cumplimientoFmd)]
+    ],
+    theme: 'grid',
+    styles: { fontSize: 8.2, cellPadding: 2.6, overflow: 'linebreak', font: 'helvetica' },
+    headStyles: { fillColor: azul, textColor: 255, fontStyle: 'bold', font: 'helvetica' },
+    columnStyles: {
+      0: { cellWidth: 138, overflow: 'linebreak' },
+      1: { cellWidth: 44, halign: 'right' }
+    },
+    didDrawPage: () => drawHeader()
+  });
+
   doc.addPage();
   drawHeader();
-  doc.setTextColor(...azul).setFont('helvetica', 'bold').setFontSize(14).text('Inventario completo por categoría', 14, 38);
-  y = 44;
-  tipos.forEach((tipo) => {
-    const inventarioTipo = rows
-      .filter(r => normalizarTipo(r.tipo) === tipo)
-      .sort((a, b) => valorLote(b) - valorLote(a));
+  doc.setTextColor(...azul).setFont('helvetica', 'bold').setFontSize(14);
+  doc.text('Semáforo Global por Rango de Vencimiento', 14, 38);
+  drawSemaforoTable(44, rows);
 
-    if (y > PAGE_OVERFLOW_THRESHOLD) {
+  doc.addPage();
+  drawHeader();
+  doc.setTextColor(...azul).setFont('helvetica', 'bold').setFontSize(14);
+  doc.text('Semáforo por Grupo de Suministro', 14, 38);
+  const grupos = [...new Set(rows.map((r) => String(r?.grupo || '').trim() || 'SIN GRUPO'))].sort((a, b) => a.localeCompare(b, 'es'));
+  let y = 44;
+  grupos.forEach((grupo) => {
+    const rowsGrupo = rows.filter((r) => (String(r?.grupo || '').trim() || 'SIN GRUPO') === grupo);
+    if (y > PAGE_OVERFLOW_Y) {
       doc.addPage();
       y = NEW_PAGE_START_Y;
     }
-    doc.setTextColor(...azul).setFont('helvetica', 'bold').setFontSize(11).text(`Tipo ${tipo} (${fmtInt(inventarioTipo.length)} lotes)`, 14, y);
-    y += SECTION_TITLE_GAP;
+    doc.setTextColor(...azul).setFont('helvetica', 'bold').setFontSize(11);
+    doc.text(grupo, 14, y);
+    y = drawSemaforoTable(y + 2, rowsGrupo) + 6;
+  });
 
-    if (!inventarioTipo.length) {
-      doc.setFont('helvetica', 'normal').setFontSize(9).setTextColor(80).text('Sin lotes para este tipo.', 14, y + 5);
-      y += 12;
-      return;
+  doc.addPage();
+  drawHeader();
+  doc.setTextColor(...azul).setFont('helvetica', 'bold').setFontSize(14);
+  doc.text('Top 20 Criticos por Grupo (Accion Inmediata)', 14, 38);
+  doc.setFillColor(245, 245, 245);
+  doc.roundedRect(14, 41, 182, 27, 2, 2, 'F');
+  doc.setFont('helvetica', 'bold').setFontSize(8.5).setTextColor(35);
+  doc.text('Criterios de Acciones Sugeridas:', 17, 46);
+  doc.setFont('helvetica', 'normal').setFontSize(7.8);
+  doc.text([
+    '• BAJA ADMINISTRATIVA: dias_a_VTO < 0 — lote ya vencido, no puede despacharse.',
+    '• DESPACHO URGENTE: dias_a_VTO 0-30 días — priorizar consumo o transferencia inmediata.',
+    '• REDISTRIBUIR: dias_a_VTO 31-90 días — transferir a unidad con mayor demanda.',
+    '• MONITOREAR: dias_a_VTO > 90 días — riesgo potencial, seguimiento periódico.',
+    '• Orden: primero VENCIDO (dias_a_vto ASC), luego CRITICO y RIESGO (valor_riesgo DESC).'
+  ], 17, 50, { maxWidth: 176, lineHeightFactor: 1.2 });
+
+  y = 73;
+  grupos.forEach((grupo) => {
+    const criticos = rows
+      .filter((r) => (String(r?.grupo || '').trim() || 'SIN GRUPO') === grupo)
+      .filter((r) => ['VENCIDO', 'CRITICO', 'RIESGO'].includes(normStatus(r)))
+      .sort((a, b) => {
+        const aV = normStatus(a) === 'VENCIDO' ? 0 : 1;
+        const bV = normStatus(b) === 'VENCIDO' ? 0 : 1;
+        if (aV !== bV) return aV - bV;
+        if (aV === 0) return n(a?.dias_a_vto) - n(b?.dias_a_vto);
+        return valorLote(b) - valorLote(a);
+      })
+      .slice(0, 20);
+
+    if (!criticos.length) return;
+    if (y > PAGE_OVERFLOW_Y) {
+      doc.addPage();
+      y = NEW_PAGE_START_Y;
     }
+    doc.setTextColor(...azul).setFont('helvetica', 'bold').setFontSize(11);
+    doc.text(`${grupo} (${fmtInt(criticos.length)} lotes)`, 14, y);
 
     doc.autoTable({
       startY: y + 2,
-      head: [['Código', 'Suministro', 'Lote', 'Fecha VTO', 'FMD', 'Días a FMD', 'Días a VTO', 'Cantidad', 'Valor B/.', 'STATUS']],
-      body: inventarioTipo.map(r => ([
-        String(r.codigo || ''),
-        String(r.suministro || ''),
-        String(r.lote || ''),
-        String(r.fecha_vto || ''),
-        String(r.fmd || ''),
-        fmtInt(r.dias_a_fmd),
-        fmtInt(r.dias_a_vto),
-        fmtInt(r.cantidad),
-        fmtMoney(valorLote(r)),
-        statusVisible(r)
-      ])),
+      head: [['Código', 'Suministro', 'Lote', 'Vence en', 'Días a VTO', 'Demanda/mes', 'Cobertura lote (m)', 'Valor B/.', 'Criterio', 'Acción sugerida']],
+      body: criticos.map((r) => {
+        const dm = demandaMensual(r);
+        return [
+          String(r?.codigo || ''),
+          String(r?.suministro || ''),
+          String(r?.lote || ''),
+          String(r?.fecha_vto || ''),
+          fmtInt(r?.dias_a_vto),
+          fmtDemand(dm),
+          fmtCov(coberturaLote(r, dm)),
+          fmtMoney(valorLote(r)),
+          criterioClasificacion(r?.dias_a_vto),
+          accionSugerida(r?.dias_a_vto)
+        ];
+      }),
       theme: 'grid',
-      styles: { fontSize: 6.6, cellPadding: 1.6, overflow: 'linebreak' },
-      headStyles: { fillColor: azul, textColor: 255, fontStyle: 'bold' },
+      styles: { fontSize: 6.7, cellPadding: 1.8, overflow: 'linebreak', font: 'helvetica' },
+      headStyles: { fillColor: azul, textColor: 255, fontStyle: 'bold', font: 'helvetica' },
       columnStyles: {
-        5: { halign: 'right' },
-        6: { halign: 'right' },
-        7: { halign: 'right' },
-        8: { halign: 'right' },
-        9: { halign: 'center' }
+        0: { cellWidth: 15 },
+        1: { cellWidth: 42, overflow: 'linebreak' },
+        2: { cellWidth: 16 },
+        3: { cellWidth: 16 },
+        4: { cellWidth: 14, halign: 'right' },
+        5: { cellWidth: 16, halign: 'right' },
+        6: { cellWidth: 18, halign: 'right' },
+        7: { cellWidth: 17, halign: 'right' },
+        8: { cellWidth: 15 },
+        9: { cellWidth: 13, halign: 'center' }
       },
       didParseCell: (d) => {
         if (d.section === 'body' && d.column.index === 9) {
-          const dias = n(d.row.raw?.[6]);
-          d.cell.styles.textColor = colorSemaforo(dias);
+          const a = String(d.cell.raw || '');
+          d.cell.styles.fillColor = colorAccion(a);
+          d.cell.styles.textColor = [255, 255, 255];
           d.cell.styles.fontStyle = 'bold';
         }
       },
       didDrawPage: () => drawHeader()
     });
-    y = (doc.lastAutoTable?.finalY || y) + SECTION_BOTTOM_GAP;
+    y = (doc.lastAutoTable?.finalY || y) + 6;
+  });
+
+  doc.addPage();
+  drawHeader();
+  doc.setTextColor(...azul).setFont('helvetica', 'bold').setFontSize(14);
+  doc.text('Inventario Completo por Grupo — Orden FEFO', 14, 38);
+  y = 44;
+  grupos.forEach((grupo) => {
+    const inventarioGrupo = rows
+      .filter((r) => (String(r?.grupo || '').trim() || 'SIN GRUPO') === grupo)
+      .sort((a, b) => parseFecha(a?.fecha_vto) - parseFecha(b?.fecha_vto));
+
+    if (y > PAGE_OVERFLOW_Y) {
+      doc.addPage();
+      y = NEW_PAGE_START_Y;
+    }
+    doc.setTextColor(...azul).setFont('helvetica', 'bold').setFontSize(11);
+    doc.text(`${grupo} (${fmtInt(inventarioGrupo.length)} lotes)`, 14, y);
+
+    doc.autoTable({
+      startY: y + 2,
+      head: [['Código', 'Suministro', 'Lote', 'Fecha VTO', 'FMD', 'Días a FMD', 'Días a VTO', 'Cantidad', 'Demanda/mes', 'Cobertura (m)', 'Valor B/.', 'STATUS']],
+      body: inventarioGrupo.map((r) => {
+        const dm = demandaMensual(r);
+        return [
+          String(r?.codigo || ''),
+          String(r?.suministro || ''),
+          String(r?.lote || ''),
+          String(r?.fecha_vto || ''),
+          String(r?.fmd || ''),
+          fmtInt(r?.dias_a_fmd),
+          fmtInt(r?.dias_a_vto),
+          fmtInt(r?.cantidad),
+          fmtDemand(dm),
+          fmtCov(coberturaLote(r, dm)),
+          fmtMoney(valorLote(r)),
+          statusVisible(r)
+        ];
+      }),
+      theme: 'grid',
+      styles: { fontSize: 6.4, cellPadding: 1.6, overflow: 'linebreak', font: 'helvetica' },
+      headStyles: { fillColor: azul, textColor: 255, fontStyle: 'bold', font: 'helvetica' },
+      columnStyles: {
+        0: { cellWidth: 13 },
+        1: { cellWidth: 35, overflow: 'linebreak' },
+        2: { cellWidth: 12 },
+        3: { cellWidth: 15 },
+        4: { cellWidth: 15 },
+        5: { cellWidth: 12, halign: 'right' },
+        6: { cellWidth: 12, halign: 'right' },
+        7: { cellWidth: 14, halign: 'right' },
+        8: { cellWidth: 16, halign: 'right' },
+        9: { cellWidth: 15, halign: 'right' },
+        10: { cellWidth: 14, halign: 'right' },
+        11: { cellWidth: 9, halign: 'center' }
+      },
+      didParseCell: (d) => {
+        if (d.section === 'body' && d.column.index === 11) {
+          const color = colorStatus({ status: d.cell.raw });
+          d.cell.styles.fillColor = color;
+          d.cell.styles.textColor = (color === amarillo) ? [31, 41, 55] : [255, 255, 255];
+          d.cell.styles.fontStyle = 'bold';
+        }
+      },
+      didDrawPage: () => drawHeader()
+    });
+    y = (doc.lastAutoTable?.finalY || y) + 6;
   });
 
   const totalPages = doc.internal.getNumberOfPages();
   for (let i = 1; i <= totalPages; i++) {
     doc.setPage(i);
-    doc.setFontSize(8).setTextColor(150).text(`Pág ${i} de ${totalPages}`, 196, 285, { align: 'right' });
+    doc.setFont('helvetica', 'normal').setFontSize(8).setTextColor(150);
+    doc.text(`Pág ${i} de ${totalPages}`, 196, 285, { align: 'right' });
   }
 
-  const sanitizedDateForFilename = String(corte || hoy).replace(/[^0-9-]/g, '_');
-  doc.save(`Tablero_Vencimientos_${sanitizedDateForFilename}.pdf`);
+  doc.save(`Tablero_Vencimientos_${corte}.pdf`);
 }
 
 // Header móvil: ocultar/mostrar en scroll
