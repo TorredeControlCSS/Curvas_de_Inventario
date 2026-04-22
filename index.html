@@ -1429,10 +1429,13 @@ function generarTableroVencimientosPDF(rep){
   const gris = [107, 114, 128];
   const rows = Array.isArray(rep?.rows) ? rep.rows : [];
   const n = (v) => Number(v || 0) || 0;
-  const fechaIsoHoy = new Date().toISOString().slice(0, 10);
-  const corteRaw = String(rows[0]?.fecha_corte || fechaIsoHoy);
-  const corte = (corteRaw.match(/\d{4}-\d{2}-\d{2}/) || [fechaIsoHoy])[0];
+  const fechaHoyIso = new Date().toISOString().slice(0, 10);
+  const corteRaw = String((rows.length > 0 ? rows[0].fecha_corte : '') || fechaHoyIso);
+  const corte = (corteRaw.match(/\d{4}-\d{2}-\d{2}/) || [fechaHoyIso])[0];
   const totalRep = Math.max(0, Math.round(n(rep?.total))) || rows.length;
+  const NEVER_SHIP_THRESHOLD_DAYS = -365;
+  const PAGE_OVERFLOW_Y = 240;
+  const NEW_PAGE_START_Y = 34;
 
   const normStatus = (r) => String(r?.status || '').trim().toUpperCase();
   const valorLote = (r) => {
@@ -1505,12 +1508,12 @@ function generarTableroVencimientosPDF(rep){
 
   const rangoDefs = [
     { label: 'VENCIDO', color: rojo, cond: (d) => d < 0 },
-    { label: '1-15 dias', color: rojo, cond: (d) => d >= 0 && d <= 15 },
-    { label: '16-30 dias', color: naranja, cond: (d) => d >= 16 && d <= 30 },
-    { label: '31-60 dias', color: amarillo, cond: (d) => d >= 31 && d <= 60 },
-    { label: '61-120 dias', color: amarillo, cond: (d) => d >= 61 && d <= 120 },
-    { label: '121-180 dias', color: verde, cond: (d) => d >= 121 && d <= 180 },
-    { label: '181+ dias', color: verde, cond: (d) => d >= 181 }
+    { label: '1-15 días', color: rojo, cond: (d) => d >= 0 && d <= 15 },
+    { label: '16-30 días', color: naranja, cond: (d) => d >= 16 && d <= 30 },
+    { label: '31-60 días', color: amarillo, cond: (d) => d >= 31 && d <= 60 },
+    { label: '61-120 días', color: amarillo, cond: (d) => d >= 61 && d <= 120 },
+    { label: '121-180 días', color: verde, cond: (d) => d >= 121 && d <= 180 },
+    { label: '181+ días', color: verde, cond: (d) => d >= 181 }
   ];
   const semaforoBody = (sourceRows) => rangoDefs.map((rg) => {
     const grp = sourceRows.filter((r) => rg.cond(n(r?.dias_a_vto)));
@@ -1540,7 +1543,7 @@ function generarTableroVencimientosPDF(rep){
     doc.setFont('helvetica', 'bold').setFontSize(17).setTextColor(...azul);
     doc.text('Tablero de Vencimientos | CEDIS Panamá', 35, 18);
     doc.setFont('helvetica', 'normal').setFontSize(9.5).setTextColor(80);
-    doc.text(`Corte Datos: ${corte} | Generado: ${fechaIsoHoy}`, 35, 24);
+    doc.text(`Corte Datos: ${corte} | Generado: ${fechaHoyIso}`, 35, 24);
     doc.setDrawColor(200);
     doc.line(14, 28, 196, 28);
   };
@@ -1578,7 +1581,7 @@ function generarTableroVencimientosPDF(rep){
   const cardClass = (r) => {
     const dVto = n(r?.dias_a_vto);
     const st = normStatus(r);
-    if (dVto < -365) return 'NUNCA_DESPACHARA';
+    if (dVto < NEVER_SHIP_THRESHOLD_DAYS) return 'NUNCA_DESPACHARA';
     if (st === 'VENCIDO' || dVto < 0) return 'VENCIDO';
     if (st === 'CRITICO' || st === 'RIESGO' || (dVto >= 0 && dVto <= 30)) return 'SE_VENCERA';
     if (n(r?.dias_a_fmd) <= 0) return 'INCUMPLE_FMD';
@@ -1593,9 +1596,9 @@ function generarTableroVencimientosPDF(rep){
 
   const cardItems = [
     { key: 'VENCIDO', label: 'VENCIDO', color: rojo },
-    { key: 'SE_VENCERA', label: 'SE VENCERA', color: naranja },
+    { key: 'SE_VENCERA', label: 'SE VENCERÁ', color: naranja },
     { key: 'INCUMPLE_FMD', label: 'INCUMPLE FMD', color: amarillo },
-    { key: 'NUNCA_DESPACHARA', label: 'NUNCA DESPACHARA', color: gris },
+    { key: 'NUNCA_DESPACHARA', label: 'NUNCA DESPACHARÁ', color: gris },
     { key: 'SIN_RIESGO', label: 'SIN RIESGO', color: verde }
   ];
   const rawPcts = cardItems.map((c) => (totalCards > 0 ? (cardCounters[c.key] * 100 / totalCards) : 0));
@@ -1622,12 +1625,12 @@ function generarTableroVencimientosPDF(rep){
   doc.text('CRITERIOS DE CLASIFICACIÓN:', 17, 38);
   doc.setTextColor(35).setFont('helvetica', 'normal').setFontSize(8.1);
   doc.text([
-    '• FMD (Fecha Maxima de Despacho) = Fecha_VTO - 60 dias (MED) o - 30 dias (LAB/MQ). Es la fecha limite para despachar el lote garantizando vida util al paciente.',
-    '• Demanda Mensual = Mediana del consumo diario (ult. 90 dias) x 30.',
-    '• Cobertura del lote (meses) = Cantidad del lote / Demanda Mensual del codigo.',
+    '• FMD (Fecha Máxima de Despacho) = Fecha_VTO - 60 días (MED) o - 30 días (LAB/MQ). Es la fecha límite para despachar el lote garantizando vida útil al paciente.',
+    '• Demanda Mensual = Mediana del consumo diario (ult. 90 días) x 30.',
+    '• Cobertura del lote (meses) = Cantidad del lote / Demanda Mensual del código.',
     '• STATUS se asigna comparando dias_a_FMD y dias_a_VTO: VENCIDO (<0), SE VENCERA (0-30), INCUMPLE FMD (dias_a_FMD <= 0 sin vencer), SIN RIESGO (>90 dias_a_FMD).',
     '• Orden FEFO (First Expired First Out): lotes ordenados por fecha VTO ascendente.',
-    '• Accion sugerida: BAJA ADMINISTRATIVA | DESPACHO URGENTE | REDISTRIBUIR | MONITOREAR.'
+    '• Acción sugerida: BAJA ADMINISTRATIVA | DESPACHO URGENTE | REDISTRIBUIR | MONITOREAR.'
   ], 17, 42, { maxWidth: 176, lineHeightFactor: 1.2 });
 
   const cardY = 86;
@@ -1653,7 +1656,7 @@ function generarTableroVencimientosPDF(rep){
     body: [
       ['Valor total en riesgo (B/.) — Suma Cantidad x Costo de lotes con STATUS distinto de SIN RIESGO', `B/. ${fmtMoney(valorTotalRiesgo)}`],
       ['% inventario en riesgo — Cantidad en riesgo / Cantidad total del corte x 100', fmtPct(qtyTotal > 0 ? (qtyRiesgo * 100 / qtyTotal) : 0)],
-      ['Dias promedio al vencimiento (ponderado por cantidad) — Promedio ponderado de dias_a_vto solo para lotes activos (dias_a_vto >= 0)', fmtNum(diasPromPond)],
+      ['Días promedio al vencimiento (ponderado por cantidad) — Promedio ponderado de dias_a_vto solo para lotes activos (dias_a_vto >= 0)', fmtNum(diasPromPond)],
       ['Cumplimiento FMD % — Lotes con dias_a_fmd > 0 / Total lotes con fecha VTO x 100', fmtPct(cumplimientoFmd)]
     ],
     theme: 'grid',
@@ -1669,20 +1672,20 @@ function generarTableroVencimientosPDF(rep){
   doc.addPage();
   drawHeader();
   doc.setTextColor(...azul).setFont('helvetica', 'bold').setFontSize(14);
-  doc.text('Semaforo Global por Rango de Vencimiento', 14, 38);
+  doc.text('Semáforo Global por Rango de Vencimiento', 14, 38);
   drawSemaforoTable(44, rows);
 
   doc.addPage();
   drawHeader();
   doc.setTextColor(...azul).setFont('helvetica', 'bold').setFontSize(14);
-  doc.text('Semaforo por Grupo de Suministro', 14, 38);
+  doc.text('Semáforo por Grupo de Suministro', 14, 38);
   const grupos = [...new Set(rows.map((r) => String(r?.grupo || '').trim() || 'SIN GRUPO'))].sort((a, b) => a.localeCompare(b, 'es'));
   let y = 44;
   grupos.forEach((grupo) => {
     const rowsGrupo = rows.filter((r) => (String(r?.grupo || '').trim() || 'SIN GRUPO') === grupo);
-    if (y > 240) {
+    if (y > PAGE_OVERFLOW_Y) {
       doc.addPage();
-      y = 34;
+      y = NEW_PAGE_START_Y;
     }
     doc.setTextColor(...azul).setFont('helvetica', 'bold').setFontSize(11);
     doc.text(grupo, 14, y);
@@ -1696,13 +1699,13 @@ function generarTableroVencimientosPDF(rep){
   doc.setFillColor(245, 245, 245);
   doc.roundedRect(14, 41, 182, 27, 2, 2, 'F');
   doc.setFont('helvetica', 'bold').setFontSize(8.5).setTextColor(35);
-  doc.text('Criterio de Acciones Sugeridas:', 17, 46);
+  doc.text('Criterios de Acciones Sugeridas:', 17, 46);
   doc.setFont('helvetica', 'normal').setFontSize(7.8);
   doc.text([
     '• BAJA ADMINISTRATIVA: dias_a_VTO < 0 — lote ya vencido, no puede despacharse.',
-    '• DESPACHO URGENTE: dias_a_VTO 0-30 dias — priorizar consumo o transferencia inmediata.',
-    '• REDISTRIBUIR: dias_a_VTO 31-90 dias — transferir a unidad con mayor demanda.',
-    '• MONITOREAR: dias_a_VTO > 90 dias — riesgo potencial, seguimiento periodico.',
+    '• DESPACHO URGENTE: dias_a_VTO 0-30 días — priorizar consumo o transferencia inmediata.',
+    '• REDISTRIBUIR: dias_a_VTO 31-90 días — transferir a unidad con mayor demanda.',
+    '• MONITOREAR: dias_a_VTO > 90 días — riesgo potencial, seguimiento periódico.',
     '• Orden: primero VENCIDO (dias_a_vto ASC), luego CRITICO y RIESGO (valor_riesgo DESC).'
   ], 17, 50, { maxWidth: 176, lineHeightFactor: 1.2 });
 
@@ -1721,16 +1724,16 @@ function generarTableroVencimientosPDF(rep){
       .slice(0, 20);
 
     if (!criticos.length) return;
-    if (y > 240) {
+    if (y > PAGE_OVERFLOW_Y) {
       doc.addPage();
-      y = 34;
+      y = NEW_PAGE_START_Y;
     }
     doc.setTextColor(...azul).setFont('helvetica', 'bold').setFontSize(11);
     doc.text(`${grupo} (${fmtInt(criticos.length)} lotes)`, 14, y);
 
     doc.autoTable({
       startY: y + 2,
-      head: [['Codigo', 'Suministro', 'Lote', 'Vence en', 'Dias a VTO', 'Demanda/mes', 'Cobertura lote (m)', 'Valor B/.', 'Criterio', 'Accion sugerida']],
+      head: [['Código', 'Suministro', 'Lote', 'Vence en', 'Días a VTO', 'Demanda/mes', 'Cobertura lote (m)', 'Valor B/.', 'Criterio', 'Acción sugerida']],
       body: criticos.map((r) => {
         const dm = demandaMensual(r);
         return [
@@ -1784,16 +1787,16 @@ function generarTableroVencimientosPDF(rep){
       .filter((r) => (String(r?.grupo || '').trim() || 'SIN GRUPO') === grupo)
       .sort((a, b) => parseFecha(a?.fecha_vto) - parseFecha(b?.fecha_vto));
 
-    if (y > 240) {
+    if (y > PAGE_OVERFLOW_Y) {
       doc.addPage();
-      y = 34;
+      y = NEW_PAGE_START_Y;
     }
     doc.setTextColor(...azul).setFont('helvetica', 'bold').setFontSize(11);
     doc.text(`${grupo} (${fmtInt(inventarioGrupo.length)} lotes)`, 14, y);
 
     doc.autoTable({
       startY: y + 2,
-      head: [['Codigo', 'Suministro', 'Lote', 'Fecha VTO', 'FMD', 'Dias a FMD', 'Dias a VTO', 'Cantidad', 'Demanda/mes', 'Cobertura (m)', 'Valor B/.', 'STATUS']],
+      head: [['Código', 'Suministro', 'Lote', 'Fecha VTO', 'FMD', 'Días a FMD', 'Días a VTO', 'Cantidad', 'Demanda/mes', 'Cobertura (m)', 'Valor B/.', 'STATUS']],
       body: inventarioGrupo.map((r) => {
         const dm = demandaMensual(r);
         return [
@@ -1845,7 +1848,7 @@ function generarTableroVencimientosPDF(rep){
   for (let i = 1; i <= totalPages; i++) {
     doc.setPage(i);
     doc.setFont('helvetica', 'normal').setFontSize(8).setTextColor(150);
-    doc.text(`Pag ${i} de ${totalPages}`, 196, 285, { align: 'right' });
+    doc.text(`Pág ${i} de ${totalPages}`, 196, 285, { align: 'right' });
   }
 
   doc.save(`Tablero_Vencimientos_${corte}.pdf`);
