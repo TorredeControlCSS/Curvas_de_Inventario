@@ -1425,6 +1425,8 @@ function generarTableroVencimientosPDF(rep){
   const ACTION_REDISTRIBUIR_MAX_DAYS = 90;
   const SECTION_TITLE_GAP = 2;
   const SECTION_BOTTOM_GAP = 7;
+  const PAGE_OVERFLOW_THRESHOLD = 255;
+  const NEW_PAGE_START_Y = 34;
   const azul = [11, 31, 58];
   const rojo = [239, 68, 68];
   const naranja = [249, 115, 22];
@@ -1610,9 +1612,9 @@ function generarTableroVencimientosPDF(rep){
       .filter(r => normalizarTipo(r.tipo) === tipo && ['VENCIDO', 'CRITICO', 'RIESGO'].includes(String(r.status || '').toUpperCase()))
       .sort((a, b) => valorLote(b) - valorLote(a));
 
-    if (y > 255) {
+    if (y > PAGE_OVERFLOW_THRESHOLD) {
       doc.addPage();
-      y = 34;
+      y = NEW_PAGE_START_Y;
     }
     doc.setTextColor(...azul).setFont('helvetica', 'bold').setFontSize(11).text(`Tipo ${tipo} (${fmtInt(criticos.length)} lotes críticos)`, 14, y);
     y += SECTION_TITLE_GAP;
@@ -1667,9 +1669,9 @@ function generarTableroVencimientosPDF(rep){
       .filter(r => normalizarTipo(r.tipo) === tipo)
       .sort((a, b) => valorLote(b) - valorLote(a));
 
-    if (y > 255) {
+    if (y > PAGE_OVERFLOW_THRESHOLD) {
       doc.addPage();
-      y = 34;
+      y = NEW_PAGE_START_Y;
     }
     doc.setTextColor(...azul).setFont('helvetica', 'bold').setFontSize(11).text(`Tipo ${tipo} (${fmtInt(inventarioTipo.length)} lotes)`, 14, y);
     y += SECTION_TITLE_GAP;
@@ -1723,7 +1725,7 @@ function generarTableroVencimientosPDF(rep){
     doc.setFontSize(8).setTextColor(150).text(`Pág ${i} de ${totalPages}`, 196, 285, { align: 'right' });
   }
 
-  const sanitizedDateForFilename = String(corte || hoy).replace(/[^\d\-]/g, '_');
+  const sanitizedDateForFilename = String(corte || hoy).replace(/[^0-9-]/g, '_');
   doc.save(`Tablero_Vencimientos_${sanitizedDateForFilename}.pdf`);
 }
 
