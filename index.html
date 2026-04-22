@@ -1685,7 +1685,7 @@ function generarTableroVencimientosPDF(rep){
 
   let donutDataUrl = null;
   try {
-    if (typeof window.Chart === 'function') {
+    if (typeof window.Chart === 'function' && window.Chart.prototype) {
       const donutCanvas = document.createElement('canvas');
       donutCanvas.width = DONUT_CANVAS_SIZE;
       donutCanvas.height = DONUT_CANVAS_SIZE;
@@ -1712,14 +1712,14 @@ function generarTableroVencimientosPDF(rep){
       donutDataUrl = donutCanvas.toDataURL('image/png');
       donutChart.destroy();
     }
-  } catch (_) {}
+  } catch (e) { console.warn('No se pudo generar gráfico de dona para el PDF:', e); }
 
   if (donutDataUrl) {
     const kpiBottomY = doc.lastAutoTable?.finalY || DEFAULT_KPI_BOTTOM_Y;
     const donutY = Math.max(PAGE1_DONUT_MIN_Y, kpiBottomY + 4);
     doc.setTextColor(...azul).setFont('helvetica', 'bold').setFontSize(11);
     doc.text('Distribución de lotes por estado', 14, donutY);
-    try { doc.addImage(donutDataUrl, 'PNG', 67, donutY + 3, 74, 74); } catch (_) {}
+    try { doc.addImage(donutDataUrl, 'PNG', 67, donutY + 3, 74, 74); } catch (e) { console.warn('No se pudo insertar gráfico de dona en PDF:', e); }
   }
 
   doc.addPage();
