@@ -1066,6 +1066,50 @@ if (btnVencimientosPdf) {
           if (s.includes('EXCESO')) return azul2;
           return verde;
         };
+        const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
+
+        const parseCobMonths = (txt) => {
+          const n = parseFloat(String(txt || '').replace('m','').trim());
+          return Number.isFinite(n) ? n : 0;
+        };
+        
+        const computeGroupRisk = (g) => {
+          const total = Math.max(1, Number(g.Total_Renglones || 0));
+        
+          const agotPct = (Number(g.Agotados || 0) / total) * 100;
+          const critPct = (Number(g.Criticos || 0) / total) * 100;
+          const excPct  = (Number(g.Excesos || 0) / total) * 100;
+          const resPct  = Number(g.Presion_Reserva_Pct || 0);
+          const cobMes  = parseCobMonths(g.Cobertura_Grupo);
+        
+          // score ponderado
+          const score =
+            (agotPct * 4.0) +
+            (critPct * 3.0) +
+            (excPct * 1.5) +
+            (resPct * 1.5) +
+            (cobMes < 1 ? 25 : cobMes < 2 ? 15 : cobMes < 4 ? 8 : 0);
+        
+          let nivel = 'CONTROLADO';
+          if (score >= 120) nivel = 'CRÍTICO';
+          else if (score >= 80) nivel = 'ALTO';
+          else if (score >= 40) nivel = 'MEDIO';
+        
+          let motivo = [];
+          if (agotPct >= 15) motivo.push(`agotados ${agotPct.toFixed(1)}%`);
+          if (critPct >= 20) motivo.push(`críticos ${critPct.toFixed(1)}%`);
+          if (excPct >= 25)  motivo.push(`exceso ${excPct.toFixed(1)}%`);
+          if (resPct >= 15)  motivo.push(`presión reserva ${resPct.toFixed(1)}%`);
+          if (cobMes < 2)    motivo.push(`cobertura ${cobMes.toFixed(1)}m`);
+        
+          if (!motivo.length) motivo.push('afectación relativa contenida');
+        
+          return {
+            score,
+            nivel,
+            motivo: motivo.join(' · ')
+          };
+        };
 
         const mapMaster = resMaster.rows.map(r => ({
           fecha: r[0],
@@ -1082,27 +1126,36 @@ if (btnVencimientosPdf) {
           demanda: Number(r[11] || 0)
         }));
 
-        const groups = resGroups.rows.map(r => ({
-          Grupo: String(r[0]),
-          Total_Renglones: Number(r[1] || 0),
-          Agotados: Number(r[2] || 0),
-          Criticos: Number(r[3] || 0),
-          Bajos: Number(r[4] || 0),
-          Optimos: Number(r[5] || 0),
-          Excesos: Number(r[6] || 0),
-          Demanda_Total: Number(r[7] || 0),
-          Inv_Actual_Total: Number(r[8] || 0),
-          Recepcion_Total: Number(r[9] || 0),
-          Transito_Total: Number(r[10] || 0),
-          Reserva_Total: Number(r[11] || 0),
-          Inv_Proy_Total: Number(r[12] || 0),
-          Cobertura_Grupo: String(r[13] || ''),
-          Presion_Reserva_Pct: parseFloat(String(r[14] || '0').replace('%','')) || 0,
-          Vencidos_Renglones: Number(r[15] || 0),
-          Prox_Vencer_Renglones: Number(r[16] || 0),
-          Riesgo_Grupo: String(r[17] || ''),
-          Observacion: String(r[18] || '')
-        }));
+        const groups = resGroups.rows.map(r => {
+          const base = {
+            Grupo: String(r[0]),
+            Total_Renglones: Number(r[1] || 0),
+            Agotados: Number(r[2] || 0),
+            Criticos: Number(r[3] || 0),
+            Bajos: Number(r[4] || 0),
+            Optimos: Number(r[5] || 0),
+            Excesos: Number(r[6] || 0),
+            Demanda_Total: Number(r[7] || 0),
+            Inv_Actual_Total: Number(r[8] || 0),
+            Recepcion_Total: Number(r[9] || 0),
+            Transito_Total: Number(r[10] || 0),
+            Reserva_Total: Number(r[11] || 0),
+            Inv_Proy_Total: Number(r[12] || 0),
+            Cobertura_Grupo: String(r[13] || ''),
+            Presion_Reserva_Pct: parseFloat(String(r[14] || '0').replace('%','')) || 0,
+            Vencidos_Renglones: Number(r[15] || 0),
+            Prox_Vencer_Renglones: Number(r[16] || 0),
+            Riesgo_Grupo: String(r[17] || ''),
+            Observacion: String(r[18] || '')
+          };
+        
+          const rk = computeGroupRisk(base);
+          base.Riesgo_Grupo = rk.nivel;
+          base.Riesgo_Motivo = rk.motivo;
+          base.Riesgo_Score = rk.score;
+        
+          return base;
+        });
 
         const detail = resDetail.rows.map(r => ({
           GRUPO: String(r[0]),
@@ -1160,55 +1213,68 @@ if (btnVencimientosPdf) {
         };
 
         const drawDonut = (cx, cy, rOuter, rInner, segments) => {
-        const size = 260;
-        const canvas = document.createElement('canvas');
-        canvas.width = size;
-        canvas.height = size;
-        const ctx = canvas.getContext('2d');
-      
-        const total = segments.reduce((a, b) => a + Number(b.value || 0), 0) || 1;
-        let startAngle = -Math.PI / 2;
-      
-        const center = size / 2;
-        const outer = size * 0.42;
-        const inner = size * 0.20;
-      
-        segments.forEach(seg => {
-          const value = Number(seg.value || 0);
-          const slice = (value / total) * Math.PI * 2;
-      
+          const size = 320;
+          const canvas = document.createElement('canvas');
+          canvas.width = size;
+          canvas.height = size;
+          const ctx = canvas.getContext('2d');
+        
+          const total = segments.reduce((a, b) => a + Number(b.value || 0), 0) || 1;
+          let startAngle = -Math.PI / 2;
+        
+          const center = size / 2;
+          const outer = size * 0.42;
+          const inner = size * 0.20;
+        
+          segments.forEach(seg => {
+            const value = Number(seg.value || 0);
+            const slice = (value / total) * Math.PI * 2;
+            const mid = startAngle + slice / 2;
+        
+            const [r, g, b] = seg.color;
+        
+            ctx.beginPath();
+            ctx.moveTo(center, center);
+            ctx.arc(center, center, outer, startAngle, startAngle + slice);
+            ctx.closePath();
+            ctx.fillStyle = `rgb(${r},${g},${b})`;
+            ctx.fill();
+        
+            // porcentaje sobre la dona
+            const pctVal = Math.round((value / total) * 100);
+            if (pctVal >= 6) {
+              const tx = center + Math.cos(mid) * (outer * 0.72);
+              const ty = center + Math.sin(mid) * (outer * 0.72);
+              ctx.fillStyle = '#ffffff';
+              ctx.font = 'bold 18px Arial';
+              ctx.textAlign = 'center';
+              ctx.textBaseline = 'middle';
+              ctx.fillText(`${pctVal}%`, tx, ty);
+            }
+        
+            startAngle += slice;
+          });
+        
+          // círculo central
           ctx.beginPath();
-          ctx.moveTo(center, center);
-          ctx.arc(center, center, outer, startAngle, startAngle + slice);
-          ctx.closePath();
-      
-          const [r, g, b] = seg.color;
-          ctx.fillStyle = `rgb(${r},${g},${b})`;
+          ctx.arc(center, center, inner, 0, Math.PI * 2);
+          ctx.fillStyle = '#ffffff';
           ctx.fill();
-      
-          startAngle += slice;
-        });
-      
-        // hueco central
-        ctx.beginPath();
-        ctx.arc(center, center, inner, 0, Math.PI * 2);
-        ctx.fillStyle = '#ffffff';
-        ctx.fill();
-      
-        // texto central
-        ctx.fillStyle = '#0b1f3a';
-        ctx.font = 'bold 16px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillText('Total Renglones', center, center - 6);
-      
-        ctx.font = 'bold 28px Arial';
-        ctx.fillText(totalRenglones.toLocaleString(), center, center + 22);
-      
-        const imgData = canvas.toDataURL('image/png');
-        const w = rOuter * 2;
-        const h = rOuter * 2;
-        doc.addImage(imgData, 'PNG', cx - rOuter, cy - rOuter, w, h);
-      };
+        
+          // texto central
+          ctx.fillStyle = '#0b1f3a';
+          ctx.font = 'bold 18px Arial';
+          ctx.textAlign = 'center';
+          ctx.fillText('Total Renglones', center, center - 8);
+        
+          ctx.font = 'bold 34px Arial';
+          ctx.fillText(totalRenglones.toLocaleString(), center, center + 24);
+        
+          const imgData = canvas.toDataURL('image/png');
+          const w = rOuter * 2;
+          const h = rOuter * 2;
+          doc.addImage(imgData, 'PNG', cx - rOuter, cy - rOuter, w, h);
+        };
 
         // ==========================
         // PÁGINA 1 — PORTADA VISUAL
@@ -1237,7 +1303,7 @@ if (btnVencimientosPdf) {
         doc.setFont('helvetica','bold').setFontSize(16).setTextColor(...azul);
         doc.text('Distribución del Inventario', 14, 118);
 
-        drawDonut(62, 170, 34, 16, [
+        drawDonut(70, 176, 38, 17, [
           { label:'Agotados', value: totalAgot, color: rojo },
           { label:'Críticos', value: totalCrit, color: naranja },
           { label:'Bajo', value: totalBajo, color: amarillo },
@@ -1261,7 +1327,7 @@ if (btnVencimientosPdf) {
           ly += 12;
         });
 
-        // ==========================
+                // ==========================
         // PÁGINA 2 — MATRIZ GERENCIAL
         // ==========================
         doc.addPage();
@@ -1271,78 +1337,101 @@ if (btnVencimientosPdf) {
         doc.text('Matriz Gerencial por Grupo', 14, 40);
 
         doc.setFillColor(245,245,245);
-        doc.roundedRect(14, 44, 182, 14, 2, 2, 'F');
+        doc.roundedRect(14, 44, 182, 20, 2, 2, 'F');
         doc.setFont('helvetica','normal').setFontSize(8).setTextColor(60);
-        doc.text('La matriz resume por grupo la cantidad de renglones en agotado, crítico y exceso, además de la presión de reserva. El color indica intensidad relativa del riesgo dentro de cada columna.', 16, 50);
+        doc.text('Lectura por fila: cada grupo se evalúa según su afectación relativa. El riesgo no depende solo de cantidad absoluta, sino del peso de agotados, críticos, exceso y presión de reserva dentro del total de renglones del grupo.', 16, 50);
+        doc.text('Escala: CONTROLADO <40 | MEDIO 40-79 | ALTO 80-119 | CRÍTICO ≥120.', 16, 58);
 
-        const maxAgot = Math.max(...groups.map(g => g.Agotados), 1);
-        const maxCrit = Math.max(...groups.map(g => g.Criticos), 1);
-        const maxExc  = Math.max(...groups.map(g => g.Excesos), 1);
-        const maxPres = Math.max(...groups.map(g => g.Presion_Reserva_Pct), 1);
+        const maxAgotPct = Math.max(...groups.map(g => (g.Agotados / Math.max(1, g.Total_Renglones)) * 100), 1);
+        const maxCritPct = Math.max(...groups.map(g => (g.Criticos / Math.max(1, g.Total_Renglones)) * 100), 1);
+        const maxExcPct  = Math.max(...groups.map(g => (g.Excesos / Math.max(1, g.Total_Renglones)) * 100), 1);
+        const maxPres    = Math.max(...groups.map(g => g.Presion_Reserva_Pct), 1);
 
-        const tempColor = (value, max, base) => {
-          const ratio = Math.max(0, Math.min(1, Number(value || 0) / Math.max(1, max)));
-          if (base === 'red') {
-            if (ratio >= 0.75) return [248, 113, 113];
-            if (ratio >= 0.45) return [253, 186, 116];
-            if (ratio > 0) return [187, 247, 208];
-            return [255,255,255];
+        const tempColor = (ratio, theme) => {
+          ratio = clamp(ratio, 0, 1);
+          if (ratio <= 0) return [255,255,255];
+
+          if (theme === 'red') {
+            if (ratio >= 0.75) return [239, 68, 68];
+            if (ratio >= 0.50) return [248, 113, 113];
+            if (ratio >= 0.25) return [254, 202, 202];
+            return [220, 252, 231];
           }
-          if (base === 'orange') {
-            if (ratio >= 0.75) return [251, 146, 60];
-            if (ratio >= 0.45) return [253, 224, 71];
-            if (ratio > 0) return [187, 247, 208];
-            return [255,255,255];
+
+          if (theme === 'orange') {
+            if (ratio >= 0.75) return [245, 158, 11];
+            if (ratio >= 0.50) return [251, 191, 36];
+            if (ratio >= 0.25) return [254, 240, 138];
+            return [220, 252, 231];
           }
-          if (base === 'blue') {
-            if (ratio >= 0.75) return [96, 165, 250];
-            if (ratio >= 0.45) return [191, 219, 254];
-            if (ratio > 0) return [219, 234, 254];
-            return [255,255,255];
+
+          if (theme === 'blue') {
+            if (ratio >= 0.75) return [59, 130, 246];
+            if (ratio >= 0.50) return [96, 165, 250];
+            if (ratio >= 0.25) return [191, 219, 254];
+            return [219, 234, 254];
           }
+
           return [255,255,255];
         };
 
         doc.autoTable({
-          startY: 64,
+          startY: 70,
           head: [[
             'Grupo',
-            'Renglones agotados',
-            'Renglones críticos',
-            'Renglones en exceso',
-            'Presión de reserva',
-            'Riesgo'
+            '% agotados',
+            '% críticos',
+            '% exceso',
+            'Presión reserva',
+            'Riesgo',
+            'Base de lectura'
           ]],
-          body: groups.map(g => [
-            g.Grupo,
-            g.Agotados,
-            g.Criticos,
-            g.Excesos,
-            `${g.Presion_Reserva_Pct.toFixed(1)}%`,
-            g.Riesgo_Grupo
-          ]),
+          body: groups.map(g => {
+            const total = Math.max(1, g.Total_Renglones);
+            const agotPct = (g.Agotados / total) * 100;
+            const critPct = (g.Criticos / total) * 100;
+            const excPct  = (g.Excesos / total) * 100;
+
+            return [
+              g.Grupo,
+              `${agotPct.toFixed(1)}%`,
+              `${critPct.toFixed(1)}%`,
+              `${excPct.toFixed(1)}%`,
+              `${g.Presion_Reserva_Pct.toFixed(1)}%`,
+              g.Riesgo_Grupo,
+              g.Riesgo_Motivo
+            ];
+          }),
           theme: 'grid',
-          styles: { fontSize: 9, cellPadding: 4, valign:'middle' },
+          styles: { fontSize: 8, cellPadding: 3, valign:'middle', overflow:'linebreak' },
           headStyles: { fillColor: azul, textColor: 255 },
           columnStyles: {
-            0: { cellWidth: 42 },
-            1: { cellWidth: 32, halign:'center' },
-            2: { cellWidth: 32, halign:'center' },
-            3: { cellWidth: 30, halign:'center' },
-            4: { cellWidth: 28, halign:'center' },
-            5: { cellWidth: 28, halign:'center' }
+            0: { cellWidth: 34 },
+            1: { cellWidth: 24, halign:'center' },
+            2: { cellWidth: 24, halign:'center' },
+            3: { cellWidth: 24, halign:'center' },
+            4: { cellWidth: 24, halign:'center' },
+            5: { cellWidth: 22, halign:'center' },
+            6: { cellWidth: 48 }
           },
           didParseCell: (d) => {
-            if (d.section === 'body') {
-              const row = groups[d.row.index];
-              if (d.column.index === 1) d.cell.styles.fillColor = tempColor(row.Agotados, maxAgot, 'red');
-              if (d.column.index === 2) d.cell.styles.fillColor = tempColor(row.Criticos, maxCrit, 'orange');
-              if (d.column.index === 3) d.cell.styles.fillColor = tempColor(row.Excesos, maxExc, 'blue');
-              if (d.column.index === 4) d.cell.styles.fillColor = tempColor(row.Presion_Reserva_Pct, maxPres, 'orange');
-              if (d.column.index === 5) {
-                d.cell.styles.textColor = riskColor(row.Riesgo_Grupo);
-                d.cell.styles.fontStyle = 'bold';
-              }
+            if (d.section !== 'body') return;
+            const g = groups[d.row.index];
+            const total = Math.max(1, g.Total_Renglones);
+
+            const agotPct = (g.Agotados / total) * 100;
+            const critPct = (g.Criticos / total) * 100;
+            const excPct  = (g.Excesos / total) * 100;
+            const presPct = g.Presion_Reserva_Pct;
+
+            if (d.column.index === 1) d.cell.styles.fillColor = tempColor(agotPct / maxAgotPct, 'red');
+            if (d.column.index === 2) d.cell.styles.fillColor = tempColor(critPct / maxCritPct, 'orange');
+            if (d.column.index === 3) d.cell.styles.fillColor = tempColor(excPct / maxExcPct, 'blue');
+            if (d.column.index === 4) d.cell.styles.fillColor = tempColor(presPct / maxPres, 'orange');
+
+            if (d.column.index === 5) {
+              d.cell.styles.textColor = riskColor(g.Riesgo_Grupo);
+              d.cell.styles.fontStyle = 'bold';
             }
           }
         });
@@ -1375,8 +1464,21 @@ if (btnVencimientosPdf) {
             g.Riesgo_Grupo
           ]),
           theme: 'grid',
-          styles: { fontSize: 8, cellPadding: 3 },
+          styles: { fontSize: 7.5, cellPadding: 2.5, overflow:'linebreak', valign:'middle' },
           headStyles: { fillColor: azul, textColor: 255 },
+          columnStyles: {
+            0: { cellWidth: 24 },
+            1: { cellWidth: 14, halign:'center' },
+            2: { cellWidth: 10, halign:'center' },
+            3: { cellWidth: 10, halign:'center' },
+            4: { cellWidth: 10, halign:'center' },
+            5: { cellWidth: 10, halign:'center' },
+            6: { cellWidth: 10, halign:'center' },
+            7: { cellWidth: 26, halign:'right' },
+            8: { cellWidth: 28, halign:'right' },
+            9: { cellWidth: 12, halign:'center' },
+            10:{ cellWidth: 18, halign:'center' }
+          },
           didParseCell: (d) => {
             if (d.section === 'body' && d.column.index === 10) {
               d.cell.styles.textColor = riskColor(d.cell.raw);
@@ -1384,7 +1486,6 @@ if (btnVencimientosPdf) {
             }
           }
         });
-
         // ==========================
         // DESARROLLO OPERATIVO POR GRUPO
         // ==========================
