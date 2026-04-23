@@ -104,14 +104,20 @@
     th,td{border-bottom:1px solid var(--ring);padding:8px 10px;text-align:left;white-space:nowrap}
     thead th{position:sticky;top:0;background:var(--card);z-index:1}
 
-    /* Tarjetero de fórmulas */
-    .formula-cards{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; margin-top:6px; }
+    /* Tarjetero ejecutivo */
+    .formula-cards{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; margin-top:6px; }
+    @media (max-width:1024px){ .formula-cards{grid-template-columns:repeat(2,minmax(0,1fr));} }
     @media (max-width:720px){ .formula-cards{grid-template-columns:1fr} }
-    .formula-card{ border:1px dashed var(--border); border-radius:12px; padding:10px; background:rgba(0,0,0,0.02); }
+    .formula-card{ border:1px dashed var(--border); border-radius:12px; padding:12px; background:rgba(0,0,0,0.02); min-height:124px; }
     [data-theme="dark"] .formula-card{ background:rgba(255,255,255,0.02); }
-    .fc-title{font-weight:700; color:var(--sub); margin-bottom:4px}
-    .fc-value{font-weight:800; font-size:clamp(16px,4.6vw,20px); margin-bottom:4px}
-    .fc-formula{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:12px; color:var(--sub)}
+    .fc-title{font-weight:800; color:var(--text); margin-bottom:6px; line-height:1.2}
+    .fc-value{font-weight:800; font-size:clamp(18px,4.8vw,24px); margin-bottom:6px; line-height:1.1}
+    .fc-formula{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:12px; color:var(--sub); margin-bottom:6px}
+    .fc-note{font-size:12px; color:var(--sub); line-height:1.35}
+    .fc-note strong{color:var(--text)}
+    .fc-rule-ok{color:#16a34a;font-weight:800}
+    .fc-rule-warn{color:#d97706;font-weight:800}
+    .fc-rule-bad{color:#dc2626;font-weight:800}
     .muted{color:var(--muted);font-size:12px}
     ul.formula{padding-left:18px}
     
@@ -281,27 +287,43 @@
         <div class="card chart-wrap"><canvas id="chart"></canvas></div>
 
         <div class="card" id="formulas">
-          <div class="muted">Fórmulas</div>
+          <div class="muted">Lógica operativa del abastecimiento</div>
           <div class="formula-cards">
             <div class="formula-card">
-              <div class="fc-title">Punto de Reorden (ROP = CTD + SS)</div>
+              <div class="fc-title">Punto de Reorden</div>
               <div class="fc-value" id="fc_rop">–</div>
               <div class="fc-formula" id="f_kb">ROP = μ_D × L + SS = ?</div>
+              <div class="fc-note" id="n_kb">Si el inventario disponible cae por debajo de este nivel, debe iniciarse reabastecimiento.</div>
             </div>
             <div class="formula-card">
-              <div class="fc-title">SS (Inventario Crítico)</div>
+              <div class="fc-title">Inventario Crítico</div>
               <div class="fc-value" id="fc_ss">–</div>
               <div class="fc-formula" id="f_sfty">SS = z × σ_D × √L = ?</div>
+              <div class="fc-note" id="n_sfty">Nivel mínimo de protección para evitar quiebre de stock.</div>
             </div>
             <div class="formula-card">
-              <div class="fc-title">Nivel inicial</div>
-              <div class="fc-value" id="fc_i0">–</div>
-              <div class="fc-formula" id="f_proj1">I₀ = SMA_15(inventario) = ?</div>
+              <div class="fc-title">Inventario Proyectado</div>
+              <div class="fc-value" id="fc_proj">–</div>
+              <div class="fc-formula" id="f_proj1">Inv.Proy = (Inv.Act + Recepción + Tránsito) − Reserva</div>
+              <div class="fc-note" id="n_proj">Inventario real esperado considerando stock comprometido. Si el backend no expone entradas programadas, se usa como respaldo la proyección al horizonte.</div>
             </div>
             <div class="formula-card">
-              <div class="fc-title">Dinámica de proyección</div>
-              <div class="fc-formula" id="f_proj2">Î_{t+h} = max(Î_{t+h−1} − d̂_h, 0); d̂ por SES(α=0.3), estacionalidad semanal: ?</div>
-              <div class="fc-formula" id="f_order">Si Q>0: I'_{t+L} = Î_{t+L} + Q</div>
+              <div class="fc-title">Presión de Reserva</div>
+              <div class="fc-value" id="fc_pressure">–</div>
+              <div class="fc-formula" id="f_pressure">Presión = Reserva ÷ Inventario Actual × 100</div>
+              <div class="fc-note" id="n_pressure">Alto porcentaje indica inventario retenido y menor capacidad de respuesta.</div>
+            </div>
+            <div class="formula-card">
+              <div class="fc-title">Dinámica de Proyección</div>
+              <div class="fc-formula" id="f_proj2">Inventario futuro = Inventario disponible − consumo esperado + entradas</div>
+              <div class="fc-formula" id="f_order">I(t+h) = I(t+h−1) − d̂_h + entradas_h</div>
+              <div class="fc-note" id="n_dyn">Permite estimar la fecha esperada de agotamiento y anticipar reabastecimiento.</div>
+            </div>
+            <div class="formula-card">
+              <div class="fc-title">Regla Operativa</div>
+              <div class="fc-value" id="fc_rule">–</div>
+              <div class="fc-formula" id="f_rule">Clasificación automática del estado operativo</div>
+              <div class="fc-note" id="n_rule">El tablero prioriza riesgo de quiebre, luego reabastecimiento y luego presión de reserva.</div>
             </div>
           </div>
 
@@ -517,15 +539,34 @@ function setSideMetrics(minV,minD,maxV,maxD,avg30,coveragePct,coverageNote){
   if ($('mMaxDate'))      $('mMaxDate').textContent = maxD ? `en ${maxD}` : '';
   if ($('mAvg30'))        $('mAvg30').textContent = fmtInt(Math.round(avg30||0));
 }
-function setFormulas(mu, sigma, kb, sfty, I0, rop, H){
+function setFormulas(mu, sigma, kb, sfty, rop, H, extra={}){
+  const projectedInventory = Number(extra.projectedInventory || 0);
+  const reservePressure = Number(extra.reservePressure || 0);
+  const operationalRule = String(extra.operationalRule || 'Stock controlado · Monitoreo normal');
+  const operationalRuleClass = String(extra.operationalRuleClass || 'fc-rule-ok');
+
   if ($('fc_rop')) $('fc_rop').textContent = fmtInt(Math.round(rop||0));
   if ($('f_kb'))   $('f_kb').textContent   = `ROP = μ_D × L + SS = ${fmtInt(Math.round(kb||0))} + ${fmtInt(Math.round(sfty||0))} = ${fmtInt(Math.round(rop||0))}`;
-  if ($('fc_ss'))  $('fc_ss').textContent  = fmtInt(Math.round(sfty||0));
-  if ($('f_sfty')) $('f_sfty').textContent = `SS = z × σ_D × √L = 1.65 × ${fmtInt(Math.round(Number(sigma||0)))} × √${LEAD} = ${fmtInt(Math.round(sfty||0))}`;
-  if ($('fc_i0'))  $('fc_i0').textContent  = fmtInt(Math.round(I0||0));
-  if ($('f_proj1')) $('f_proj1').textContent = `I_{t+h} = max(I_{t+h-1} − d̂_h, 0), h=1..${H}; d̂ por SES(α=0.3), estacionalidad semanal: ${USE_SEASONAL ? 'activa' : 'inactiva'}`;
-  if ($('f_proj2')) $('f_proj2').textContent = `Si Q>0: I'_{t+h} = I'_{t+h} + Q`;
-  if ($('f_order')) $('f_order').textContent = `Llegada pedido (+${LEAD})`;
+
+  if ($('fc_ss'))  $('fc_ss').textContent  = sfty > 0 ? fmtInt(Math.round(sfty||0)) : 'Sin base';
+  if ($('f_sfty')) $('f_sfty').textContent = sfty > 0
+    ? `SS = z × σ_D × √L = 1.65 × ${fmtInt(Math.round(Number(sigma||0)))} × √${LEAD} = ${fmtInt(Math.round(sfty||0))}`
+    : 'Sin variabilidad histórica suficiente para estimar stock de seguridad';
+
+  if ($('fc_proj')) $('fc_proj').textContent = fmtInt(Math.round(projectedInventory||0));
+  if ($('f_proj1')) $('f_proj1').textContent = 'Inv.Proy = (Inv.Act + Recepción + Tránsito) − Reserva';
+
+  if ($('fc_pressure')) $('fc_pressure').textContent = `${Math.round((reservePressure||0)*10)/10}%`;
+  if ($('f_pressure')) $('f_pressure').textContent = 'Presión = Reserva ÷ Inventario Actual × 100';
+
+  if ($('f_proj2')) $('f_proj2').textContent = `Inventario futuro = Inventario disponible − consumo esperado + entradas`;
+  if ($('f_order')) $('f_order').textContent = `I(t+h) = I(t+h−1) − d̂_h + entradas_h · Horizonte actual: ${H} días`;
+
+  if ($('fc_rule')) {
+    $('fc_rule').textContent = operationalRule;
+    $('fc_rule').classList.remove('fc-rule-ok','fc-rule-warn','fc-rule-bad');
+    $('fc_rule').classList.add(operationalRuleClass);
+  }
 }
 
 function coverageFourMonths(invLast, serie, mu_d){
@@ -768,7 +809,34 @@ async function init(){
       $('kpiCov').textContent = fmtPct(covPct);
       setSideMetrics(data.min_value||0, data.min_date||'', data.max_value||0, data.max_date||'', data.avg_30||0, covPct, covNote);
 
-      setFormulas(muForUI, sigmaForUI, kb, sfty, sma15, rop, H);
+
+      const leadUsed = data.lead || LEAD;
+      const projectedFromSeries = Math.max(Math.round(base[Math.min(leadUsed - 1, base.length - 1)] || 0), 0);
+      const projectedInventory = Number.isFinite(Number(data.inventario_proyectado))
+        ? Number(data.inventario_proyectado)
+        : projectedFromSeries;
+      const invActualTotal = pointAtGlobal ? Number(pointAtGlobal.inventario || 0) : Number(invHist[invHist.length - 1] || 0);
+      const reservePressure = invActualTotal > 0 ? (reservaActual / invActualTotal) * 100 : 0;
+
+      let operationalRule = 'Stock controlado · Monitoreo normal';
+      let operationalRuleClass = 'fc-rule-ok';
+      if (invActualAvailable <= sfty && sfty > 0) {
+        operationalRule = 'Riesgo alto de quiebre · Acción inmediata requerida';
+        operationalRuleClass = 'fc-rule-bad';
+      } else if (invActualAvailable <= rop && rop > 0) {
+        operationalRule = 'Reabastecimiento prioritario · Nivel por debajo de ROP';
+        operationalRuleClass = 'fc-rule-warn';
+      } else if (reservePressure >= 25) {
+        operationalRule = 'Reserva alta detectada · Validar liberación y depuración';
+        operationalRuleClass = 'fc-rule-warn';
+      }
+
+      setFormulas(muForUI, sigmaForUI, kb, sfty, rop, H, {
+        projectedInventory,
+        reservePressure,
+        operationalRule,
+        operationalRuleClass
+      });
       fillProjTable(projTbody, future, dHat, base, withOrder, data.lead||LEAD, Q);
 
       let graphTitle = '';
@@ -805,13 +873,11 @@ async function init(){
       };
 
       const datasets = [
-        {label:'Inventario total', data:histData, fill:false, pointRadius:0, borderColor:chartColors.total, backgroundColor:chartColors.totalFill, borderWidth:1.5},
-        {label:'Inventario disponible real', data:histAvailableData, fill:true, pointRadius:0, borderColor:chartColors.available, backgroundColor:chartColors.availableFill, borderWidth:2},
-        {label:'Inventario en reserva', data:histReserveData, fill:false, spanGaps:false, pointRadius:3, pointHoverRadius:4, borderColor:chartColors.order, backgroundColor:'rgba(168,85,247,0.1)', borderWidth:2},
-        {label:'Inventario vencido', data:histExpiredData, fill:false, pointRadius:0, borderColor:chartColors.critical, backgroundColor:'rgba(239,68,68,0.15)', borderWidth:1.8},
-        {label:`Proyección ${H} días`, data:projData, fill:true, pointRadius:0, borderColor:chartColors.projection, backgroundColor:chartColors.projectionFill},
-        {label:'Proyección + pedido', data:projPlusData, fill:true, pointRadius:0, borderColor:chartColors.order, backgroundColor:chartColors.orderFill},
-        {label:'Punto de Reorden (CTD+SS)', data:Array(labels.length).fill(rop), pointRadius:0, borderDash:[4,4], fill:false, borderColor:chartColors.rop},
+        {label:'Inventario Total', data:histData, fill:false, pointRadius:0, borderColor:chartColors.total, backgroundColor:chartColors.totalFill, borderWidth:1.5},
+        {label:'Inventario Disponible', data:histAvailableData, fill:true, pointRadius:0, borderColor:chartColors.available, backgroundColor:chartColors.availableFill, borderWidth:2.2},
+        {label:'Inventario en Reserva', data:histReserveData, fill:false, spanGaps:false, pointRadius:3, pointHoverRadius:4, borderColor:chartColors.order, backgroundColor:'rgba(168,85,247,0.1)', borderWidth:2},
+        {label:'Proyección de Consumo', data:projData, fill:false, pointRadius:0, borderColor:chartColors.projection, backgroundColor:chartColors.projectionFill, borderWidth:2, borderDash:[2,2]},
+        {label:'Punto de Reorden', data:Array(labels.length).fill(rop), pointRadius:0, borderDash:[4,4], fill:false, borderColor:chartColors.rop},
         {label:'Inventario Crítico', data:Array(labels.length).fill(sfty), pointRadius:0, borderDash:[4,2], fill:false, borderColor:chartColors.critical}
       ];
 
@@ -849,12 +915,11 @@ async function init(){
         chartInstance.data.labels = labels;
         chartInstance.data.datasets[0].data = histData;
         chartInstance.data.datasets[1].data = histAvailableData;
-        chartInstance.data.datasets[2].data = histExpiredData;
-        chartInstance.data.datasets[3].label = `Proyección ${H} días`;
+        chartInstance.data.datasets[2].data = histReserveData;
+        chartInstance.data.datasets[3].label = 'Proyección de Consumo';
         chartInstance.data.datasets[3].data  = projData;
-        chartInstance.data.datasets[4].data  = projPlusData;
-        chartInstance.data.datasets[5].data  = Array(labels.length).fill(rop);
-        chartInstance.data.datasets[6].data  = Array(labels.length).fill(sfty);
+        chartInstance.data.datasets[4].data  = Array(labels.length).fill(rop);
+        chartInstance.data.datasets[5].data  = Array(labels.length).fill(sfty);
         chartInstance.options.plugins.title.text = graphTitle;
         if (chartInstance.options.plugins.annotation) {
           chartInstance.options.plugins.annotation.annotations.arrival.xMin = arrivalLabel;
@@ -879,7 +944,7 @@ async function init(){
     modeSel.value='Suministro'; fillTerms(); if(sups.length>0) termInp.value=sups[0];
     groupSel.value=''; $('qty').value=0; from.value=meta.min_fecha||''; to.value=meta.max_fecha||'';
     document.querySelector('#tbl tbody').innerHTML=''; document.querySelector('#projTbl tbody').innerHTML='';
-    setKPIs(0,0,0,'',0); $('kpiCov').textContent='–'; setSideMetrics(0,'',0,'',0,0,''); setFormulas(0,0,0,0,0,0,LEAD);
+    setKPIs(0,0,0,'',0); $('kpiCov').textContent='–'; setSideMetrics(0,'',0,'',0,0,''); setFormulas(0,0,0,0,0,LEAD,{});
     if(chartInstance){ chartInstance.destroy(); chartInstance=null; }
     setBtnState(btn,''); btn.disabled=false; $('projTitle').textContent = 'Dinámica de proyección (45 días)';
   });
