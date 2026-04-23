@@ -267,7 +267,7 @@
         <label>Grupo</label>
         <select id="group"><option value="">Todos</option></select>
       </div>
-      <div><label>Pedido (+45d)</label><input id="qty" type="number" min="0" step="100" value="0" inputmode="numeric" enterkeyhint="done"></div>
+      <div><label>Simular pedido a +45d</label><input id="qty" type="number" min="0" step="100" value="0" inputmode="numeric" enterkeyhint="done" placeholder="Escenario hipotético"></div>
       <div><label>Desde</label><input id="from" type="date"></div>
       <div><label>Hasta</label><input id="to" type="date"></div>
       <div><button id="btn" class="primary">Mostrar</button></div>
@@ -276,10 +276,10 @@
 
     <div class="kpis">
       <div class="kpi"><div class="l">% Abastecimiento (4 meses)</div><div class="v" id="kpiCov">–</div></div>
-      <div class="kpi"><div class="l">Inventario disponible</div><div class="v" id="kpiInv">–</div><span class="muted" id="kpiInvDate">–</span></div>
+      <div class="kpi" id="kpiInvCard"><div class="l">Inventario disponible</div><div class="v" id="kpiInv">–</div><span class="muted" id="kpiInvDate">–</span></div>
+      <div class="kpi"><div class="l">Inventario en Reserva</div><div class="v" id="kpiReserva">–</div></div>
       <div class="kpi"><div class="l">Punto de Reorden (CTD + SS)</div><div class="v" id="kpiKb">–</div></div>
       <div class="kpi"><div class="l">Inv. Crítico (95%)</div><div class="v" id="kpiCrit">–</div></div>
-      <div class="kpi"><div class="l">Inventario en Reserva</div><div class="v" id="kpiReserva">–</div></div>
     </div>
 
     <div class="row">
@@ -304,20 +304,21 @@
             <div class="formula-card">
               <div class="fc-title">Inventario Proyectado</div>
               <div class="fc-value" id="fc_proj">–</div>
-              <div class="fc-formula" id="f_proj1">Inv.Proy = (Inv.Act + Recepción + Tránsito) − Reserva</div>
-              <div class="fc-note" id="n_proj">Inventario real esperado considerando stock comprometido. Si el backend no expone entradas programadas, se usa como respaldo la proyección al horizonte.</div>
+              <div class="fc-formula" id="f_proj1">Inv.Proy = Disponible + Recepción + Tránsito</div>
+              <div class="fc-note" id="n_proj">Inventario esperado considerando disponibilidad actual y entradas programadas visibles.</div>
             </div>
             <div class="formula-card">
               <div class="fc-title">Presión de Reserva</div>
               <div class="fc-value" id="fc_pressure">–</div>
               <div class="fc-formula" id="f_pressure">Presión = Reserva ÷ Inventario Actual × 100</div>
-              <div class="fc-note" id="n_pressure">Alto porcentaje indica inventario retenido y menor capacidad de respuesta.</div>
+              <div class="fc-note" id="n_pressure">Escala guía: Baja ≤10% · Moderada 11–25% · Alta 26–40% · Crítica >40%.</div>
             </div>
             <div class="formula-card">
               <div class="fc-title">Dinámica de Proyección</div>
-              <div class="fc-formula" id="f_proj2">Inventario futuro = Inventario disponible − consumo esperado + entradas</div>
-              <div class="fc-formula" id="f_order">I(t+h) = I(t+h−1) − d̂_h + entradas_h</div>
-              <div class="fc-note" id="n_dyn">Permite estimar la fecha esperada de agotamiento y anticipar reabastecimiento.</div>
+              <div class="fc-value" id="fc_dyn">–</div>
+              <div class="fc-formula" id="f_proj2">Horizonte analizado: 45 días</div>
+              <div class="fc-formula" id="f_order">Consumo esperado semanal: –</div>
+              <div class="fc-note" id="n_dyn">Fecha estimada de agotamiento: –</div>
             </div>
             <div class="formula-card">
               <div class="fc-title">Regla Operativa</div>
@@ -339,13 +340,13 @@
           <br/>
           <div class="muted">Definiciones</div>
           <ul class="formula" id="defs">
-            <li><b>μ_D</b>: mediana de las tasas de consumo diario (últimos 90 días).</li>
-            <li><b>σ_D</b>: 1.4826 × MAD de las tasas de consumo diario.</li>
-            <li><b>L</b>: lead time en días (45 por defecto).</li>
-            <li><b>z</b>: 95% ⇒ 1.65.</li>
-            <li><b>I₀</b>: SMA_15 del inventario.</li>
-            <li><b>d̂_h</b>: demanda por SES (α=0.3), con estacionalidad semanal si aplica.</li>
-            <li><b>ROP</b>: Punto de Reorden = CTD + SS.</li>
+            <li><b>Inventario disponible</b>: stock realmente utilizable después de descontar vencidos y reservas.</li>
+            <li><b>Inventario en reserva</b>: stock comprometido y no disponible para despacho libre.</li>
+            <li><b>Punto de Reorden</b>: nivel a partir del cual debe iniciarse reabastecimiento.</li>
+            <li><b>Inventario Crítico</b>: nivel mínimo de protección para evitar quiebre de stock.</li>
+            <li><b>Presión de Reserva</b>: porcentaje del inventario actual comprometido en reserva.</li>
+            <li><b>Inventario Proyectado</b>: inventario esperado considerando disponibilidad actual y entradas visibles.</li>
+            <li><b>Zona con inventario vencido</b>: diferencia sombreada entre inventario total y disponible cuando existe stock no utilizable por vencimiento.</li>
           </ul>
         </div>
       </div>
@@ -529,6 +530,10 @@ function setKPIs(invLast, rop, sfty, lastDateISO, reserva){
   if ($('kpiKb'))      $('kpiKb').textContent = fmtInt(Math.round(rop||0));
   if ($('kpiCrit'))    $('kpiCrit').textContent = fmtInt(Math.round(sfty||0));
   if ($('kpiReserva')) $('kpiReserva').textContent = fmtInt(Math.round(reserva||0));
+  const invCard = $('kpiInvCard');
+  if (invCard){
+    invCard.classList.toggle('kpi-alert', Number(invLast||0) <= 0 || (Number(sfty||0) > 0 && Number(invLast||0) <= Number(sfty||0)));
+  }
 }
 function setSideMetrics(minV,minD,maxV,maxD,avg30,coveragePct,coverageNote){
   if ($('mCoverage'))     $('mCoverage').textContent = fmtPct(coveragePct||0);
@@ -544,6 +549,9 @@ function setFormulas(mu, sigma, kb, sfty, rop, H, extra={}){
   const reservePressure = Number(extra.reservePressure || 0);
   const operationalRule = String(extra.operationalRule || 'Stock controlado · Monitoreo normal');
   const operationalRuleClass = String(extra.operationalRuleClass || 'fc-rule-ok');
+  const weeklyExpected = Number(extra.weeklyExpected || 0);
+  const zeroDateText = String(extra.zeroDateText || 'No llega a 0 en horizonte');
+  const pressureLevel = String(extra.pressureLevel || 'Baja');
 
   if ($('fc_rop')) $('fc_rop').textContent = fmtInt(Math.round(rop||0));
   if ($('f_kb'))   $('f_kb').textContent   = `ROP = μ_D × L + SS = ${fmtInt(Math.round(kb||0))} + ${fmtInt(Math.round(sfty||0))} = ${fmtInt(Math.round(rop||0))}`;
@@ -554,21 +562,26 @@ function setFormulas(mu, sigma, kb, sfty, rop, H, extra={}){
     : 'Sin variabilidad histórica suficiente para estimar stock de seguridad';
 
   if ($('fc_proj')) $('fc_proj').textContent = fmtInt(Math.round(projectedInventory||0));
-  if ($('f_proj1')) $('f_proj1').textContent = 'Inv.Proy = (Inv.Act + Recepción + Tránsito) − Reserva';
+  if ($('f_proj1')) $('f_proj1').textContent = 'Inv.Proy = Disponible + Recepción + Tránsito';
+  if ($('n_proj')) $('n_proj').textContent = projectedInventory > 0
+    ? 'Inventario esperado considerando disponibilidad actual y entradas programadas visibles.'
+    : 'Sin entradas programadas visibles o sin stock utilizable proyectado.';
 
   if ($('fc_pressure')) $('fc_pressure').textContent = `${Math.round((reservePressure||0)*10)/10}%`;
   if ($('f_pressure')) $('f_pressure').textContent = 'Presión = Reserva ÷ Inventario Actual × 100';
+  if ($('n_pressure')) $('n_pressure').textContent = `Escala guía: Baja ≤10% · Moderada 11–25% · Alta 26–40% · Crítica >40%. Estado actual: ${pressureLevel}.`;
 
-  if ($('f_proj2')) $('f_proj2').textContent = `Inventario futuro = Inventario disponible − consumo esperado + entradas`;
-  if ($('f_order')) $('f_order').textContent = `I(t+h) = I(t+h−1) − d̂_h + entradas_h · Horizonte actual: ${H} días`;
+  if ($('fc_dyn')) $('fc_dyn').textContent = zeroDateText;
+  if ($('f_proj2')) $('f_proj2').textContent = `Horizonte analizado: ${H} días`;
+  if ($('f_order')) $('f_order').textContent = `Consumo esperado semanal: ${fmtInt(Math.round(weeklyExpected||0))}`;
+  if ($('n_dyn')) $('n_dyn').textContent = `Fecha estimada de agotamiento: ${zeroDateText}`;
 
   if ($('fc_rule')) {
     $('fc_rule').textContent = operationalRule;
-    $('fc_rule').classList.remove('fc-rule-ok','fc-rule-warn','fc-rule-bad');
+    $('fc_rule').classList.remove('fc-rule-ok','fc-rule-warn','fc-rule-bad','fc-rule-expired');
     $('fc_rule').classList.add(operationalRuleClass);
   }
 }
-
 function coverageFourMonths(invLast, serie, mu_d){
   const n = serie.length;
   const rates = [];
@@ -811,29 +824,46 @@ async function init(){
 
 
       const leadUsed = data.lead || LEAD;
-      const projectedFromSeries = Math.max(Math.round(base[Math.min(leadUsed - 1, base.length - 1)] || 0), 0);
-      const projectedInventory = Number.isFinite(Number(data.inventario_proyectado))
-        ? Number(data.inventario_proyectado)
-        : projectedFromSeries;
+      const projectedFromSeries = Math.max(Math.round(base[0] || invActualAvailable || 0), 0);
+      const recepcionVisible = Number(data.recepcion_7d || 0);
+      const transitoVisible = Number(data.transito || 0);
+      const projectedInventory = Math.max(
+        Number.isFinite(Number(data.inventario_proyectado))
+          ? Number(data.inventario_proyectado)
+          : (invActualAvailable + recepcionVisible + transitoVisible),
+        projectedFromSeries
+      );
       const invActualTotal = pointAtGlobal ? Number(pointAtGlobal.inventario || 0) : Number(invHist[invHist.length - 1] || 0);
+      const vencidoActual = pointAtGlobal ? Number(pointAtGlobal.vencido || 0) : Number(invExpired[invExpired.length - 1] || 0);
       const reservePressure = invActualTotal > 0 ? (reservaActual / invActualTotal) * 100 : 0;
+      const pressureLevel = reservePressure <= 10 ? 'Baja' : reservePressure <= 25 ? 'Moderada' : reservePressure <= 40 ? 'Alta' : 'Crítica';
+      const zeroDateText = $('mZero') ? $('mZero').textContent : 'No llega a 0 en horizonte';
 
       let operationalRule = 'Stock controlado · Monitoreo normal';
       let operationalRuleClass = 'fc-rule-ok';
-      if (invActualAvailable <= sfty && sfty > 0) {
+      if (invActualAvailable <= 0 && vencidoActual > 0) {
+        operationalRule = 'Inventario no utilizable · Revisar vencimiento y depuración inmediata';
+        operationalRuleClass = 'fc-rule-expired';
+      } else if (invActualAvailable <= 0) {
+        operationalRule = 'Quiebre de stock · Reabastecimiento urgente';
+        operationalRuleClass = 'fc-rule-bad';
+      } else if (invActualAvailable <= sfty && sfty > 0) {
         operationalRule = 'Riesgo alto de quiebre · Acción inmediata requerida';
         operationalRuleClass = 'fc-rule-bad';
       } else if (invActualAvailable <= rop && rop > 0) {
         operationalRule = 'Reabastecimiento prioritario · Nivel por debajo de ROP';
         operationalRuleClass = 'fc-rule-warn';
-      } else if (reservePressure >= 25) {
-        operationalRule = 'Reserva alta detectada · Validar liberación y depuración';
+      } else if (reservePressure > 40) {
+        operationalRule = 'Reserva crítica · Validar liberación o depuración';
         operationalRuleClass = 'fc-rule-warn';
       }
 
       setFormulas(muForUI, sigmaForUI, kb, sfty, rop, H, {
         projectedInventory,
         reservePressure,
+        pressureLevel,
+        weeklyExpected,
+        zeroDateText,
         operationalRule,
         operationalRuleClass
       });
@@ -856,8 +886,6 @@ async function init(){
       $('projTitle').textContent = `Dinámica de proyección (${H} días)`;
 
       const ctx = document.getElementById('chart').getContext('2d');
-      const arrivalLabel = future[Math.min((data.lead||LEAD)-1, future.length-1)];
-      
       const styles = getComputedStyle(document.documentElement);
       const chartColors = {
         total: styles.getPropertyValue('--chart-total').trim() || 'rgba(156, 163, 175, 0.5)',
@@ -872,9 +900,12 @@ async function init(){
         critical: styles.getPropertyValue('--chart-critical').trim() || 'rgba(239, 68, 68, 1)'
       };
 
+      const histExpiredBand = labels.slice(0, serie.length).map((_,i)=> Number(invExpired[i]||0) > 0 ? Number(invHist[i]||0) : null);
+      const expiredOverlayData = [...histExpiredBand, ...Array(future.length).fill(null)];
       const datasets = [
         {label:'Inventario Total', data:histData, fill:false, pointRadius:0, borderColor:chartColors.total, backgroundColor:chartColors.totalFill, borderWidth:1.5},
         {label:'Inventario Disponible', data:histAvailableData, fill:true, pointRadius:0, borderColor:chartColors.available, backgroundColor:chartColors.availableFill, borderWidth:2.2},
+        {label:'Zona con inventario vencido', data:expiredOverlayData, fill:'-1', spanGaps:false, pointRadius:0, borderWidth:0, borderColor:'rgba(234,179,8,0)', backgroundColor:'rgba(250,204,21,0.40)'},
         {label:'Inventario en Reserva', data:histReserveData, fill:false, spanGaps:false, pointRadius:3, pointHoverRadius:4, borderColor:chartColors.order, backgroundColor:'rgba(168,85,247,0.1)', borderWidth:2},
         {label:'Proyección de Consumo', data:projData, fill:false, pointRadius:0, borderColor:chartColors.projection, backgroundColor:chartColors.projectionFill, borderWidth:2, borderDash:[2,2]},
         {label:'Punto de Reorden', data:Array(labels.length).fill(rop), pointRadius:0, borderDash:[4,4], fill:false, borderColor:chartColors.rop},
@@ -892,19 +923,7 @@ async function init(){
             plugins:{
               legend:{position:'bottom'},
               title:{display:true, text:graphTitle},
-              tooltip:{callbacks:{label:(ctx)=>{ const v=ctx.parsed.y; return `${ctx.dataset.label}: ${Number.isFinite(v)? fmtInt(v):''}`; }}},
-              annotation: {
-                annotations: {
-                  arrival: {
-                    type:'line',
-                    xMin:arrivalLabel, xMax:arrivalLabel,
-                    borderColor:'rgba(160,160,160,0.8)',
-                    borderWidth:1,
-                    borderDash:[6,4],
-                    label:{ display:true, content:'Llegada pedido', position:'end', backgroundColor:'rgba(15,23,42,0.8)', color:'#fff' }
-                  }
-                }
-              }
+              tooltip:{callbacks:{label:(ctx)=>{ const v=ctx.parsed.y; return `${ctx.dataset.label}: ${Number.isFinite(v)? fmtInt(v):''}`; }}}
             },
             elements:{ line:{tension:0.2} }
           }
@@ -915,16 +934,13 @@ async function init(){
         chartInstance.data.labels = labels;
         chartInstance.data.datasets[0].data = histData;
         chartInstance.data.datasets[1].data = histAvailableData;
-        chartInstance.data.datasets[2].data = histReserveData;
-        chartInstance.data.datasets[3].label = 'Proyección de Consumo';
-        chartInstance.data.datasets[3].data  = projData;
-        chartInstance.data.datasets[4].data  = Array(labels.length).fill(rop);
-        chartInstance.data.datasets[5].data  = Array(labels.length).fill(sfty);
+        chartInstance.data.datasets[2].data = expiredOverlayData;
+        chartInstance.data.datasets[3].data = histReserveData;
+        chartInstance.data.datasets[4].label = 'Proyección de Consumo';
+        chartInstance.data.datasets[4].data  = projData;
+        chartInstance.data.datasets[5].data  = Array(labels.length).fill(rop);
+        chartInstance.data.datasets[6].data  = Array(labels.length).fill(sfty);
         chartInstance.options.plugins.title.text = graphTitle;
-        if (chartInstance.options.plugins.annotation) {
-          chartInstance.options.plugins.annotation.annotations.arrival.xMin = arrivalLabel;
-          chartInstance.options.plugins.annotation.annotations.arrival.xMax = arrivalLabel;
-        }
         chartInstance.update();
         window.chartInstance = chartInstance;
         requestAnimationFrame(fixAfterRotate);
