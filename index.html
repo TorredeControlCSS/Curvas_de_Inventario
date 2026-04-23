@@ -238,9 +238,6 @@
       <button id="btnVencimientosPdf" class="btn" aria-label="Generar reporte PDF del tablero de vencimientos" style="border-color:#f97316; color:#f97316; display:flex; gap:6px; align-items:center;">
         <span role="img" aria-hidden="true">📋</span> Tablero de Vencimientos
       </button>
-      <button id="btnExpiredPdf" class="btn" style="border-color:#ef4444; color:#ef4444; display:flex; gap:6px; align-items:center;">
-        <span>🔴</span> Reporte de Vencidos
-      </button>
       <button id="refreshBtn" class="btn ghost">Actualizar</button>
       <button id="exportPdfBtn" class="btn">Descargar PDF</button>
       <button id="installBtn" class="btn install hidden">Instalar app</button>
@@ -276,7 +273,7 @@
       <div class="kpi"><div class="l">Inventario disponible</div><div class="v" id="kpiInv">–</div><span class="muted" id="kpiInvDate">–</span></div>
       <div class="kpi"><div class="l">Punto de Reorden (CTD + SS)</div><div class="v" id="kpiKb">–</div></div>
       <div class="kpi"><div class="l">Inv. Crítico (95%)</div><div class="v" id="kpiCrit">–</div></div>
-      <div class="kpi"><div class="l">SMA_15 Inventario disponible</div><div class="v" id="kpiI0">–</div></div>
+      <div class="kpi"><div class="l">Inventario en Reserva</div><div class="v" id="kpiReserva">–</div></div>
     </div>
 
     <div class="row">
@@ -347,7 +344,7 @@
 
         <div class="card table-wrap">
           <div class="muted">Tabla diaria</div>
-          <table id="tbl"><thead><tr><th>Fecha</th><th>Total</th><th>Disponible</th><th>Vencido</th><th>Δ</th></tr></thead><tbody></tbody></table>
+          <table id="tbl"><thead><tr><th>Fecha</th><th>Total</th><th>Disponible</th><th>Reserva</th><th>Vencido</th><th>Δ</th></tr></thead><tbody></tbody></table>
         </div>
       </div>
     </div>
@@ -458,23 +455,26 @@ function simulate(inv0, dHat, q=0, lead=45){
 }
 
 // Tablas
-function fillTable(tbody, serie, invAvailable, invExpired){
+function fillTable(tbody, serie, invAvailable, invReserve, invExpired){
   tbody.innerHTML='';
   const arr = (serie||[]).slice().sort((a,b)=> b.fecha.localeCompare(a.fecha));
   const arrAvail = invAvailable ? [...invAvailable].reverse() : [];
+  const arrReserve = invReserve ? [...invReserve].reverse() : [];
   const arrExpired = invExpired ? [...invExpired].reverse() : [];
 
   for (let i=0;i<arr.length;i++){
     const curr = arr[i];
     const inv = Number(curr.inventario);
     const avail = arrAvail[i] !== undefined ? arrAvail[i] : inv;
+    const reserve = arrReserve[i] !== undefined ? arrReserve[i] : 0;
     const expired = arrExpired[i] !== undefined ? arrExpired[i] : 0;
     const prevChron = (i+1 < arr.length) ? Number(arr[i+1].inventario) : NaN;
     const delta = Number.isFinite(prevChron) ? fmtInt(prevChron - inv) : '–';
 
     const tr = document.createElement('tr');
+    const reserveCell = reserve > 0 ? `<td>${fmtInt(Math.round(reserve))}</td>` : '<td>–</td>';
     const expiredCell = expired > 0 ? `<td class="expired-qty">${fmtInt(Math.round(expired))}</td>` : '<td>–</td>';
-    tr.innerHTML = `<td>${curr.fecha}</td><td>${fmtInt(Math.round(inv))}</td><td>${fmtInt(Math.round(avail))}</td>${expiredCell}<td>${delta}</td>`;
+    tr.innerHTML = `<td>${curr.fecha}</td><td>${fmtInt(Math.round(inv))}</td><td>${fmtInt(Math.round(avail))}</td>${reserveCell}${expiredCell}<td>${delta}</td>`;
     tbody.appendChild(tr);
   }
 
@@ -482,7 +482,7 @@ function fillTable(tbody, serie, invAvailable, invExpired){
     const p = arr[0];
     const invVal = Number(p.inventario);
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${p.fecha}</td><td>${fmtInt(Math.round(invVal))}</td><td>${fmtInt(Math.round(invVal))}</td><td>–</td><td>–</td>`;
+    tr.innerHTML = `<td>${p.fecha}</td><td>${fmtInt(Math.round(invVal))}</td><td>${fmtInt(Math.round(invVal))}</td><td>–</td><td>–</td><td>–</td>`;
     tbody.appendChild(tr);
   }
 }
@@ -501,12 +501,12 @@ function fillProjTable(tbody, dates, dHat, base, withOrder, lead, Q){
 }
 
 // KPIs y fórmulas
-function setKPIs(invLast, rop, sfty, lastDateISO, I0){
+function setKPIs(invLast, rop, sfty, lastDateISO, reserva){
   if ($('kpiInv'))     $('kpiInv').textContent = fmtInt(Math.round(invLast||0));
   if ($('kpiInvDate')) $('kpiInvDate').textContent = lastDateISO ? `al ${lastDateISO}` : '';
   if ($('kpiKb'))      $('kpiKb').textContent = fmtInt(Math.round(rop||0));
   if ($('kpiCrit'))    $('kpiCrit').textContent = fmtInt(Math.round(sfty||0));
-  if ($('kpiI0'))      $('kpiI0').textContent = fmtInt(Math.round(I0||0));
+  if ($('kpiReserva')) $('kpiReserva').textContent = fmtInt(Math.round(reserva||0));
 }
 function setSideMetrics(minV,minD,maxV,maxD,avg30,coveragePct,coverageNote){
   if ($('mCoverage'))     $('mCoverage').textContent = fmtPct(coveragePct||0);
@@ -636,19 +636,23 @@ async function init(){
 
       if(!serie.length){ alert('Sin datos para esa selección/filtro.'); setBtnState(btn,'is-error'); setTimeout(()=>{ setBtnState(btn,''); btn.disabled=false; }, 900); return; }
 
-      // Inventario total / vencido / disponible desde backend
+      // Inventario total / vencido / reserva / disponible real desde backend
       const invHist    = serie.map(p => Number(p.inventario || 0));
       const invExpired = serie.map(p => Number(p.vencido || 0));
-      const invAvailable = invHist.map((v,i)=> Math.max(v - invExpired[i], 0));
+      const invReserve = serie.map(p => Number(p.reserva || 0));
+      const invAvailable = invHist.map((v,i)=> Math.max(v - invExpired[i] - invReserve[i], 0));
 
       const globalMaxDate = (meta && meta.max_fecha) ? String(meta.max_fecha) : '';
       const mapByDate = new Map(serie.map(p => [p.fecha, p]));
       const pointAtGlobal = mapByDate.get(globalMaxDate);
       let invActualAvailable = 0;
+      let reservaActual = 0;
       if (pointAtGlobal) {
         const total   = Number(pointAtGlobal.inventario || 0);
         const expired = Number(pointAtGlobal.vencido || 0);
-        invActualAvailable = Math.max(total - expired, 0);
+        const reserva = Number(pointAtGlobal.reserva || 0);
+        reservaActual = reserva;
+        invActualAvailable = Math.max(total - expired - reserva, 0);
       }
 
       const lastValAvailable = invAvailable[invAvailable.length - 1];
@@ -716,6 +720,7 @@ async function init(){
 
       const histData          = invHist.concat(Array(future.length).fill(null));
       const histAvailableData = invAvailable.concat(Array(future.length).fill(null));
+      const histReserveData   = invReserve.concat(Array(future.length).fill(null));
       const histExpiredData   = invExpired.concat(Array(future.length).fill(null));
       const projData          = Array(serie.length).fill(null).concat(base);
       const projPlusData      = Array(serie.length).fill(null).concat(withOrder);
@@ -735,8 +740,8 @@ async function init(){
       let rop = kb + sfty;
       let muForUI = Number(data.mu_d||0), sigmaForUI = Number(data.sigma_d||0);
 
-      fillTable(tbody, serie, invAvailable, invExpired);
-      setKPIs(invActualAvailable, rop, sfty, meta.max_fecha || lastDateStr, sma15);
+      fillTable(tbody, serie, invAvailable, invReserve, invExpired);
+      setKPIs(invActualAvailable, rop, sfty, meta.max_fecha || lastDateStr, reservaActual);
 
       if (mode === 'Grupo') {
         const stats90 = robustStatsDaily(cons, 90);
@@ -748,7 +753,7 @@ async function init(){
         rop  = kb + sfty;
         muForUI = muLocal;
         sigmaForUI = sigmaLocal;
-        setKPIs(invActualAvailable, rop, sfty, meta.max_fecha || lastDateStr, sma15);
+        setKPIs(invActualAvailable, rop, sfty, meta.max_fecha || lastDateStr, reservaActual);
       }
 
       const dailyExpected = dHat.length
@@ -777,6 +782,7 @@ async function init(){
         invHist,
         invExpired,
         invAvailable,
+        invReserve,
         lastDateStr
       };
       $('projTitle').textContent = `Dinámica de proyección (${H} días)`;
@@ -800,7 +806,8 @@ async function init(){
 
       const datasets = [
         {label:'Inventario total', data:histData, fill:false, pointRadius:0, borderColor:chartColors.total, backgroundColor:chartColors.totalFill, borderWidth:1.5},
-        {label:'Inventario disponible', data:histAvailableData, fill:true, pointRadius:0, borderColor:chartColors.available, backgroundColor:chartColors.availableFill, borderWidth:2},
+        {label:'Inventario disponible real', data:histAvailableData, fill:true, pointRadius:0, borderColor:chartColors.available, backgroundColor:chartColors.availableFill, borderWidth:2},
+        {label:'Inventario en reserva', data:histReserveData, fill:false, spanGaps:false, pointRadius:3, pointHoverRadius:4, borderColor:chartColors.order, backgroundColor:'rgba(168,85,247,0.1)', borderWidth:2},
         {label:'Inventario vencido', data:histExpiredData, fill:false, pointRadius:0, borderColor:chartColors.critical, backgroundColor:'rgba(239,68,68,0.15)', borderWidth:1.8},
         {label:`Proyección ${H} días`, data:projData, fill:true, pointRadius:0, borderColor:chartColors.projection, backgroundColor:chartColors.projectionFill},
         {label:'Proyección + pedido', data:projPlusData, fill:true, pointRadius:0, borderColor:chartColors.order, backgroundColor:chartColors.orderFill},
@@ -903,205 +910,7 @@ if (btnVencimientosPdf) {
   });
 }
 
-  // ======================================================
-// REPORTE PDF: INVENTARIO VENCIDO (GLOBAL - CORTE ÚLTIMO)
-// Top 15 + Maestro completo
-// ======================================================
-const btnExpiredPdf = document.getElementById('btnExpiredPdf');
-if (btnExpiredPdf) {
-  btnExpiredPdf.addEventListener('click', async () => {
-    // Estado visual igual que Abastecimiento
-    setBtnState(btnExpiredPdf, 'is-loading');
-    btnExpiredPdf.disabled = true;
 
-    try {
-      // 1) Traer data global del backend
-      const rep = await fetchJSON(API_BASE + '?report=expired&ts=' + Date.now());
-      // rep esperado: { corte: "YYYY-MM-DD", rows: [ [corte,codigo,suministro,grupo,vencido], ... ] }
-
-      if (!rep || !Array.isArray(rep.rows) || rep.rows.length === 0) {
-        alert('No hay datos en DataVenc para generar el reporte.');
-        return;
-      }
-
-      const corte = String(rep.corte || rep.rows[0]?.[0] || '').trim();
-      const rows = rep.rows;
-
-      // 2) Mapear a objetos (más legible)
-      const items = rows.map(r => ({
-        corte: String(r[0] || '').trim(),
-        codigo: String(r[1] || '').trim(),
-        suministro: String(r[2] || '').trim(),
-        grupo: String(r[3] || '').trim(),
-        vencido: Number(r[4] || 0) || 0,
-        primeraFecha: String(r[5] || '').trim()
-      }));
-
-      // Solo vencidos > 0
-      const itemsPos = items.filter(x => x.vencido > 0);
-      if (itemsPos.length === 0) {
-        alert('El corte no tiene vencidos > 0. (No se genera PDF)');
-        return;
-      }
-
-      // Orden desc
-      itemsPos.sort((a, b) => b.vencido - a.vencido);
-      const top15 = itemsPos.slice(0, 15);
-
-      // KPIs
-      const totalVencido = itemsPos.reduce((acc, x) => acc + x.vencido, 0);
-      const nCodigos = itemsPos.length;
-      const maxItem = itemsPos[0];
-
-      // 3) PDF
-      const { jsPDF } = window.jspdf;
-      const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-
-      // Validación fuerte: si esto falla, antes “parecía que no hacía nada”
-      if (typeof doc.autoTable !== 'function') {
-        throw new Error('autoTable no está disponible. Verifica que jspdf-autotable esté cargado.');
-      }
-
-      const azul = [11, 31, 58];
-      const rojo = [239, 68, 68];
-
-      // Header IDÉNTICO al de Abastecimiento (logo + posiciones)
-      const drawHeader = () => {
-        const imgEl = document.querySelector('.topbar img');
-        if (imgEl) {
-          try {
-            const cvs = document.createElement('canvas');
-            cvs.width = imgEl.naturalWidth;
-            cvs.height = imgEl.naturalHeight;
-            cvs.getContext('2d').drawImage(imgEl, 0, 0);
-            doc.addImage(cvs.toDataURL('image/png'), 'PNG', 14, 10, 15, 15);
-          } catch (e) {}
-        }
-
-        doc.setFont('helvetica', 'bold').setFontSize(20).setTextColor(...azul)
-          .text('Tablero de Vencidos | CEDIS Panamá', 35, 18);
-
-        doc.setFont('helvetica', 'normal').setFontSize(10).setTextColor(80)
-          .text(`Corte Datos: ${corte || '—'} | Generado: ${new Date().toLocaleDateString()}`, 35, 24);
-
-        doc.setDrawColor(200).line(14, 28, 196, 28);
-      };
-
-      // Página 1
-      drawHeader();
-
-      // Caja criterio
-      doc.setFillColor(245, 245, 245);
-      doc.roundedRect(14, 32, 182, 18, 2, 2, 'F');
-      doc.setFont('helvetica', 'bold').setFontSize(10).setTextColor(0);
-      doc.text('CRITERIO:', 18, 39);
-      doc.setFont('helvetica', 'normal').setFontSize(9).setTextColor(50);
-      doc.text('• Vencido = Cantidad de vencidos registrados en SALMI al corte del inventario.', 18, 45);
-
-      // Tarjetas KPI (3)
-      const startY = 56;
-      const cardW = 58, cardH = 22, gap = 4;
-
-      const drawCard = (x, label, value, colorRGB) => {
-        doc.setFillColor(...colorRGB);
-        doc.roundedRect(x, startY, cardW, cardH, 2, 2, 'F');
-        doc.setTextColor(255);
-        doc.setFont('helvetica', 'bold').setFontSize(16);
-        doc.text(String(value), x + cardW / 2, startY + 12, { align: 'center' });
-        doc.setFont('helvetica', 'bold').setFontSize(9);
-        doc.text(label, x + cardW / 2, startY + 18, { align: 'center' });
-      };
-
-      drawCard(14, 'TOTAL VENCIDO', Math.round(totalVencido).toLocaleString(), rojo);
-      drawCard(14 + cardW + gap, 'CÓDIGOS', String(nCodigos), [234, 88, 12]);
-      drawCard(14 + (cardW + gap) * 2, 'MÁX. VENCIDO', Math.round(maxItem.vencido).toLocaleString(), [59, 130, 246]);
-
-      // Tabla Top 15
-      doc.setFont('helvetica', 'bold').setFontSize(14).setTextColor(...azul);
-      doc.text('Top 15 Vencidos', 14, 88);
-
-      doc.autoTable({
-        startY: 92,
-        head: [['#', 'Código', 'Suministro', 'Grupo', 'F. Vencimiento', 'Vencido']],
-        body: top15.map((x, i) => ([
-          i + 1,
-          x.codigo,
-          x.suministro,
-          x.grupo,
-          x.primeraFecha || '—',
-          Math.round(x.vencido).toLocaleString()
-        ])),
-        theme: 'grid',
-        styles: { fontSize: 8, cellPadding: 2, overflow: 'linebreak' },
-        headStyles: { fillColor: azul, textColor: 255, fontStyle: 'bold' },
-        columnStyles: {
-          0: { halign: 'center', cellWidth: 8  },  // #         → 8
-          1: { cellWidth: 20 },                    // Código    → 20
-          2: { cellWidth: 80 },                    // Suministro→ 80
-          3: { cellWidth: 32 },                    // Grupo     → 32
-          4: { cellWidth: 24, halign: 'center' },  // F. Vencim.→ 24
-          5: { cellWidth: 18, halign: 'right'  }   // Vencido   → 18
-        }                                          // TOTAL     = 182 ✅
-      });
-
-      // Maestro completo
-        let yAfterTop = doc.lastAutoTable.finalY + 10;
-        
-        // Si no hay espacio para el título + cabecera de tabla, salto de página
-        const pageH = doc.internal.pageSize.getHeight();
-        const needed = 18;
-        if (yAfterTop + needed > pageH - 20) {
-          doc.addPage();
-          drawHeader();
-          yAfterTop = 34;
-        }
-        
-        doc.setFont('helvetica', 'bold').setFontSize(14).setTextColor(...azul);
-        doc.text('Listado Maestro (corte)', 14, yAfterTop);
-        
-        doc.autoTable({
-          startY: yAfterTop + 6,
-          head: [['Código', 'Suministro', 'Grupo', 'F. Vencimiento', 'Vencido']],
-          body: itemsPos.map(x => ([
-            x.codigo,
-            x.suministro,
-            x.grupo,
-            x.primeraFecha || '—',
-            Math.round(x.vencido).toLocaleString()
-          ])),
-          theme: 'grid',
-          styles: { fontSize: 8, cellPadding: 2, overflow: 'linebreak' },
-          headStyles: { fillColor: [80, 80, 80], textColor: 255, fontStyle: 'bold' },
-          columnStyles: {
-            0: { cellWidth: 22 },                   // Código    → 22
-            1: { cellWidth: 88 },                   // Suministro→ 88
-            2: { cellWidth: 30 },                   // Grupo     → 30
-            3: { cellWidth: 22, halign: 'center' }, // F. Vencim.→ 22
-            4: { cellWidth: 20, halign: 'right'  }  // Vencido   → 20
-          },                                        // TOTAL     = 182 ✅
-          margin: { top: 34 },
-          didDrawPage: (data) => {
-            if (data.pageNumber > 1) drawHeader();
-          }
-        });
-
-      // Guardar
-      const safeCorte = (corte || 'SIN_CORTE').replace(/[^\d\-]/g, '_');
-      doc.save(`Tablero_Vencidos_CEDIS_${safeCorte}.pdf`);
-
-      setBtnState(btnExpiredPdf, 'is-ok');
-    } catch (e) {
-      console.error(e);
-      setBtnState(btnExpiredPdf, 'is-error');
-      alert('Error generando Reporte de Vencidos. Revisa consola.');
-    } finally {
-      // limpiar estado y re-habilitar
-      setTimeout(() => setBtnState(btnExpiredPdf, ''), 900);
-      btnExpiredPdf.disabled = false;
-    }
-  });
-}
-  
   // ===============================================
   // REPORTE GERENCIAL (VERSION FINAL - CORREGIDA Y UNIFICADA)
   // ===============================================
@@ -1123,10 +932,11 @@ if (btnExpiredPdf) {
           inv_actual: Number(r[4] || 0),
           recepcion: Number(r[5] || 0),
           transito: Number(r[6] || 0),
-          inv_proy: Number(r[7] || 0),           // <- usa INV_PROY como stock principal del reporte
-          meses: r[8],
-          status: String(r[9]).toUpperCase(),
-          demanda: Number(r[10] || 0)
+          reserva: Number(r[7] || 0),
+          inv_proy: Number(r[8] || 0),
+          meses: r[9],
+          status: String(r[10]).toUpperCase(),
+          demanda: Number(r[11] || 0)
         }));
 
         // Contadores y Listas
@@ -1147,7 +957,7 @@ if (btnExpiredPdf) {
         lists.critico.sort(sortByDemand);
         lists.bajo.sort(sortByDemand);
         lists.optimo.sort(sortByDemand);
-        lists.exceso.sort((a,b) => b.stock - a.stock); // Exceso por Stock
+        lists.exceso.sort((a,b) => b.inv_proy - a.inv_proy); // Exceso por Inventario Proyectado
 
         // Tops 15
         const tops = {
@@ -1194,7 +1004,7 @@ if (btnExpiredPdf) {
         
         doc.setFontSize(7).setTextColor(50).setFont('helvetica','normal');
         doc.text("• Demanda Mensual = Mediana(Consumo Diario ult. 90 días) x 30.", 16, 41);
-        doc.text("• Inventario Proyectado = Inv. Actual + Recepción (<=7d) + Tránsito (ETA >= hoy).", 16, 45);
+        doc.text("• Inventario Proyectado Real = max((Inv. Actual + Recepción + Tránsito) - Reserva, 0).", 16, 45);
         doc.text("• Cobertura (Meses) = Inventario Proyectado / Demanda Mensual.", 16, 49);
         
         // Columna 2 rangos
@@ -1283,12 +1093,13 @@ if (btnExpiredPdf) {
         // Helper para filas estándar
         const mapStandard = (l) => l.map(r => [
           r.cod,
-          (r.sum || '').substring(0,40),
+          (r.sum || '').substring(0,34),
           Math.round(r.demanda).toLocaleString(),
           Math.round(r.inv_actual).toLocaleString(),
           Math.round(r.recepcion).toLocaleString(),
           Math.round(r.transito).toLocaleString(),
-          Math.round(r.inv_proy).toLocaleString(),     // INV_PROY
+          Math.round(r.reserva).toLocaleString(),
+          Math.round(r.inv_proy).toLocaleString(),
           (r.meses || '') + 'm',
           r.status
         ]);
@@ -1309,7 +1120,7 @@ if (btnExpiredPdf) {
 
           doc.autoTable({
             startY: cursorY,
-            head: [['Código','Renglón','Demanda','Inv.Act','Recep','Tránsito','Inv.Proy','Cob.','Estado']],
+            head: [['Código','Renglón','Demanda','Inv.Act','Recep','Tránsito','Reserva','Inv.Proy','Cob.','Estado']],
             body: rows,
             theme: 'grid',
             styles: { fontSize: 7, cellPadding: 1.5 },
