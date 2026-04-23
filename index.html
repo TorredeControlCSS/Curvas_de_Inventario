@@ -2243,23 +2243,6 @@ function generarTableroVencimientosPDF(rep){
             }
           }
         });
-  // PAGE 4+ semáforo por grupo (se conserva)
-  doc.addPage();
-  drawHeader();
-  doc.setTextColor(...azul).setFont('helvetica', 'bold').setFontSize(14);
-  doc.text('Semáforo por Grupo de Suministro', 14, 38);
-  const grupos = [...new Set(rows.map((r) => String(r?.grupo || '').trim() || 'SIN GRUPO'))].sort((a, b) => a.localeCompare(b, 'es'));
-  let y = 44;
-  grupos.forEach((grupo) => {
-    const rowsGrupo = rows.filter((r) => (String(r?.grupo || '').trim() || 'SIN GRUPO') === grupo);
-    if (y > PAGE_OVERFLOW_Y) {
-      doc.addPage();
-      y = NEW_PAGE_START_Y;
-    }
-    doc.setTextColor(...azul).setFont('helvetica', 'bold').setFontSize(11);
-    doc.text(grupo, 14, y);
-    y = drawSemaforoTable(y + 2, rowsGrupo) + 6;
-  });
 
   doc.addPage();
   drawHeader();
