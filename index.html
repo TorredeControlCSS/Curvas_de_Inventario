@@ -2072,10 +2072,10 @@ function generarTableroVencimientosPDF(rep){
   drawHeader();
 
   doc.setTextColor(...azul).setFont('helvetica', 'bold').setFontSize(15);
-  doc.text('Matriz Ejecutiva de Impacto por Grupo', 14, 28);
+  doc.text('Matriz Ejecutiva de Impacto por Grupo', 14, 42);
 
   // Recuadro gris explicativo
-  const infoY3 = 34;
+  const infoY3 = 50;
   const infoH3 = 27;
 
   doc.setFillColor(...grisClaro);
