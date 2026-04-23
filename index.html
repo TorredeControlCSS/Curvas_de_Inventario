@@ -1867,6 +1867,8 @@ function generarTableroVencimientosPDF(rep){
     return { grupo, totalLotes, lotesRiesgo, unidadesRiesgo, valorRiesgo, valorGrupo, pValor, vencidos, prox90, demandaGrupo, coberturaGrupo, score, riesgo, base: base.join(' · ') };
   });
 
+  const grupos = groupRows.map(g => g.grupo);
+
   const riskColorText = (s) => {
     const t = String(s || '').toUpperCase();
     if (t.includes('CRÍT')) return rojo;
