@@ -1358,7 +1358,7 @@ if (btnVencimientosPdf) {
         doc.text(matrizTxt1, 16, 50);
 
         const matrizTxt2 = doc.splitTextToSize(
-          'Escala: CONTROLADO < 40 | MEDIO 40 - 79 | ALTO 80 - 119 | CRITICO >= 120.',
+          'Score ponderado = (% agotados × 4) + (% críticos × 3) + (% exceso × 1.5) + (% presión reserva × 1.5) + ajuste por cobertura. Escala: CONTROLADO < 40 | MEDIO 40 - 79 | ALTO 80 - 119 | CRITICO >= 120.',
           174
         );
         doc.text(matrizTxt2, 16, 61);
