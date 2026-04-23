@@ -2136,7 +2136,7 @@ function generarTableroVencimientosPDF(rep){
   doc.setTextColor(50).setFont('helvetica', 'normal').setFontSize(7.6);
   doc.text([
     'Lectura por fila: cada grupo se evalúa según lotes comprometidos, valor económico en riesgo, vencidos, lotes a 0-90 días y cobertura operativa.',
-    'Escala sugerida: CONTROLADO < 40 | MEDIO 40 - 79 | ALTO 80 - 119 | CRÍTICO ≥ 120.'
+    'Escala sugerida: CONTROLADO < 40 | MEDIO 40 - 79 | ALTO 80 - 119 | CRÍTICO >= 120.'
   ], 17, 47, { maxWidth: 176, lineHeightFactor: 1.15 });
 
   doc.autoTable({
@@ -2159,7 +2159,7 @@ function generarTableroVencimientosPDF(rep){
     styles: { fontSize: 6.9, cellPadding: 1.9, overflow: 'linebreak', font: 'helvetica' },
     headStyles: { fillColor: azul, textColor: 255, fontStyle: 'bold', font: 'helvetica' },
     columnStyles: {
-      0: { cellWidth: 25 },
+      0: { cellWidth: 27 },
       1: { cellWidth: 14, halign: 'right' },
       2: { cellWidth: 18, halign: 'right' },
       3: { cellWidth: 23, halign: 'right' },
@@ -2169,7 +2169,7 @@ function generarTableroVencimientosPDF(rep){
       7: { cellWidth: 18, halign: 'right' },
       8: { cellWidth: 12, halign: 'right' },
       9: { cellWidth: 11, halign: 'right' },
-      10:{ cellWidth: 15, halign: 'center' }
+      10:{ cellWidth: 20, halign: 'center' }
     },
     didParseCell: (d) => {
       if (d.section === 'body' && d.column.index === 10) {
