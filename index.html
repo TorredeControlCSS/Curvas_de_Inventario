@@ -1282,18 +1282,39 @@ if (btnVencimientosPdf) {
         drawHeader();
 
         doc.setFillColor(245,245,245);
-        doc.roundedRect(14, 34, 182, 26, 2, 2, 'F');
+        doc.roundedRect(14, 34, 182, 30, 2, 2, 'F');
         doc.setFont('helvetica','bold').setFontSize(9).setTextColor(0);
         doc.text('CRITERIOS DE CLASIFICACIÓN Y LECTURA GERENCIAL:', 16, 40);
-        doc.setFont('helvetica','normal').setFontSize(8).setTextColor(50);
-        doc.text('• Demanda Mensual = Mediana(Consumo Diario ult. 90 días) × 30.', 16, 46);
-        doc.text('• Inventario Proyectado Real = max((Inv. Actual + Recepción + Tránsito) - Reserva, 0).', 16, 50);
-        doc.text('• Cobertura (Meses) = Inventario Proyectado / Demanda Mensual.', 16, 54);
-        doc.text('• Agotado: 0 | Crítico: <1m | Bajo: 1-4m | Óptimo: 4-12m | Exceso: >12m.', 110, 46);
-        doc.text('• Matriz gerencial: muestra cantidad de renglones por grupo en cada condición clave.', 110, 50);
-        doc.text('• Riesgo del grupo = severidad dominante según agotados, críticos, excesos y presión de reserva.', 110, 54);
 
-        const yKpi = 68, wKpi = 27, hKpi = 34, gap = 6, x0 = 14;
+        doc.setFont('helvetica','normal').setFontSize(7.7).setTextColor(50);
+
+        const critLeft = [
+          '• Demanda Mensual = Mediana del consumo diario de los últimos 90 días × 30.',
+          '• Inventario Proyectado Real = max((Inv. Actual + Recepción + Tránsito) - Reserva, 0).',
+          '• Cobertura (Meses) = Inventario Proyectado / Demanda Mensual.'
+        ];
+
+        const critRight = [
+          '• Agotado: 0 | Crítico: <1m | Bajo: 1-4m | Óptimo: 4-12m | Exceso: >12m.',
+          '• Matriz gerencial: muestra cantidad y porcentaje de renglones afectados por grupo.',
+          '• Riesgo del grupo = severidad relativa según agotados, críticos, exceso y presión de reserva.'
+        ];
+
+        let yL = 46;
+        critLeft.forEach(t => {
+          const lines = doc.splitTextToSize(t, 82);
+          doc.text(lines, 16, yL);
+          yL += lines.length * 4;
+        });
+
+        let yR = 46;
+        critRight.forEach(t => {
+          const lines = doc.splitTextToSize(t, 82);
+          doc.text(lines, 110, yR);
+          yR += lines.length * 4;
+        });
+
+        const yKpi = 72, wKpi = 26, hKpi = 34, gap = 7, totalW = (26 * 5) + (7 * 4), x0 = (210 - totalW) / 2;
         drawKpi(x0 + (wKpi + gap)*0, yKpi, wKpi, hKpi, rojo, totalAgot, 'AGOTADOS', `${pct(totalAgot,totalRenglones)}%`, 'Stock = 0');
         drawKpi(x0 + (wKpi + gap)*1, yKpi, wKpi, hKpi, naranja, totalCrit, 'CRÍTICOS', `${pct(totalCrit,totalRenglones)}%`, '< 1 Mes');
         drawKpi(x0 + (wKpi + gap)*2, yKpi, wKpi, hKpi, amarillo, totalBajo, 'BAJO', `${pct(totalBajo,totalRenglones)}%`, '1 - 4 Meses');
@@ -1301,9 +1322,9 @@ if (btnVencimientosPdf) {
         drawKpi(x0 + (wKpi + gap)*4, yKpi, wKpi, hKpi, azul2, totalExc, 'EXCESO', `${pct(totalExc,totalRenglones)}%`, '> 12 Meses');
 
         doc.setFont('helvetica','bold').setFontSize(16).setTextColor(...azul);
-        doc.text('Distribución del Inventario', 14, 118);
+        doc.text('Distribución del Inventario', 14, 122);
 
-        drawDonut(70, 176, 38, 17, [
+        drawDonut(79, 190, 34, 15, [
           { label:'Agotados', value: totalAgot, color: rojo },
           { label:'Críticos', value: totalCrit, color: naranja },
           { label:'Bajo', value: totalBajo, color: amarillo },
@@ -1337,10 +1358,20 @@ if (btnVencimientosPdf) {
         doc.text('Matriz Gerencial por Grupo', 14, 40);
 
         doc.setFillColor(245,245,245);
-        doc.roundedRect(14, 44, 182, 20, 2, 2, 'F');
-        doc.setFont('helvetica','normal').setFontSize(8).setTextColor(60);
-        doc.text('Lectura por fila: cada grupo se evalúa según su afectación relativa. El riesgo no depende solo de cantidad absoluta, sino del peso de agotados, críticos, exceso y presión de reserva dentro del total de renglones del grupo.', 16, 50);
-        doc.text('Escala: CONTROLADO <40 | MEDIO 40-79 | ALTO 80-119 | CRÍTICO ≥120.', 16, 58);
+        doc.roundedRect(14, 44, 182, 24, 2, 2, 'F');
+        doc.setFont('helvetica','normal').setFontSize(7.7).setTextColor(60);
+
+        const matrizTxt1 = doc.splitTextToSize(
+          'Lectura por fila: cada grupo se evalúa según su afectación relativa. El riesgo no depende solo de cantidad absoluta, sino del peso de agotados, críticos, exceso y presión de reserva dentro del total de renglones del grupo.',
+          174
+        );
+        doc.text(matrizTxt1, 16, 50);
+
+        const matrizTxt2 = doc.splitTextToSize(
+          'Escala: CONTROLADO < 40 | MEDIO 40 - 79 | ALTO 80 - 119 | CRITICO >= 120.',
+          174
+        );
+        doc.text(matrizTxt2, 16, 61);
 
         const maxAgotPct = Math.max(...groups.map(g => (g.Agotados / Math.max(1, g.Total_Renglones)) * 100), 1);
         const maxCritPct = Math.max(...groups.map(g => (g.Criticos / Math.max(1, g.Total_Renglones)) * 100), 1);
@@ -1448,7 +1479,7 @@ if (btnVencimientosPdf) {
         doc.autoTable({
           startY: 46,
           head: [[
-            'Grupo','Renglones','Agot','Crít','Bajos','Ópt','Exc','Reserva','Inv.Proy','Cob.','Riesgo'
+            'Grupo','Rengl.','Agot','Crit','Bajo','Opt','Exc','Inv.Act','Recep','Trans.','Reserva','Inv.Proy','Cob.','Riesgo'
           ]],
           body: groups.map(g => [
             g.Grupo,
@@ -1458,29 +1489,40 @@ if (btnVencimientosPdf) {
             g.Bajos,
             g.Optimos,
             g.Excesos,
+            g.Inv_Actual_Total.toLocaleString(),
+            g.Recepcion_Total.toLocaleString(),
+            g.Transito_Total.toLocaleString(),
             g.Reserva_Total.toLocaleString(),
             g.Inv_Proy_Total.toLocaleString(),
             g.Cobertura_Grupo,
             g.Riesgo_Grupo
           ]),
           theme: 'grid',
-          styles: { fontSize: 7.5, cellPadding: 2.5, overflow:'linebreak', valign:'middle' },
+          styles: {
+            fontSize: 6.6,
+            cellPadding: 2,
+            overflow: 'linebreak',
+            valign: 'middle'
+          },
           headStyles: { fillColor: azul, textColor: 255 },
           columnStyles: {
-            0: { cellWidth: 24 },
-            1: { cellWidth: 14, halign:'center' },
-            2: { cellWidth: 10, halign:'center' },
-            3: { cellWidth: 10, halign:'center' },
-            4: { cellWidth: 10, halign:'center' },
-            5: { cellWidth: 10, halign:'center' },
-            6: { cellWidth: 10, halign:'center' },
-            7: { cellWidth: 26, halign:'right' },
-            8: { cellWidth: 28, halign:'right' },
-            9: { cellWidth: 12, halign:'center' },
-            10:{ cellWidth: 18, halign:'center' }
+            0:  { cellWidth: 22 },
+            1:  { cellWidth: 10, halign:'center' },
+            2:  { cellWidth: 8,  halign:'center' },
+            3:  { cellWidth: 8,  halign:'center' },
+            4:  { cellWidth: 8,  halign:'center' },
+            5:  { cellWidth: 8,  halign:'center' },
+            6:  { cellWidth: 8,  halign:'center' },
+            7:  { cellWidth: 16, halign:'right' },
+            8:  { cellWidth: 14, halign:'right' },
+            9:  { cellWidth: 14, halign:'right' },
+            10: { cellWidth: 16, halign:'right' },
+            11: { cellWidth: 18, halign:'right' },
+            12: { cellWidth: 10, halign:'center' },
+            13: { cellWidth: 12, halign:'center' }
           },
           didParseCell: (d) => {
-            if (d.section === 'body' && d.column.index === 10) {
+            if (d.section === 'body' && d.column.index === 13) {
               d.cell.styles.textColor = riskColor(d.cell.raw);
               d.cell.styles.fontStyle = 'bold';
             }
