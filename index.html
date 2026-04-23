@@ -1287,13 +1287,17 @@ if (btnVencimientosPdf) {
 
         const critLeft = [
           '• Demanda Mensual = Mediana del consumo diario de los últimos 90 días × 30.',
+          
           '• Inventario Proyectado Real = max((Inv. Actual + Recepción + Tránsito) - Reserva, 0).',
+          
           '• Cobertura (Meses) = Inventario Proyectado / Demanda Mensual.'
         ];
 
         const critRight = [
           '• Agotado: 0 | Crítico: <1m | Bajo: 1-4m | Óptimo: 4-12m | Exceso: >12m.',
+          
           '• Matriz gerencial: muestra cantidad y porcentaje de renglones afectados por grupo.',
+          
           '• Riesgo del grupo = severidad relativa según agotados, críticos, exceso y presión de reserva.'
         ];
 
@@ -1425,7 +1429,7 @@ if (btnVencimientosPdf) {
           styles: { fontSize: 7.2, cellPadding: 2.2, valign:'middle', overflow:'linebreak' },
           headStyles: { fillColor: azul, textColor: 255 },
           columnStyles: {
-            0: { cellWidth: 26 },
+            0: { cellWidth: 28 },
             1: { cellWidth: 16, halign:'center' },
             2: { cellWidth: 16, halign:'center' },
             3: { cellWidth: 16, halign:'center' },
@@ -1498,23 +1502,23 @@ if (btnVencimientosPdf) {
           },
           headStyles: { fillColor: azul, textColor: 255 },
           columnStyles: {
-            0:  { cellWidth: 20 },
-            1:  { cellWidth: 9, halign:'center' },
-            2:  { cellWidth: 7,  halign:'center' },
-            3:  { cellWidth: 7,  halign:'center' },
-            4:  { cellWidth: 7,  halign:'center' },
-            5:  { cellWidth: 7,  halign:'center' },
-            6:  { cellWidth: 7,  halign:'center' },
-            7:  { cellWidth: 15, halign:'right' },
-            8:  { cellWidth: 12, halign:'right' },
-            9:  { cellWidth: 12, halign:'right' },
-            10: { cellWidth: 15, halign:'right' },
-            11: { cellWidth: 16, halign:'right' },
-            12: { cellWidth: 9, halign:'center' },
-            13: { cellWidth: 11, halign:'center' }
+            0:  { cellWidth: 28 },
+            1:  { cellWidth: 11, halign:'center' },
+            2:  { cellWidth: 9,  halign:'center' },
+            3:  { cellWidth: 9,  halign:'center' },
+            4:  { cellWidth: 9,  halign:'center' },
+            5:  { cellWidth: 9,  halign:'center' },
+            6:  { cellWidth: 9,  halign:'center' },
+            7:  { cellWidth: 17, halign:'right' },
+            8:  { cellWidth: 14, halign:'right' },
+            9:  { cellWidth: 14, halign:'right' },
+            10: { cellWidth: 17, halign:'right' },
+            11: { cellWidth: 18, halign:'right' },
+            12: { cellWidth: 11, halign:'center' },
+            13: { cellWidth: 113, halign:'center' }
           },
           margin: { left: 10, right: 10 },
-          tableWidth: 190,
+          tableWidth: 250,
           didParseCell: (d) => {
             if (d.section === 'body' && d.column.index === 13) {
               d.cell.styles.textColor = riskColor(d.cell.raw);
