@@ -2071,67 +2071,110 @@ function generarTableroVencimientosPDF(rep){
   doc.addPage();
   drawHeader();
 
-  doc.setFont('helvetica', 'bold')
-     .setFontSize(15)
-     .setTextColor(...azul);
-
+  doc.setTextColor(...azul).setFont('helvetica', 'bold').setFontSize(15);
   doc.text('Matriz Ejecutiva de Impacto por Grupo', 14, 28);
 
-  // ======================================================
-  // BLOQUE GRIS EXPLICATIVO
-  // ======================================================
+  // Recuadro gris explicativo
   const infoY3 = 34;
-  const infoH3 = 24;
+  const infoH3 = 27;
 
-  doc.setFillColor(245,245,245);
+  doc.setFillColor(...grisClaro);
   doc.roundedRect(14, infoY3, 182, infoH3, 2, 2, 'F');
 
-  doc.setFont('helvetica', 'normal')
-     .setFontSize(7.5)
-     .setTextColor(40);
-
+  doc.setTextColor(45).setFont('helvetica', 'normal').setFontSize(7.5);
   doc.text([
-    'Lectura por fila: cada grupo se evalúa según lotes comprometidos, valor económico en riesgo,',
-    'lotes vencidos, lotes a 0-90 días y cobertura operativa.',
+    'Lectura por fila: cada grupo se evalúa según valor ya vencido, valor con vencimiento próximo (0-90 días),',
+    'demanda mensual del grupo y cobertura disponible.',
     '',
-    'Lotes riesgo: lotes vencidos o con vencimiento próximo.',
-    'Valor riesgo: valor económico total comprometido del grupo.',
-    '% valor: peso del valor en riesgo dentro del valor total del grupo.',
-    'Cobertura: meses estimados usando demanda híbrida (Forecast UE + histórico).',
-    'Riesgo: priorización gerencial por exposición económica y presión operativa.'
-  ], 18, infoY3 + 7);
+    'Valor vencido: inventario que ya perdió utilidad operativa.',
+    'Valor 0-90d: inventario con riesgo cercano de vencimiento.',
+    'Demanda comprometida: demanda mensual potencialmente afectada si el grupo tiene baja cobertura y alto valor en riesgo.',
+    'Riesgo ejecutivo: priorización gerencial por impacto económico y presión operativa.'
+  ], 18, infoY3 + 7, { maxWidth: 176, lineHeightFactor: 1.1 });
 
-  // ======================================================
-  // TABLA
-  // ======================================================
+  // Construcción de matriz ejecutiva real
+  const matrizImpactoRows = groupRows.map((g) => {
+    const rs = rows.filter((r) => (String(r?.grupo || '').trim() || 'SIN GRUPO') === g.grupo);
+
+    const lotesVencidos = rs.filter((r) => n(r?.dias_a_vto) < 0).length;
+    const lotes90 = rs.filter((r) => n(r?.dias_a_vto) >= 0 && n(r?.dias_a_vto) <= 90).length;
+
+    const valorVencido = rs
+      .filter((r) => n(r?.dias_a_vto) < 0)
+      .reduce((acc, r) => acc + valorLote(r), 0);
+
+    const valor90 = rs
+      .filter((r) => n(r?.dias_a_vto) >= 0 && n(r?.dias_a_vto) <= 90)
+      .reduce((acc, r) => acc + valorLote(r), 0);
+
+    const demandaMes = Number(g.demandaGrupo || 0);
+    const cobertura = Number(g.coberturaGrupo || 0);
+
+    // Demanda comprometida estimada
+    let demandaComp = 0;
+    if (demandaMes > 0) {
+      if (cobertura < 1) demandaComp = demandaMes;
+      else if (cobertura < 2) demandaComp = demandaMes * 0.5;
+      else if (cobertura < 3 && (valorVencido > 0 || valor90 > 0)) demandaComp = demandaMes * 0.25;
+    }
+
+    // Riesgo ejecutivo enfocado en impacto económico + presión operativa
+    let riesgo = 'CONTROLADO';
+    let lectura = 'Monitoreo normal';
+
+    if (
+      valorVencido > 500000 ||
+      (valor90 > 1500000 && cobertura < 2) ||
+      demandaComp >= demandaMes * 0.75
+    ) {
+      riesgo = 'CRÍTICO';
+      lectura = 'Intervención inmediata';
+    } else if (
+      valorVencido > 100000 ||
+      valor90 > 500000 ||
+      demandaComp >= demandaMes * 0.4 ||
+      cobertura < 3
+    ) {
+      riesgo = 'ALTO';
+      lectura = 'Prioridad alta';
+    } else if (
+      valor90 > 100000 ||
+      demandaComp > 0 ||
+      cobertura < 6
+    ) {
+      riesgo = 'MEDIO';
+      lectura = 'Seguimiento activo';
+    }
+
+    return [
+      g.grupo,
+      fmtInt(lotesVencidos),
+      `B/. ${fmtMoney(valorVencido)}`,
+      fmtInt(lotes90),
+      `B/. ${fmtMoney(valor90)}`,
+      fmtInt(demandaMes),
+      cobertura > 0 ? `${fmtNum(cobertura)} m` : 'N/D',
+      demandaComp > 0 ? fmtInt(demandaComp) : '0',
+      riesgo,
+      lectura
+    ];
+  });
+
   doc.autoTable({
-    startY: 64,
+    startY: 66,
     head: [[
       'Grupo',
-      'Lotes\nriesgo',
-      'Unid.\nriesgo',
-      'Valor\nriesgo',
-      '% valor',
-      'Venci\ndos',
-      '0-90d',
+      'Lotes\nvenc.',
+      'Valor\nvencido',
+      'Lotes\n0-90d',
+      'Valor\n0-90d',
       'Dem./mes',
-      'Cob. m',
-      'Score',
-      'Riesgo'
+      'Cob.',
+      'Dem.\ncomp.',
+      'Riesgo',
+      'Lectura'
     ]],
-    body: groupRows.map(g => [
-      g.grupo,
-      fmtInt(g.lotesRiesgo),
-      fmtInt(g.unidadesRiesgo),
-      `B/. ${fmtMoney(g.valorRiesgo)}`,
-      fmtPct(g.pValor),
-      fmtInt(g.vencidos),
-      fmtInt(g.prox90),
-      fmtInt(g.demandaGrupo),
-      g.coberturaGrupo != null ? fmtNum(g.coberturaGrupo) : 'N/D',
-      fmtNum(g.score),
-      g.riesgo
-    ]),
+    body: matrizImpactoRows,
     theme: 'grid',
     styles: {
       fontSize: 7,
@@ -2148,21 +2191,20 @@ function generarTableroVencimientosPDF(rep){
       fontSize: 7.2
     },
     columnStyles: {
-      0:  { halign: 'left',  cellWidth: 28 },
-      1:  { halign: 'right', cellWidth: 16 },
-      2:  { halign: 'right', cellWidth: 20 },
-      3:  { halign: 'right', cellWidth: 24 },
-      4:  { halign: 'right', cellWidth: 16 },
-      5:  { halign: 'right', cellWidth: 12 },
-      6:  { halign: 'right', cellWidth: 12 },
-      7:  { halign: 'right', cellWidth: 22 },
-      8:  { halign: 'right', cellWidth: 14 },
-      9:  { halign: 'right', cellWidth: 14 },
-      10: { halign: 'center', cellWidth: 18 }
+      0: { halign: 'left',  cellWidth: 28 },
+      1: { halign: 'right', cellWidth: 14 },
+      2: { halign: 'right', cellWidth: 22 },
+      3: { halign: 'right', cellWidth: 14 },
+      4: { halign: 'right', cellWidth: 22 },
+      5: { halign: 'right', cellWidth: 18 },
+      6: { halign: 'right', cellWidth: 14 },
+      7: { halign: 'right', cellWidth: 18 },
+      8: { halign: 'center', cellWidth: 18 },
+      9: { halign: 'left',  cellWidth: 20 }
     },
     margin: { left: 14, right: 14 },
     didParseCell: (data) => {
-      if (data.section === 'body' && data.column.index === 10) {
+      if (data.section === 'body' && data.column.index === 8) {
         const val = String(data.cell.raw || '').toUpperCase();
         if (val === 'CRÍTICO') {
           data.cell.styles.textColor = rojo;
