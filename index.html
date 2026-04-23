@@ -997,9 +997,8 @@ if (btnVencimientosPdf) {
   });
 }
 
-
   // ===============================================
-  // REPORTE GERENCIAL (VERSION FINAL - CORREGIDA Y UNIFICADA)
+  // REPORTE DE ABASTECIMIENTO — GERENCIAL + OPERATIVO POR GRUPO
   // ===============================================
   const btnPdfReport = document.getElementById('btnPdfReport');
   if (btnPdfReport) {
@@ -1008,290 +1007,347 @@ if (btnVencimientosPdf) {
       btnPdfReport.disabled = true;
 
       try {
-        const res = await fetchJSON(API_BASE + '?report=coverage&ts=' + Date.now());
-        if (!res.rows || res.rows.length === 0) throw new Error('Sin datos. Ejecute "Regenerar Reporte".');
+        const [resMaster, resGroups, resDetail] = await Promise.all([
+          fetchJSON(API_BASE + '?report=coverage&ts=' + Date.now()),
+          fetchJSON(API_BASE + '?report=coverage_groups&ts=' + Date.now()),
+          fetchJSON(API_BASE + '?report=coverage_group_detail&ts=' + Date.now())
+        ]);
 
-        // Mapeo
-        const data = res.rows.map(r => ({
-          cod: String(r[1]),
-          sum: String(r[2]),
-          grp: String(r[3]),
-          inv_actual: Number(r[4] || 0),
-          recepcion: Number(r[5] || 0),
-          transito: Number(r[6] || 0),
-          reserva: Number(r[7] || 0),
-          inv_proy: Number(r[8] || 0),
-          meses: r[9],
-          status: String(r[10]).toUpperCase(),
-          demanda: Number(r[11] || 0)
-        }));
-
-        // Contadores y Listas
-        const stats = { agotado:0, critico:0, bajo:0, optimo:0, exceso:0 };
-        const lists = { agotado:[], critico:[], bajo:[], optimo:[], exceso:[] };
-
-        data.forEach(item => {
-          if(item.status.includes('AGOTADO')) { stats.agotado++; lists.agotado.push(item); }
-          else if(item.status.includes('CRITICO')) { stats.critico++; lists.critico.push(item); }
-          else if(item.status.includes('BAJO')) { stats.bajo++; lists.bajo.push(item); }
-          else if(item.status.includes('EXCESO')) { stats.exceso++; lists.exceso.push(item); }
-          else { stats.optimo++; lists.optimo.push(item); }
-        });
-
-        // Ordenamiento por Impacto
-        const sortByDemand = (a,b) => b.demanda - a.demanda;
-        lists.agotado.sort(sortByDemand);
-        lists.critico.sort(sortByDemand);
-        lists.bajo.sort(sortByDemand);
-        lists.optimo.sort(sortByDemand);
-        lists.exceso.sort((a,b) => b.inv_proy - a.inv_proy); // Exceso por Inventario Proyectado
-
-        // Tops 15
-        const tops = {
-          agotado: lists.agotado.slice(0, 15),
-          critico: lists.critico.slice(0, 15),
-          bajo: lists.bajo.slice(0, 15),
-          optimo: lists.optimo.slice(0, 15),
-          exceso: lists.exceso.slice(0, 15)
-        };
+        if (!resMaster.rows || !resMaster.rows.length) {
+          throw new Error('Sin datos de abastecimiento. Ejecute "Regenerar Solo Reporte".');
+        }
+        if (!resGroups.rows || !resGroups.rows.length) {
+          throw new Error('Sin resumen por grupo. Ejecute "Regenerar Solo Reporte".');
+        }
+        if (!resDetail.rows || !resDetail.rows.length) {
+          throw new Error('Sin detalle por grupo. Ejecute "Regenerar Solo Reporte".');
+        }
 
         const { jsPDF } = window.jspdf;
-        const doc = new jsPDF();
+        const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+        if (typeof doc.autoTable !== 'function') throw new Error('autoTable no está disponible.');
+
         const azul = [11, 31, 58];
-        // Limpiar fecha corte (quitar hora si viene)
-        let fechaCorte = res.rows[0][0];
+        const gris = [107, 114, 128];
+        const rojo = [220, 38, 38];
+        const naranja = [245, 158, 11];
+        const amarillo = [234, 179, 8];
+        const verde = [22, 163, 74];
+        const morado = [168, 85, 247];
+        const azul2 = [37, 99, 235];
+
+        let fechaCorte = resMaster.rows[0][0];
         try { fechaCorte = new Date(fechaCorte).toISOString().split('T')[0]; } catch(e){}
 
-        // --- HEADER UNIFICADO (En cada página nueva) ---
         const drawHeader = () => {
           const imgEl = document.querySelector('.topbar img');
           if (imgEl) {
             try {
               const cvs = document.createElement('canvas');
-              cvs.width = imgEl.naturalWidth; cvs.height = imgEl.naturalHeight;
-              cvs.getContext('2d').drawImage(imgEl,0,0);
+              cvs.width = imgEl.naturalWidth;
+              cvs.height = imgEl.naturalHeight;
+              cvs.getContext('2d').drawImage(imgEl, 0, 0);
               doc.addImage(cvs.toDataURL('image/png'), 'PNG', 14, 10, 15, 15);
             } catch(e){}
           }
-          doc.setFont('helvetica','bold').setFontSize(20).setTextColor(...azul).text("Tablero de Abastecimiento | CEDIS Panamá", 35, 18);
-          // Subtitulo estándar: Corte y Generado
-          doc.setFont('helvetica','normal').setFontSize(10).setTextColor(80).text(`Corte Datos: ${fechaCorte} | Generado: ${new Date().toLocaleDateString()}`, 35, 24);
+          doc.setFont('helvetica','bold').setFontSize(20).setTextColor(...azul)
+             .text("Tablero de Abastecimiento | CEDIS Panamá", 35, 18);
+          doc.setFont('helvetica','normal').setFontSize(10).setTextColor(80)
+             .text(`Corte Datos: ${fechaCorte} | Generado: ${new Date().toLocaleDateString()}`, 35, 24);
           doc.setDrawColor(200).line(14, 28, 196, 28);
         };
 
-        // --- PÁGINA 1 ---
+        const riskColor = (r) => {
+          const s = String(r || '').toUpperCase();
+          if (s.includes('ALTO')) return rojo;
+          if (s.includes('VENCIMIENTO')) return naranja;
+          if (s.includes('RESERVA')) return morado;
+          if (s.includes('MEDIO')) return amarillo;
+          if (s.includes('EXCESO')) return azul2;
+          return verde;
+        };
+
+        const mapMaster = resMaster.rows.map(r => ({
+          fecha: r[0],
+          cod: String(r[1]),
+          renglon: String(r[2]),
+          grupo: String(r[3]),
+          inv_actual: Number(r[4] || 0),
+          recep: Number(r[5] || 0),
+          transito: Number(r[6] || 0),
+          reserva: Number(r[7] || 0),
+          inv_proy: Number(r[8] || 0),
+          cob: String(r[9] || ''),
+          estado: String(r[10] || '').toUpperCase(),
+          demanda: Number(r[11] || 0)
+        }));
+
+        const groups = resGroups.rows.map(r => ({
+          Grupo: String(r[0]),
+          Total_SKUs: Number(r[1] || 0),
+          Agotados: Number(r[2] || 0),
+          Criticos: Number(r[3] || 0),
+          Bajos: Number(r[4] || 0),
+          Optimos: Number(r[5] || 0),
+          Excesos: Number(r[6] || 0),
+          Demanda_Total: Number(r[7] || 0),
+          Inv_Actual_Total: Number(r[8] || 0),
+          Recepcion_Total: Number(r[9] || 0),
+          Transito_Total: Number(r[10] || 0),
+          Reserva_Total: Number(r[11] || 0),
+          Inv_Proy_Total: Number(r[12] || 0),
+          Cobertura_Grupo: String(r[13] || ''),
+          Presion_Reserva_Pct: String(r[14] || ''),
+          Vencidos_SKUs: Number(r[15] || 0),
+          Prox_Vencer_SKUs: Number(r[16] || 0),
+          Riesgo_Grupo: String(r[17] || ''),
+          Observacion: String(r[18] || '')
+        }));
+
+        const detail = resDetail.rows.map(r => ({
+          GRUPO: String(r[0]),
+          BUCKET: String(r[1]),
+          CODIGO: String(r[2]),
+          RENGLON: String(r[3]),
+          DEMANDA: Number(r[4] || 0),
+          INV_ACT: Number(r[5] || 0),
+          RECEPCION: Number(r[6] || 0),
+          TRANSITO: Number(r[7] || 0),
+          RESERVA: Number(r[8] || 0),
+          INV_PROY: Number(r[9] || 0),
+          COB: String(r[10] || ''),
+          ESTADO: String(r[11] || '')
+        }));
+
+        const detailByGroup = {};
+        detail.forEach(r => {
+          if (!detailByGroup[r.GRUPO]) {
+            detailByGroup[r.GRUPO] = {
+              AGOTADOS: [],
+              CRITICOS: [],
+              BAJOS: [],
+              OPTIMOS: [],
+              EXCESOS: []
+            };
+          }
+          if (!detailByGroup[r.GRUPO][r.BUCKET]) detailByGroup[r.GRUPO][r.BUCKET] = [];
+          detailByGroup[r.GRUPO][r.BUCKET].push(r);
+        });
+
+        const topByField = (arr, field, n=10) =>
+          [...arr].sort((a,b)=> Number(b[field]||0) - Number(a[field]||0)).slice(0,n);
+
+        // ==========================
+        // PORTADA EJECUTIVA
+        // ==========================
         drawHeader();
 
-        // === FICHA TÉCNICA (Espacio reservado) ===
-        doc.setFillColor(245, 245, 245);
-        doc.roundedRect(14, 32, 182, 24, 1, 1, 'F'); // Más alto para que quepa texto
-        
-        doc.setFontSize(8).setTextColor(0).setFont('helvetica','bold');
-        doc.text("CRITERIOS DE CLASIFICACIÓN:", 16, 37);
-        
-        doc.setFontSize(7).setTextColor(50).setFont('helvetica','normal');
-        doc.text("• Demanda Mensual = Mediana(Consumo Diario ult. 90 días) x 30.", 16, 41);
-        doc.text("• Inventario Proyectado Real = max((Inv. Actual + Recepción + Tránsito) - Reserva, 0).", 16, 45);
-        doc.text("• Cobertura (Meses) = Inventario Proyectado / Demanda Mensual.", 16, 49);
-        
-        // Columna 2 rangos
-        const col2 = 110;
-        doc.text("• Agotado: 0 | Crítico: <1m | Bajo: 1-4m", col2, 37);
-        doc.text("• Óptimo: 4-12m | Exceso: >12m", col2, 41);
-        
-        // --- KPIs ---
-        const startY = 63; // Bajamos para no solapar
-        const drawKpi = (x, label, count, color, rule) => {
-          doc.setFillColor(...color);
-          doc.roundedRect(x, startY, 34, 32, 2, 2, 'F');
-          
-          doc.setTextColor(255).setFontSize(18).setFont('helvetica','bold').text(String(count), x+17, startY+12, {align:'center'});
-          doc.setFontSize(8).text(label, x+17, startY+18, {align:'center'});
-          const pct = Math.round((count/data.length)*100) + '%';
-          doc.setFontSize(8).text(pct, x+17, startY+23, {align:'center'});
+        const totalSKUs = groups.reduce((a,b)=>a + Number(b.Total_SKUs||0), 0);
+        const totalAgot = groups.reduce((a,b)=>a + Number(b.Agotados||0), 0);
+        const totalCrit = groups.reduce((a,b)=>a + Number(b.Criticos||0), 0);
+        const totalBajo = groups.reduce((a,b)=>a + Number(b.Bajos||0), 0);
+        const totalExc  = groups.reduce((a,b)=>a + Number(b.Excesos||0), 0);
 
-          // Regla
-          doc.setFillColor(255, 255, 255);
-          doc.rect(x, startY+26, 34, 6, 'F');
-          doc.setTextColor(0,0,0).setFontSize(7).setFont('helvetica','bold');
-          doc.text(rule, x+17, startY+30, {align:'center'});
-        };
+        doc.setFillColor(245,245,245);
+        doc.roundedRect(14, 34, 182, 20, 2, 2, 'F');
+        doc.setFont('helvetica','bold').setFontSize(9).setTextColor(0);
+        doc.text('RESUMEN INSTITUCIONAL', 16, 40);
+        doc.setFont('helvetica','normal').setFontSize(8).setTextColor(70);
+        doc.text(`Total grupos: ${groups.length}`, 16, 46);
+        doc.text(`Total SKUs: ${totalSKUs.toLocaleString()}`, 60, 46);
+        doc.text(`Agotados: ${totalAgot.toLocaleString()}`, 100, 46);
+        doc.text(`Críticos: ${totalCrit.toLocaleString()}`, 135, 46);
+        doc.text(`Bajos: ${totalBajo.toLocaleString()} | Excesos: ${totalExc.toLocaleString()}`, 16, 51);
 
-        drawKpi(14, "AGOTADOS", stats.agotado, [220, 38, 38], "Stock = 0");
-        drawKpi(52, "CRÍTICOS", stats.critico, [234, 88, 12], "< 1 Mes");
-        drawKpi(90, "BAJO", stats.bajo, [234, 179, 8], "1 - 4 Meses");
-        drawKpi(128, "ÓPTIMO", stats.optimo, [22, 163, 74], "4 - 12 Meses");
-        drawKpi(166, "EXCESO", stats.exceso, [37, 99, 235], "> 12 Meses");
+        doc.setFont('helvetica','bold').setFontSize(14).setTextColor(...azul);
+        doc.text('Resumen Gerencial por Grupo', 14, 64);
 
-        // --- DONA ---
-        doc.setTextColor(0).setFontSize(14).setFont('helvetica','bold').text("Distribución del Inventario", 14, 105);
-        
-        const cx = 70, cy = 150, r = 32;
-        let startAngle = 0;
-        const total = data.length;
-        
-        const drawSlice = (val, color) => {
-          if (val === 0) return;
-          const slice = (val / total) * 2 * Math.PI;
-          const endAngle = startAngle + slice;
-          
-          const points = [[cx, cy]];
-          for (let a = startAngle; a <= endAngle; a += 0.05) { points.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]); }
-          points.push([cx + r * Math.cos(endAngle), cy + r * Math.sin(endAngle)]);
-          
-          doc.setFillColor(...color);
-          for(let i=1; i<points.length-1; i++){ doc.triangle(points[0][0], points[0][1], points[i][0], points[i][1], points[i+1][0], points[i+1][1], 'F'); }
-          
-          if ((val/total) > 0.03) {
-            const mid = startAngle + slice/2;
-            const textR = r * 0.7;
-            const tx = cx + textR * Math.cos(mid);
-            const ty = cy + textR * Math.sin(mid);
-            const pctVal = Math.round((val/total)*100) + '%';
-            doc.setTextColor(255).setFontSize(8).setFont('helvetica','bold');
-            doc.text(pctVal, tx, ty, {align:'center', baseline:'middle'});
-          }
-          startAngle = endAngle;
-        };
-
-        drawSlice(stats.agotado, [220, 38, 38]);
-        drawSlice(stats.critico, [234, 88, 12]);
-        drawSlice(stats.bajo, [234, 179, 8]);
-        drawSlice(stats.optimo, [22, 163, 74]);
-        drawSlice(stats.exceso, [37, 99, 235]);
-
-        doc.setFillColor(255,255,255); doc.circle(cx, cy, 14, 'F');
-        doc.setTextColor(...azul).setFontSize(9).text("Total Renglones", cx, cy-2, {align:'center'});
-        doc.setFontSize(12).text(String(total), cx, cy+3, {align:'center'});
-
-        const lx = 120, ly = 130;
-        const legend = (l, c, color, y) => {
-          doc.setFillColor(...color); doc.circle(lx, y, 3, 'F');
-          doc.setTextColor(50).setFontSize(10).setFont('helvetica','normal').text(`${l} (${c})`, lx+6, y+1);
-        };
-        legend("Agotados", stats.agotado, [220,38,38], ly);
-        legend("Críticos", stats.critico, [234,88,12], ly+8);
-        legend("Bajo Stock", stats.bajo, [234,179,8], ly+16);
-        legend("Óptimo", stats.optimo, [22,163,74], ly+24);
-        legend("Exceso", stats.exceso, [37,99,235], ly+32);
-
-        // --- FLUJO DE TABLAS CONTINUO ---
-        
-        // Helper para filas estándar
-        const mapStandard = (l) => l.map(r => [
-          r.cod,
-          (r.sum || '').substring(0,34),
-          Math.round(r.demanda).toLocaleString(),
-          Math.round(r.inv_actual).toLocaleString(),
-          Math.round(r.recepcion).toLocaleString(),
-          Math.round(r.transito).toLocaleString(),
-          Math.round(r.reserva).toLocaleString(),
-          Math.round(r.inv_proy).toLocaleString(),
-          (r.meses || '') + 'm',
-          r.status
-        ]);
-        
-        // Helper imprimir tabla (inteligente)
-        let cursorY = 195; // Donde empieza la primera tabla
-
-        const printTable = (title, color, rows, checkStatus) => {
-          // Si estamos muy abajo, nueva página y reset Y
-          if (cursorY > 250) {
-            doc.addPage();
-            drawHeader();
-            cursorY = 40;
-          }
-
-          // Título de sección
-          doc.setTextColor(...azul).setFontSize(12).setFont('helvetica','bold').text(title, 14, cursorY - 3);
-
-          doc.autoTable({
-            startY: cursorY,
-            head: [['Código','Renglón','Demanda','Inv.Act','Recep','Tránsito','Reserva','Inv.Proy','Cob.','Estado']],
-            body: rows,
-            theme: 'grid',
-            styles: { fontSize: 7, cellPadding: 1.5 },
-            headStyles: { fillColor: color, textColor: 255, fontStyle:'bold' },
-            columnStyles: {
-              2: { halign: 'right' }, // Demanda
-              3: { halign: 'right' }, // Inv.Act
-              4: { halign: 'right' }, // Recep
-              5: { halign: 'right' }, // Tránsito
-              6: { halign: 'right' }, // Inv.Proy
-              8: { fontStyle: 'bold' } // Estado
-            },
-            margin: { bottom: 20, top: 40 }, // Top por si rompe página
-            didDrawPage: (d) => {
-              // Si rompe página, volver a dibujar header
-              if (d.pageNumber > 1 && d.settings.startY > 200) { // Solo si fue un break automático
-                 // autoTable dibuja header tabla, pero necesitamos el header documento
-              }
-              // Hook para header en nuevas paginas generadas por autotable
-              if (d.cursor.y < 50) drawHeader(); 
-            },
-            didParseCell: (d) => {
-              if (d.section === 'body' && d.column.index === 8 && checkStatus) {
-                d.cell.styles.textColor = color;
-              }
-            },
-            // Hook opcional por celdas dibujada
-            didDrawCell: (data) => { }, 
-          });
-          
-          cursorY = doc.lastAutoTable.finalY + 15; // Espacio para siguiente tabla
-        };
-
-        // 1. AGOTADOS
-        printTable("1. Top 15 Agotados (Prioridad: Alta Demanda)", [220,38,38], mapStandard(tops.agotado), true);
-
-        // 2. CRÍTICOS
-        printTable("2. Top 15 Críticos (< 1 Mes)", [234,88,12], mapStandard(tops.critico), true);
-
-        // 3. BAJO STOCK
-        printTable("3. Top 15 Bajo Stock (1 - 4 Meses)", [234,179,8], mapStandard(tops.bajo), false);
-
-        // 4. ÓPTIMOS
-        printTable("4. Top 15 Óptimos (Alta Demanda Saludable)", [22,163,74], mapStandard(tops.optimo), true);
-
-        // 5. EXCESOS (Formato Unificado)
-        // Usamos el mismo mapStandard para que la tabla sea IDÉNTICA visualmente
-        // Aunque el orden es por Stock, las columnas se mantienen igual para consistencia visual
-        printTable("5. Top 15 Excesos (Control de Costos y Riesgos de Vencimiento)", [37,99,235], mapStandard(tops.exceso), true);
-
-
-        // --- LISTADO MAESTRO ---
-        doc.addPage();
-        drawHeader();
-        doc.setTextColor(0).setFontSize(14).text("Listado Maestro Completo", 14, 40);
-        
         doc.autoTable({
-          startY: 45,
-          head: [['Código','Renglón','Demanda','Inv.Act','Recep','Tránsito','Inv.Proy','Cob.','Estado']],
-          body: mapStandard(data), // Usamos todos los datos
-          theme: 'plain',
-          styles: { fontSize: 7, cellPadding: 2, lineColor:220, lineWidth:0.1 },
-          headStyles: { fillColor:[240,240,240], textColor:50 },
-          columnStyles: {
-            2:{halign:'right'},
-            3:{halign:'right'},
-            4:{halign:'right'},
-            5:{halign:'right'},
-            6:{halign:'right'},
-            8:{fontStyle:'bold'}
-          },
-          margin: { top: 40 },
-          didDrawPage: () => drawHeader(),
+          startY: 68,
+          head: [[
+            'Grupo','SKUs','Agot','Crít','Bajos','Ópt','Exc','Reserva','Inv.Proy','Cob.','Riesgo'
+          ]],
+          body: groups.map(g => [
+            g.Grupo,
+            g.Total_SKUs,
+            g.Agotados,
+            g.Criticos,
+            g.Bajos,
+            g.Optimos,
+            g.Excesos,
+            g.Reserva_Total.toLocaleString(),
+            g.Inv_Proy_Total.toLocaleString(),
+            g.Cobertura_Grupo,
+            g.Riesgo_Grupo
+          ]),
+          theme: 'grid',
+          styles: { fontSize: 8, cellPadding: 3 },
+          headStyles: { fillColor: azul, textColor: 255 },
           didParseCell: (d) => {
-            if(d.section==='body' && d.column.index===8) {
-              const s = String(d.cell.raw || '');
-              if (s.includes('AGOTADO')) d.cell.styles.textColor=[200,0,0];
-              else if (s.includes('CRITICO')) d.cell.styles.textColor=[234,88,12];
-              else if (s.includes('OPTIMO')) d.cell.styles.textColor=[22,163,74];
+            if (d.section === 'body' && d.column.index === 10) {
+              d.cell.styles.textColor = riskColor(d.cell.raw);
+              d.cell.styles.fontStyle = 'bold';
             }
           }
         });
 
-        // PAGINACIÓN
+        // ==========================
+        // RIESGOS TRANSVERSALES
+        // ==========================
+        const riskBoards = [
+          ['Top grupos con más agotados', topByField(groups, 'Agotados'), 'Agotados'],
+          ['Top grupos con más críticos', topByField(groups, 'Criticos'), 'Criticos'],
+          ['Top grupos con más excesos', topByField(groups, 'Excesos'), 'Excesos'],
+          ['Top grupos con mayor presión de reserva', topByField(groups, 'Presion_Reserva_Pct'), 'Presion_Reserva_Pct']
+        ];
+
+        riskBoards.forEach(([title, rows, field]) => {
+          doc.addPage();
+          drawHeader();
+          doc.setFont('helvetica','bold').setFontSize(14).setTextColor(...azul).text(title, 14, 40);
+
+          doc.autoTable({
+            startY: 45,
+            head: [['Grupo','Valor','Riesgo']],
+            body: rows.map(r => [r.Grupo, r[field], r.Riesgo_Grupo]),
+            theme: 'grid',
+            styles: { fontSize: 9, cellPadding: 4 },
+            headStyles: { fillColor: [51,65,85], textColor: 255 },
+            didParseCell: (d) => {
+              if (d.section === 'body' && d.column.index === 2) {
+                d.cell.styles.textColor = riskColor(d.cell.raw);
+                d.cell.styles.fontStyle = 'bold';
+              }
+            }
+          });
+        });
+
+        // ==========================
+        // DESARROLLO OPERATIVO POR GRUPO
+        // ==========================
+        const bucketConfig = [
+          ['AGOTADOS', 'Agotados del grupo', rojo],
+          ['CRITICOS', 'Críticos del grupo', naranja],
+          ['BAJOS', 'Bajo stock del grupo', amarillo],
+          ['EXCESOS', 'Excesos del grupo', azul2]
+        ];
+
+        groups.forEach(g => {
+          doc.addPage();
+          drawHeader();
+
+          doc.setFont('helvetica','bold').setFontSize(18).setTextColor(...azul).text(g.Grupo, 14, 40);
+
+          doc.autoTable({
+            startY: 46,
+            head: [[
+              'SKUs','Agot','Crít','Bajos','Ópt','Exc','Reserva','Inv.Proy','Cob.','Riesgo'
+            ]],
+            body: [[
+              g.Total_SKUs,
+              g.Agotados,
+              g.Criticos,
+              g.Bajos,
+              g.Optimos,
+              g.Excesos,
+              g.Reserva_Total.toLocaleString(),
+              g.Inv_Proy_Total.toLocaleString(),
+              g.Cobertura_Grupo,
+              g.Riesgo_Grupo
+            ]],
+            theme: 'grid',
+            styles: { fontSize: 9, cellPadding: 4 },
+            headStyles: { fillColor: azul, textColor: 255 },
+            didParseCell: (d) => {
+              if (d.section === 'body' && d.column.index === 9) {
+                d.cell.styles.textColor = riskColor(d.cell.raw);
+                d.cell.styles.fontStyle = 'bold';
+              }
+            }
+          });
+
+          doc.setFont('helvetica','bold').setFontSize(11).setTextColor(...azul).text('Observación operativa', 14, doc.lastAutoTable.finalY + 10);
+          doc.setFont('helvetica','normal').setFontSize(9).setTextColor(70);
+          const splitObs = doc.splitTextToSize(g.Observacion || 'Sin observación.', 180);
+          doc.text(splitObs, 14, doc.lastAutoTable.finalY + 16);
+
+          let currentY = doc.lastAutoTable.finalY + 24 + (splitObs.length * 4);
+
+          bucketConfig.forEach(([bucketKey, bucketTitle, color]) => {
+            const rows = (detailByGroup[g.Grupo] && detailByGroup[g.Grupo][bucketKey]) ? detailByGroup[g.Grupo][bucketKey] : [];
+            if (!rows.length) return;
+
+            if (currentY > 220) {
+              doc.addPage();
+              drawHeader();
+              currentY = 40;
+            }
+
+            doc.setFont('helvetica','bold').setFontSize(12).setTextColor(...azul);
+            doc.text(bucketTitle, 14, currentY);
+
+            doc.autoTable({
+              startY: currentY + 4,
+              head: [[
+                'Código','Renglón','Demanda','Inv.Act','Recep','Tránsito','Reserva','Inv.Proy','Cob.','Estado'
+              ]],
+              body: rows.slice(0, 15).map(r => [
+                r.CODIGO,
+                r.RENGLON,
+                Number(r.DEMANDA || 0).toLocaleString(),
+                Number(r.INV_ACT || 0).toLocaleString(),
+                Number(r.RECEPCION || 0).toLocaleString(),
+                Number(r.TRANSITO || 0).toLocaleString(),
+                Number(r.RESERVA || 0).toLocaleString(),
+                Number(r.INV_PROY || 0).toLocaleString(),
+                r.COB,
+                r.ESTADO
+              ]),
+              theme: 'grid',
+              styles: { fontSize: 7, cellPadding: 2 },
+              headStyles: { fillColor: color, textColor: (color === amarillo ? [31,41,55] : 255) }
+            });
+
+            currentY = doc.lastAutoTable.finalY + 10;
+          });
+        });
+
+        // ==========================
+        // LISTADO MAESTRO FINAL
+        // ==========================
+        doc.addPage();
+        drawHeader();
+        doc.setFont('helvetica','bold').setFontSize(14).setTextColor(...azul).text("Listado Maestro Completo", 14, 40);
+
+        doc.autoTable({
+          startY: 45,
+          head: [['Código','Renglón','Grupo','Demanda','Inv.Act','Recep','Tránsito','Reserva','Inv.Proy','Cob.','Estado']],
+          body: mapMaster.map(r => [
+            r.cod,
+            r.renglon,
+            r.grupo,
+            r.demanda.toLocaleString(),
+            r.inv_actual.toLocaleString(),
+            r.recep.toLocaleString(),
+            r.transito.toLocaleString(),
+            r.reserva.toLocaleString(),
+            r.inv_proy.toLocaleString(),
+            r.cob,
+            r.estado
+          ]),
+          theme: 'plain',
+          styles: { fontSize: 7, cellPadding: 2, lineColor:220, lineWidth:0.1 },
+          headStyles: { fillColor:[240,240,240], textColor:50 },
+          didParseCell: (d) => {
+            if (d.section === 'body' && d.column.index === 10) {
+              const s = String(d.cell.raw || '');
+              if (s.includes('AGOTADO')) d.cell.styles.textColor = rojo;
+              else if (s.includes('CRITICO')) d.cell.styles.textColor = naranja;
+              else if (s.includes('OPTIMO')) d.cell.styles.textColor = verde;
+            }
+          }
+        });
+
         const pCount = doc.internal.getNumberOfPages();
         for(let i=1; i<=pCount; i++){
           doc.setPage(i);
