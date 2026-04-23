@@ -1160,25 +1160,55 @@ if (btnVencimientosPdf) {
         };
 
         const drawDonut = (cx, cy, rOuter, rInner, segments) => {
-          const total = segments.reduce((a,b)=> a + b.value, 0) || 1;
-          let angle = -90;
-          segments.forEach(seg => {
-            const slice = (seg.value / total) * 360;
-            doc.setFillColor(...seg.color);
-            doc.setDrawColor(...seg.color);
-            doc.setLineWidth(0.4);
-            doc.wedge(cx, cy, rOuter, angle, angle + slice, 'F');
-            angle += slice;
-          });
-          doc.setFillColor(255,255,255);
-          doc.setDrawColor(255,255,255);
-          doc.circle(cx, cy, rInner, 'F');
-
-          doc.setTextColor(...azul).setFont('helvetica','bold').setFontSize(10);
-          doc.text('Total Renglones', cx, cy - 2, { align:'center' });
-          doc.setFontSize(16);
-          doc.text(totalRenglones.toLocaleString(), cx, cy + 6, { align:'center' });
-        };
+        const size = 260;
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+      
+        const total = segments.reduce((a, b) => a + Number(b.value || 0), 0) || 1;
+        let startAngle = -Math.PI / 2;
+      
+        const center = size / 2;
+        const outer = size * 0.42;
+        const inner = size * 0.20;
+      
+        segments.forEach(seg => {
+          const value = Number(seg.value || 0);
+          const slice = (value / total) * Math.PI * 2;
+      
+          ctx.beginPath();
+          ctx.moveTo(center, center);
+          ctx.arc(center, center, outer, startAngle, startAngle + slice);
+          ctx.closePath();
+      
+          const [r, g, b] = seg.color;
+          ctx.fillStyle = `rgb(${r},${g},${b})`;
+          ctx.fill();
+      
+          startAngle += slice;
+        });
+      
+        // hueco central
+        ctx.beginPath();
+        ctx.arc(center, center, inner, 0, Math.PI * 2);
+        ctx.fillStyle = '#ffffff';
+        ctx.fill();
+      
+        // texto central
+        ctx.fillStyle = '#0b1f3a';
+        ctx.font = 'bold 16px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('Total Renglones', center, center - 6);
+      
+        ctx.font = 'bold 28px Arial';
+        ctx.fillText(totalRenglones.toLocaleString(), center, center + 22);
+      
+        const imgData = canvas.toDataURL('image/png');
+        const w = rOuter * 2;
+        const h = rOuter * 2;
+        doc.addImage(imgData, 'PNG', cx - rOuter, cy - rOuter, w, h);
+      };
 
         // ==========================
         // PÁGINA 1 — PORTADA VISUAL
