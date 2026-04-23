@@ -997,8 +997,8 @@ if (btnVencimientosPdf) {
   });
 }
 
-  // ===============================================
-  // REPORTE DE ABASTECIMIENTO — GERENCIAL + OPERATIVO POR GRUPO
+    // ===============================================
+  // REPORTE DE ABASTECIMIENTO — PORTADA VISUAL + MATRIZ + DETALLE POR GRUPO
   // ===============================================
   const btnPdfReport = document.getElementById('btnPdfReport');
   if (btnPdfReport) {
@@ -1033,8 +1033,8 @@ if (btnVencimientosPdf) {
         const naranja = [245, 158, 11];
         const amarillo = [234, 179, 8];
         const verde = [22, 163, 74];
-        const morado = [168, 85, 247];
         const azul2 = [37, 99, 235];
+        const morado = [168, 85, 247];
 
         let fechaCorte = resMaster.rows[0][0];
         try { fechaCorte = new Date(fechaCorte).toISOString().split('T')[0]; } catch(e){}
@@ -1084,7 +1084,7 @@ if (btnVencimientosPdf) {
 
         const groups = resGroups.rows.map(r => ({
           Grupo: String(r[0]),
-          Total_SKUs: Number(r[1] || 0),
+          Total_Renglones: Number(r[1] || 0),
           Agotados: Number(r[2] || 0),
           Criticos: Number(r[3] || 0),
           Bajos: Number(r[4] || 0),
@@ -1097,9 +1097,9 @@ if (btnVencimientosPdf) {
           Reserva_Total: Number(r[11] || 0),
           Inv_Proy_Total: Number(r[12] || 0),
           Cobertura_Grupo: String(r[13] || ''),
-          Presion_Reserva_Pct: String(r[14] || ''),
-          Vencidos_SKUs: Number(r[15] || 0),
-          Prox_Vencer_SKUs: Number(r[16] || 0),
+          Presion_Reserva_Pct: parseFloat(String(r[14] || '0').replace('%','')) || 0,
+          Vencidos_Renglones: Number(r[15] || 0),
+          Prox_Vencer_Renglones: Number(r[16] || 0),
           Riesgo_Grupo: String(r[17] || ''),
           Observacion: String(r[18] || '')
         }));
@@ -1134,42 +1134,206 @@ if (btnVencimientosPdf) {
           detailByGroup[r.GRUPO][r.BUCKET].push(r);
         });
 
-        const topByField = (arr, field, n=10) =>
-          [...arr].sort((a,b)=> Number(b[field]||0) - Number(a[field]||0)).slice(0,n);
+        const totalRenglones = groups.reduce((a,b)=> a + Number(b.Total_Renglones || 0), 0);
+        const totalAgot = groups.reduce((a,b)=> a + Number(b.Agotados || 0), 0);
+        const totalCrit = groups.reduce((a,b)=> a + Number(b.Criticos || 0), 0);
+        const totalBajo = groups.reduce((a,b)=> a + Number(b.Bajos || 0), 0);
+        const totalOpt  = groups.reduce((a,b)=> a + Number(b.Optimos || 0), 0);
+        const totalExc  = groups.reduce((a,b)=> a + Number(b.Excesos || 0), 0);
+
+        const pct = (n, d) => d > 0 ? Math.round((n/d)*100) : 0;
+
+        const drawKpi = (x, y, w, h, color, value, label, pctTxt, ruleTxt) => {
+          doc.setFillColor(...color);
+          doc.roundedRect(x, y, w, h, 2, 2, 'F');
+          doc.setTextColor(255).setFont('helvetica','bold').setFontSize(18);
+          doc.text(String(value), x + w/2, y + 13, { align:'center' });
+          doc.setFontSize(9);
+          doc.text(label, x + w/2, y + 22, { align:'center' });
+          doc.setFontSize(8);
+          doc.text(pctTxt, x + w/2, y + 29, { align:'center' });
+
+          doc.setFillColor(255,255,255);
+          doc.rect(x, y + h - 8, w, 8, 'F');
+          doc.setTextColor(0).setFontSize(7).setFont('helvetica','bold');
+          doc.text(ruleTxt, x + w/2, y + h - 3, { align:'center' });
+        };
+
+        const drawDonut = (cx, cy, rOuter, rInner, segments) => {
+          const total = segments.reduce((a,b)=> a + b.value, 0) || 1;
+          let angle = -90;
+          segments.forEach(seg => {
+            const slice = (seg.value / total) * 360;
+            doc.setFillColor(...seg.color);
+            doc.setDrawColor(...seg.color);
+            doc.setLineWidth(0.4);
+            doc.wedge(cx, cy, rOuter, angle, angle + slice, 'F');
+            angle += slice;
+          });
+          doc.setFillColor(255,255,255);
+          doc.setDrawColor(255,255,255);
+          doc.circle(cx, cy, rInner, 'F');
+
+          doc.setTextColor(...azul).setFont('helvetica','bold').setFontSize(10);
+          doc.text('Total Renglones', cx, cy - 2, { align:'center' });
+          doc.setFontSize(16);
+          doc.text(totalRenglones.toLocaleString(), cx, cy + 6, { align:'center' });
+        };
 
         // ==========================
-        // PORTADA EJECUTIVA
+        // PÁGINA 1 — PORTADA VISUAL
         // ==========================
         drawHeader();
 
-        const totalSKUs = groups.reduce((a,b)=>a + Number(b.Total_SKUs||0), 0);
-        const totalAgot = groups.reduce((a,b)=>a + Number(b.Agotados||0), 0);
-        const totalCrit = groups.reduce((a,b)=>a + Number(b.Criticos||0), 0);
-        const totalBajo = groups.reduce((a,b)=>a + Number(b.Bajos||0), 0);
-        const totalExc  = groups.reduce((a,b)=>a + Number(b.Excesos||0), 0);
-
         doc.setFillColor(245,245,245);
-        doc.roundedRect(14, 34, 182, 20, 2, 2, 'F');
+        doc.roundedRect(14, 34, 182, 26, 2, 2, 'F');
         doc.setFont('helvetica','bold').setFontSize(9).setTextColor(0);
-        doc.text('RESUMEN INSTITUCIONAL', 16, 40);
-        doc.setFont('helvetica','normal').setFontSize(8).setTextColor(70);
-        doc.text(`Total grupos: ${groups.length}`, 16, 46);
-        doc.text(`Total SKUs: ${totalSKUs.toLocaleString()}`, 60, 46);
-        doc.text(`Agotados: ${totalAgot.toLocaleString()}`, 100, 46);
-        doc.text(`Críticos: ${totalCrit.toLocaleString()}`, 135, 46);
-        doc.text(`Bajos: ${totalBajo.toLocaleString()} | Excesos: ${totalExc.toLocaleString()}`, 16, 51);
+        doc.text('CRITERIOS DE CLASIFICACIÓN Y LECTURA GERENCIAL:', 16, 40);
+        doc.setFont('helvetica','normal').setFontSize(8).setTextColor(50);
+        doc.text('• Demanda Mensual = Mediana(Consumo Diario ult. 90 días) × 30.', 16, 46);
+        doc.text('• Inventario Proyectado Real = max((Inv. Actual + Recepción + Tránsito) - Reserva, 0).', 16, 50);
+        doc.text('• Cobertura (Meses) = Inventario Proyectado / Demanda Mensual.', 16, 54);
+        doc.text('• Agotado: 0 | Crítico: <1m | Bajo: 1-4m | Óptimo: 4-12m | Exceso: >12m.', 110, 46);
+        doc.text('• Matriz gerencial: muestra cantidad de renglones por grupo en cada condición clave.', 110, 50);
+        doc.text('• Riesgo del grupo = severidad dominante según agotados, críticos, excesos y presión de reserva.', 110, 54);
+
+        const yKpi = 68, wKpi = 27, hKpi = 34, gap = 6, x0 = 14;
+        drawKpi(x0 + (wKpi + gap)*0, yKpi, wKpi, hKpi, rojo, totalAgot, 'AGOTADOS', `${pct(totalAgot,totalRenglones)}%`, 'Stock = 0');
+        drawKpi(x0 + (wKpi + gap)*1, yKpi, wKpi, hKpi, naranja, totalCrit, 'CRÍTICOS', `${pct(totalCrit,totalRenglones)}%`, '< 1 Mes');
+        drawKpi(x0 + (wKpi + gap)*2, yKpi, wKpi, hKpi, amarillo, totalBajo, 'BAJO', `${pct(totalBajo,totalRenglones)}%`, '1 - 4 Meses');
+        drawKpi(x0 + (wKpi + gap)*3, yKpi, wKpi, hKpi, verde, totalOpt, 'ÓPTIMO', `${pct(totalOpt,totalRenglones)}%`, '4 - 12 Meses');
+        drawKpi(x0 + (wKpi + gap)*4, yKpi, wKpi, hKpi, azul2, totalExc, 'EXCESO', `${pct(totalExc,totalRenglones)}%`, '> 12 Meses');
+
+        doc.setFont('helvetica','bold').setFontSize(16).setTextColor(...azul);
+        doc.text('Distribución del Inventario', 14, 118);
+
+        drawDonut(62, 170, 34, 16, [
+          { label:'Agotados', value: totalAgot, color: rojo },
+          { label:'Críticos', value: totalCrit, color: naranja },
+          { label:'Bajo', value: totalBajo, color: amarillo },
+          { label:'Óptimo', value: totalOpt, color: verde },
+          { label:'Exceso', value: totalExc, color: azul2 }
+        ]);
+
+        const legend = [
+          ['Agotados', totalAgot, rojo],
+          ['Críticos', totalCrit, naranja],
+          ['Bajo Stock', totalBajo, amarillo],
+          ['Óptimo', totalOpt, verde],
+          ['Exceso', totalExc, azul2]
+        ];
+        let ly = 140;
+        legend.forEach(([lab,val,col]) => {
+          doc.setFillColor(...col);
+          doc.circle(112, ly, 3.2, 'F');
+          doc.setTextColor(40).setFont('helvetica','normal').setFontSize(12);
+          doc.text(`${lab} (${Number(val).toLocaleString()})`, 118, ly + 1.2);
+          ly += 12;
+        });
+
+        // ==========================
+        // PÁGINA 2 — MATRIZ GERENCIAL
+        // ==========================
+        doc.addPage();
+        drawHeader();
 
         doc.setFont('helvetica','bold').setFontSize(14).setTextColor(...azul);
-        doc.text('Resumen Gerencial por Grupo', 14, 64);
+        doc.text('Matriz Gerencial por Grupo', 14, 40);
+
+        doc.setFillColor(245,245,245);
+        doc.roundedRect(14, 44, 182, 14, 2, 2, 'F');
+        doc.setFont('helvetica','normal').setFontSize(8).setTextColor(60);
+        doc.text('La matriz resume por grupo la cantidad de renglones en agotado, crítico y exceso, además de la presión de reserva. El color indica intensidad relativa del riesgo dentro de cada columna.', 16, 50);
+
+        const maxAgot = Math.max(...groups.map(g => g.Agotados), 1);
+        const maxCrit = Math.max(...groups.map(g => g.Criticos), 1);
+        const maxExc  = Math.max(...groups.map(g => g.Excesos), 1);
+        const maxPres = Math.max(...groups.map(g => g.Presion_Reserva_Pct), 1);
+
+        const tempColor = (value, max, base) => {
+          const ratio = Math.max(0, Math.min(1, Number(value || 0) / Math.max(1, max)));
+          if (base === 'red') {
+            if (ratio >= 0.75) return [248, 113, 113];
+            if (ratio >= 0.45) return [253, 186, 116];
+            if (ratio > 0) return [187, 247, 208];
+            return [255,255,255];
+          }
+          if (base === 'orange') {
+            if (ratio >= 0.75) return [251, 146, 60];
+            if (ratio >= 0.45) return [253, 224, 71];
+            if (ratio > 0) return [187, 247, 208];
+            return [255,255,255];
+          }
+          if (base === 'blue') {
+            if (ratio >= 0.75) return [96, 165, 250];
+            if (ratio >= 0.45) return [191, 219, 254];
+            if (ratio > 0) return [219, 234, 254];
+            return [255,255,255];
+          }
+          return [255,255,255];
+        };
 
         doc.autoTable({
-          startY: 68,
+          startY: 64,
           head: [[
-            'Grupo','SKUs','Agot','Crít','Bajos','Ópt','Exc','Reserva','Inv.Proy','Cob.','Riesgo'
+            'Grupo',
+            'Renglones agotados',
+            'Renglones críticos',
+            'Renglones en exceso',
+            'Presión de reserva',
+            'Riesgo'
           ]],
           body: groups.map(g => [
             g.Grupo,
-            g.Total_SKUs,
+            g.Agotados,
+            g.Criticos,
+            g.Excesos,
+            `${g.Presion_Reserva_Pct.toFixed(1)}%`,
+            g.Riesgo_Grupo
+          ]),
+          theme: 'grid',
+          styles: { fontSize: 9, cellPadding: 4, valign:'middle' },
+          headStyles: { fillColor: azul, textColor: 255 },
+          columnStyles: {
+            0: { cellWidth: 42 },
+            1: { cellWidth: 32, halign:'center' },
+            2: { cellWidth: 32, halign:'center' },
+            3: { cellWidth: 30, halign:'center' },
+            4: { cellWidth: 28, halign:'center' },
+            5: { cellWidth: 28, halign:'center' }
+          },
+          didParseCell: (d) => {
+            if (d.section === 'body') {
+              const row = groups[d.row.index];
+              if (d.column.index === 1) d.cell.styles.fillColor = tempColor(row.Agotados, maxAgot, 'red');
+              if (d.column.index === 2) d.cell.styles.fillColor = tempColor(row.Criticos, maxCrit, 'orange');
+              if (d.column.index === 3) d.cell.styles.fillColor = tempColor(row.Excesos, maxExc, 'blue');
+              if (d.column.index === 4) d.cell.styles.fillColor = tempColor(row.Presion_Reserva_Pct, maxPres, 'orange');
+              if (d.column.index === 5) {
+                d.cell.styles.textColor = riskColor(row.Riesgo_Grupo);
+                d.cell.styles.fontStyle = 'bold';
+              }
+            }
+          }
+        });
+
+        // ==========================
+        // PÁGINA 3 — TABLA GERENCIAL AMPLIADA
+        // ==========================
+        doc.addPage();
+        drawHeader();
+
+        doc.setFont('helvetica','bold').setFontSize(14).setTextColor(...azul);
+        doc.text('Resumen Gerencial por Grupo', 14, 40);
+
+        doc.autoTable({
+          startY: 46,
+          head: [[
+            'Grupo','Renglones','Agot','Crít','Bajos','Ópt','Exc','Reserva','Inv.Proy','Cob.','Riesgo'
+          ]],
+          body: groups.map(g => [
+            g.Grupo,
+            g.Total_Renglones,
             g.Agotados,
             g.Criticos,
             g.Bajos,
@@ -1192,37 +1356,6 @@ if (btnVencimientosPdf) {
         });
 
         // ==========================
-        // RIESGOS TRANSVERSALES
-        // ==========================
-        const riskBoards = [
-          ['Top grupos con más agotados', topByField(groups, 'Agotados'), 'Agotados'],
-          ['Top grupos con más críticos', topByField(groups, 'Criticos'), 'Criticos'],
-          ['Top grupos con más excesos', topByField(groups, 'Excesos'), 'Excesos'],
-          ['Top grupos con mayor presión de reserva', topByField(groups, 'Presion_Reserva_Pct'), 'Presion_Reserva_Pct']
-        ];
-
-        riskBoards.forEach(([title, rows, field]) => {
-          doc.addPage();
-          drawHeader();
-          doc.setFont('helvetica','bold').setFontSize(14).setTextColor(...azul).text(title, 14, 40);
-
-          doc.autoTable({
-            startY: 45,
-            head: [['Grupo','Valor','Riesgo']],
-            body: rows.map(r => [r.Grupo, r[field], r.Riesgo_Grupo]),
-            theme: 'grid',
-            styles: { fontSize: 9, cellPadding: 4 },
-            headStyles: { fillColor: [51,65,85], textColor: 255 },
-            didParseCell: (d) => {
-              if (d.section === 'body' && d.column.index === 2) {
-                d.cell.styles.textColor = riskColor(d.cell.raw);
-                d.cell.styles.fontStyle = 'bold';
-              }
-            }
-          });
-        });
-
-        // ==========================
         // DESARROLLO OPERATIVO POR GRUPO
         // ==========================
         const bucketConfig = [
@@ -1241,10 +1374,10 @@ if (btnVencimientosPdf) {
           doc.autoTable({
             startY: 46,
             head: [[
-              'SKUs','Agot','Crít','Bajos','Ópt','Exc','Reserva','Inv.Proy','Cob.','Riesgo'
+              'Renglones','Agot','Crít','Bajos','Ópt','Exc','Reserva','Inv.Proy','Cob.','Riesgo'
             ]],
             body: [[
-              g.Total_SKUs,
+              g.Total_Renglones,
               g.Agotados,
               g.Criticos,
               g.Bajos,
