@@ -424,11 +424,20 @@ async function fetchRetry(url, opts={}, retries=3, backoff=800){
 }
 async function fetchJSON(url){ const r = await fetchRetry(url); return r.json(); }
 
-async function safeFetchList(){
-  try{ const data = await fetchJSON(API_BASE + '?list=true&ts=' + Date.now()); localStorage.setItem('metaCache', JSON.stringify({t:Date.now(), data})); return data; }
+async function safeFetchList(force=false){
+  try{
+    const url = API_BASE + '?list=true' + (force ? ('&ts=' + Date.now()) : '');
+    const data = await fetchJSON(url);
+    localStorage.setItem('metaCache', JSON.stringify({t:Date.now(), data}));
+    return data;
+  }
   catch(e){ const c = localStorage.getItem('metaCache'); if (c){ console.warn('Usando metaCache', e); setNet('Sin conexión (caché)'); return JSON.parse(c).data; } throw e; }
 }
-async function safeFetchSerie(params){ const p = new URLSearchParams(params); p.set('ts', Date.now()); return fetchJSON(API_BASE + '?' + p.toString()); }
+async function safeFetchSerie(params, force=false){
+  const p = new URLSearchParams(params);
+  if (force) p.set('ts', Date.now());
+  return fetchJSON(API_BASE + '?' + p.toString());
+}
 
 // Typeahead
 function fillDatalist(arr, q=''){
@@ -667,7 +676,7 @@ async function init(){
   qty.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); qty.blur(); run(); } });
   qty.addEventListener('change', ()=>{ run(); });
 
-  async function run(){
+  async function run(forceRefresh=false){
     setBtnState(btn,'is-loading'); btn.disabled = true;
     try{
       const mode=modeSel.value, group=groupSel.value, Q=Number(qty.value||0);
@@ -679,7 +688,7 @@ async function init(){
       if(mode==='Grupo') params.grupo=group;
       if(fromV) params.from=fromV; if(toV) params.to=toV;
 
-      const data = await safeFetchSerie(params);
+      const data = await safeFetchSerie(params, forceRefresh);
       let serie = data.serie||[];
       serie = (serie||[])
         .filter(p => p && p.fecha && Number.isFinite(Number(p.inventario)))
@@ -902,12 +911,16 @@ async function init(){
 
       const histExpiredBand = labels.slice(0, serie.length).map((_,i)=> Number(invExpired[i]||0) > 0 ? Number(invHist[i]||0) : null);
       const expiredOverlayData = [...histExpiredBand, ...Array(future.length).fill(null)];
+      const showSimulatedOrder = Number(Q||0) > 0;
+      const projWithOrderData = showSimulatedOrder ? projPlusData : Array(labels.length).fill(null);
+
       const datasets = [
         {label:'Inventario Total', data:histData, fill:false, pointRadius:0, borderColor:chartColors.total, backgroundColor:chartColors.totalFill, borderWidth:1.5},
         {label:'Inventario Disponible', data:histAvailableData, fill:true, pointRadius:0, borderColor:chartColors.available, backgroundColor:chartColors.availableFill, borderWidth:2.2},
         {label:'Zona con inventario vencido', data:expiredOverlayData, fill:'-1', spanGaps:false, pointRadius:0, borderWidth:0, borderColor:'rgba(234,179,8,0)', backgroundColor:'rgba(250,204,21,0.40)'},
         {label:'Inventario en Reserva', data:histReserveData, fill:false, spanGaps:false, pointRadius:3, pointHoverRadius:4, borderColor:chartColors.order, backgroundColor:'rgba(168,85,247,0.1)', borderWidth:2},
         {label:'Proyección de Consumo', data:projData, fill:false, pointRadius:0, borderColor:chartColors.projection, backgroundColor:chartColors.projectionFill, borderWidth:2, borderDash:[2,2]},
+        ...(showSimulatedOrder ? [{label:'Proyección con pedido simulado', data:projWithOrderData, fill:false, pointRadius:0, borderColor:chartColors.order, backgroundColor:chartColors.orderFill, borderWidth:2.5, borderDash:[8,4]}] : []),
         {label:'Punto de Reorden', data:Array(labels.length).fill(rop), pointRadius:0, borderDash:[4,4], fill:false, borderColor:chartColors.rop},
         {label:'Inventario Crítico', data:Array(labels.length).fill(sfty), pointRadius:0, borderDash:[4,2], fill:false, borderColor:chartColors.critical}
       ];
@@ -932,14 +945,7 @@ async function init(){
         requestAnimationFrame(fixAfterRotate);
       }else{
         chartInstance.data.labels = labels;
-        chartInstance.data.datasets[0].data = histData;
-        chartInstance.data.datasets[1].data = histAvailableData;
-        chartInstance.data.datasets[2].data = expiredOverlayData;
-        chartInstance.data.datasets[3].data = histReserveData;
-        chartInstance.data.datasets[4].label = 'Proyección de Consumo';
-        chartInstance.data.datasets[4].data  = projData;
-        chartInstance.data.datasets[5].data  = Array(labels.length).fill(rop);
-        chartInstance.data.datasets[6].data  = Array(labels.length).fill(sfty);
+        chartInstance.data.datasets = datasets;
         chartInstance.options.plugins.title.text = graphTitle;
         chartInstance.update();
         window.chartInstance = chartInstance;
@@ -954,8 +960,8 @@ async function init(){
     }
   }
 
-  $('btn').addEventListener('click', run);
-  $('refreshBtn').addEventListener('click', run);
+  $('btn').addEventListener('click', ()=> run(false));
+  $('refreshBtn').addEventListener('click', ()=> run(true));
   $('btnClear').addEventListener('click', ()=>{
     modeSel.value='Suministro'; fillTerms(); if(sups.length>0) termInp.value=sups[0];
     groupSel.value=''; $('qty').value=0; from.value=meta.min_fecha||''; to.value=meta.max_fecha||'';
