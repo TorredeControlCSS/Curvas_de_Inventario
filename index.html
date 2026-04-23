@@ -2243,61 +2243,6 @@ function generarTableroVencimientosPDF(rep){
   doc.text('Semáforo Global por Rango de Vencimiento', 14, yAfterGlobal + 4);
   drawSemaforoTable(yAfterGlobal + 8, rows);
 
-  // PAGE 3 - Matriz por grupo
-  doc.addPage();
-  drawHeader();
-  doc.setTextColor(...azul).setFont('helvetica', 'bold').setFontSize(14);
-  doc.text('Matriz Gerencial por Grupo', 14, 38);
-  doc.setFillColor(...grisClaro);
-  doc.roundedRect(14, 41, 182, 18, 2, 2, 'F');
-  doc.setTextColor(50).setFont('helvetica', 'normal').setFontSize(7.6);
-  doc.text([
-    'Lectura por fila: cada grupo se evalúa según lotes comprometidos, valor económico en riesgo, vencidos, lotes a 0-90 días y cobertura operativa.',
-    'Escala sugerida: CONTROLADO < 40 | MEDIO 40 - 79 | ALTO 80 - 119 | CRÍTICO >= 120.'
-  ], 17, 47, { maxWidth: 176, lineHeightFactor: 1.15 });
-
-  doc.autoTable({
-    startY: 64,
-    head: [['Grupo', 'Lotes riesgo', 'Unid. riesgo', 'Valor riesgo', '% valor', 'Vencidos', '0-90d', 'Dem./mes', 'Cob. m', 'Score', 'Riesgo']],
-    body: groupRows.map((g) => [
-      g.grupo,
-      fmtInt(g.lotesRiesgo),
-      fmtInt(g.unidadesRiesgo),
-      `B/. ${fmtMoney(g.valorRiesgo)}`,
-      fmtPct(g.pValor),
-      fmtInt(g.vencidos),
-      fmtInt(g.prox90),
-      g.demandaGrupo > 0 ? fmtInt(g.demandaGrupo) : 'N/D',
-      g.coberturaGrupo !== null ? fmtNum(g.coberturaGrupo) : 'N/D',
-      fmtNum(g.score),
-      g.riesgo
-    ]),
-    theme: 'grid',
-    styles: { fontSize: 6.9, cellPadding: 1.9, overflow: 'linebreak', font: 'helvetica' },
-    headStyles: { fillColor: azul, textColor: 255, fontStyle: 'bold', font: 'helvetica' },
-    columnStyles: {
-      0: { cellWidth: 27 },
-      1: { cellWidth: 14, halign: 'right' },
-      2: { cellWidth: 18, halign: 'right' },
-      3: { cellWidth: 23, halign: 'right' },
-      4: { cellWidth: 14, halign: 'right' },
-      5: { cellWidth: 11, halign: 'right' },
-      6: { cellWidth: 11, halign: 'right' },
-      7: { cellWidth: 18, halign: 'right' },
-      8: { cellWidth: 12, halign: 'right' },
-      9: { cellWidth: 11, halign: 'right' },
-      10:{ cellWidth: 20, halign: 'center' }
-    },
-    didParseCell: (d) => {
-      if (d.section === 'body' && d.column.index === 10) {
-        const c = riskColorText(String(d.cell.raw || ''));
-        d.cell.styles.textColor = c;
-        d.cell.styles.fontStyle = 'bold';
-      }
-    },
-    didDrawPage: () => drawHeader()
-  });
-
   // PAGE 4+ semáforo por grupo (se conserva)
   doc.addPage();
   drawHeader();
