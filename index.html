@@ -798,26 +798,34 @@ async function init(){
         ? 'Fecha estimada en que el stock llegaría a 0.'
         : 'No alcanza 0 dentro del horizonte mostrado.';
 
-      let kb = Number(data.kb_min||0);
-      let sfty = Number(data.inventario_critico||0);
+      const leadUsed = Number(data.lead || LEAD);
+      const z = 1.65;
+      
+      // Demanda híbrida mensual ya calculada por backend
+      const demandaMensualUI = Number(
+        data.demanda_mensual ||
+        data.demanda_mes ||
+        0
+      );
+      
+      // Convertir demanda mensual a demanda diaria
+      const muHybrid = demandaMensualUI > 0
+        ? (demandaMensualUI / 30)
+        : Number(data.mu_d || 0);
+      
+      // Variabilidad histórica local, pero con ventana más amplia
+      const stats150 = robustStatsDaily(cons, 150);
+      const sigmaHist = Number(stats150.sigma || data.sigma_d || 0);
+      
+      // Fórmulas consistentes con la nueva demanda
+      let muForUI = muHybrid;
+      let sigmaForUI = sigmaHist;
+      let kb = muForUI * leadUsed;
+      let sfty = z * sigmaForUI * Math.sqrt(leadUsed);
       let rop = kb + sfty;
-      let muForUI = Number(data.mu_d||0), sigmaForUI = Number(data.sigma_d||0);
-
+      
       fillTable(tbody, serie, invAvailable, invReserve, invExpired);
       setKPIs(invActualAvailable, rop, sfty, meta.max_fecha || lastDateStr, reservaActual);
-
-      if (mode === 'Grupo') {
-        const stats90 = robustStatsDaily(cons, 90);
-        const muLocal    = stats90.mu || 0;
-        const sigmaLocal = stats90.sigma || 0;
-        const z = 1.65;
-        kb   = muLocal * (data.lead || LEAD);
-        sfty = z * sigmaLocal * Math.sqrt(data.lead || LEAD);
-        rop  = kb + sfty;
-        muForUI = muLocal;
-        sigmaForUI = sigmaLocal;
-        setKPIs(invActualAvailable, rop, sfty, meta.max_fecha || lastDateStr, reservaActual);
-      }
 
       const dailyExpected = dHat.length
         ? dHat.reduce((a,b)=>a + Number(b||0), 0) / dHat.length
