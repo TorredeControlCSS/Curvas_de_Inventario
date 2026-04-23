@@ -2508,7 +2508,6 @@ function generarTableroVencimientosPDF(rep){
 })();
 
 window.addEventListener('load', init);
-if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js').catch(()=>{}); }
 
 function normalizeHeader(){
   const tb = document.querySelector('.topbar'); if (!tb) return;
