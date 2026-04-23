@@ -1399,6 +1399,7 @@ if (btnVencimientosPdf) {
             '% críticos',
             '% exceso',
             'Presión reserva',
+            'Score',
             'Riesgo',
             'Base de lectura'
           ]],
@@ -1407,13 +1408,14 @@ if (btnVencimientosPdf) {
             const agotPct = (g.Agotados / total) * 100;
             const critPct = (g.Criticos / total) * 100;
             const excPct  = (g.Excesos / total) * 100;
-
+          
             return [
               g.Grupo,
               `${agotPct.toFixed(1)}%`,
               `${critPct.toFixed(1)}%`,
               `${excPct.toFixed(1)}%`,
               `${g.Presion_Reserva_Pct.toFixed(1)}%`,
+              g.Riesgo_Score.toFixed(1),
               g.Riesgo_Grupo,
               g.Riesgo_Motivo
             ];
@@ -1422,13 +1424,14 @@ if (btnVencimientosPdf) {
           styles: { fontSize: 7.2, cellPadding: 2.2, valign:'middle', overflow:'linebreak' },
           headStyles: { fillColor: azul, textColor: 255 },
           columnStyles: {
-            0: { cellWidth: 28 },
-            1: { cellWidth: 18, halign:'center' },
-            2: { cellWidth: 18, halign:'center' },
-            3: { cellWidth: 18, halign:'center' },
-            4: { cellWidth: 18, halign:'center' },
-            5: { cellWidth: 16, halign:'center' },
-            6: { cellWidth: 56 }
+            0: { cellWidth: 24 },
+            1: { cellWidth: 16, halign:'center' },
+            2: { cellWidth: 16, halign:'center' },
+            3: { cellWidth: 16, halign:'center' },
+            4: { cellWidth: 16, halign:'center' },
+            5: { cellWidth: 14, halign:'center' }, // Score
+            6: { cellWidth: 16, halign:'center' }, // Riesgo
+            7: { cellWidth: 58 }                   // Base de lectura
           },
           didParseCell: (d) => {
             if (d.section !== 'body') return;
@@ -1445,8 +1448,11 @@ if (btnVencimientosPdf) {
             if (d.column.index === 3) d.cell.styles.fillColor = tempColor(excPct / maxExcPct, 'blue');
             if (d.column.index === 4) d.cell.styles.fillColor = tempColor(presPct / maxPres, 'orange');
 
-            if (d.column.index === 5) {
+            if (d.column.index === 6) {
               d.cell.styles.textColor = riskColor(g.Riesgo_Grupo);
+              d.cell.styles.fontStyle = 'bold';
+            }
+            if (d.column.index === 5) {
               d.cell.styles.fontStyle = 'bold';
             }
           }
