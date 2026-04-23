@@ -1297,25 +1297,26 @@ if (btnVencimientosPdf) {
           '• Riesgo del grupo = severidad relativa según agotados, críticos, exceso y presión de reserva.'
         ];
 
-        const critLeftLines = critLeft.flatMap(t => doc.splitTextToSize(t, 80));
-        const critRightLines = critRight.flatMap(t => doc.splitTextToSize(t, 80));
+        const critLeftLines = critLeft.flatMap(t => doc.splitTextToSize(t, 76));
+        const critRightLines = critRight.flatMap(t => doc.splitTextToSize(t, 76));
         const maxCritLines = Math.max(critLeftLines.length, critRightLines.length);
-
+        
         const grayY = 34;
-        const grayH = 12 + (maxCritLines * 4.2) + 8;
-
+        const grayH = 10 + (maxCritLines * 3.7) + 6;
+        
         doc.setFillColor(245,245,245);
         doc.roundedRect(14, grayY, 182, grayH, 2, 2, 'F');
-
+        
         doc.setFont('helvetica','bold').setFontSize(9).setTextColor(0);
-        doc.text('CRITERIOS DE CLASIFICACIÓN Y LECTURA GERENCIAL:', 16, grayY + 7);
+        doc.text('CRITERIOS DE CLASIFICACIÓN Y LECTURA GERENCIAL:', 16, grayY + 6.5);
+        
+        doc.setFont('helvetica','normal').setFontSize(7.2).setTextColor(50);
+        doc.setLineHeightFactor(1.12);
+        
+        doc.text(critLeftLines, 16, grayY + 13.5);
+        doc.text(critRightLines, 108, grayY + 13.5);
 
-        doc.setFont('helvetica','normal').setFontSize(7.6).setTextColor(50);
-
-        doc.text(critLeftLines, 16, grayY + 15);
-        doc.text(critRightLines, 108, grayY + 15);
-
-        const yKpi = 78, wKpi = 26, hKpi = 34, gap = 7, totalW = (26 * 5) + (7 * 4), x0 = (210 - totalW) / 2;
+        const yKpi = 74, wKpi = 26, hKpi = 34, gap = 7, totalW = (26 * 5) + (7 * 4), x0 = (210 - totalW) / 2;
         drawKpi(x0 + (wKpi + gap)*0, yKpi, wKpi, hKpi, rojo, totalAgot, 'AGOTADOS', `${pct(totalAgot,totalRenglones)}%`, 'Stock = 0');
         drawKpi(x0 + (wKpi + gap)*1, yKpi, wKpi, hKpi, naranja, totalCrit, 'CRÍTICOS', `${pct(totalCrit,totalRenglones)}%`, '< 1 Mes');
         drawKpi(x0 + (wKpi + gap)*2, yKpi, wKpi, hKpi, amarillo, totalBajo, 'BAJO', `${pct(totalBajo,totalRenglones)}%`, '1 - 4 Meses');
@@ -1323,9 +1324,9 @@ if (btnVencimientosPdf) {
         drawKpi(x0 + (wKpi + gap)*4, yKpi, wKpi, hKpi, azul2, totalExc, 'EXCESO', `${pct(totalExc,totalRenglones)}%`, '> 12 Meses');
 
         doc.setFont('helvetica','bold').setFontSize(16).setTextColor(...azul);
-        doc.text('Distribución del Inventario', 14, 130);
+        doc.text('Distribución del Inventario', 14, 121);
 
-        drawDonut(100, 205, 46, 18, [
+        drawDonut(100, 185, 52, 20, [
           { label:'Agotados', value: totalAgot, color: rojo },
           { label:'Críticos', value: totalCrit, color: naranja },
           { label:'Bajo', value: totalBajo, color: amarillo },
