@@ -839,8 +839,6 @@ async function init(){
       $('kpiCov').textContent = fmtPct(covPct);
       setSideMetrics(data.min_value||0, data.min_date||'', data.max_value||0, data.max_date||'', data.avg_30||0, covPct, covNote);
 
-
-      const leadUsed = data.lead || LEAD;
       const projectedFromSeries = Math.max(Math.round(base[0] || invActualAvailable || 0), 0);
       const recepcionVisible = Number(data.recepcion_7d || 0);
       const transitoVisible = Number(data.transito || 0);
