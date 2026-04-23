@@ -1515,10 +1515,10 @@ if (btnVencimientosPdf) {
             10: { cellWidth: 17, halign:'right' },
             11: { cellWidth: 18, halign:'right' },
             12: { cellWidth: 11, halign:'center' },
-            13: { cellWidth: 113, halign:'center' }
+            13: { cellWidth: 13, halign:'center' }
           },
           margin: { left: 10, right: 10 },
-          tableWidth: 250,
+          tableWidth: 210,
           didParseCell: (d) => {
             if (d.section === 'body' && d.column.index === 13) {
               d.cell.styles.textColor = riskColor(d.cell.raw);
