@@ -25,19 +25,16 @@
 var SS_ID = '1ca5JUgogB25yAq2hvlLNSobUOMdTMe2oua6iUJ3c_Ew';
 
 var ALERT_CONFIG = {
-  RECIPIENTS: ['correo1@css.gob.pa', 'correo2@css.gob.pa'],
-  // Nivel mínimo para disparar el envío: 'VENCIDO' | 'CRITICO' | 'RIESGO' | 'ALERTA'
-  MIN_LEVEL_TO_SEND: 'RIESGO',
-  // Enlace al dashboard
-  DASHBOARD_URL: 'https://torrdecontrolcss.github.io/Curvas_de_Inventario/',
-  // Nombre que aparece en el asunto del correo
-  SYSTEM_NAME: 'Torre de Control CSS — Inventario',
-  // Máximo de filas en las tablas del correo
-  MAX_ROWS_TABLE: 20
+  RECIPIENTS      : ['correo1@css.gob.pa', 'correo2@css.gob.pa'],
+  MIN_LEVEL_TO_SEND: 'RIESGO',   // 'VENCIDO' | 'CRITICO' | 'RIESGO'
+  DASHBOARD_URL   : 'https://torredecontrolcss.github.io/Curvas_de_Inventario/',
+  SYSTEM_NAME     : 'Torre de Control de Operaciones Logísticas — CEDIS Panamá CSS',
+  MAX_ROWS_CRITICO: 10,   // top 10 críticos en tabla de vencimientos
+  MAX_ROWS_AGOTADO: 20    // top 20 agotados en tabla de abastecimiento
 };
 
 // Orden de prioridad (mayor índice = mayor prioridad)
-var NIVELES_PRIORIDAD = { ALERTA: 1, BAJO: 1, RIESGO: 2, CRITICO: 3, AGOTADO: 4, VENCIDO: 4 };
+var NIVELES_PRIORIDAD = { RIESGO: 2, CRITICO: 3, AGOTADO: 4, VENCIDO: 4 };
 
 // Índices de columnas (base 0) — Reporte_Vencimientos
 var COL_VENC = {
@@ -53,33 +50,25 @@ var COL_ABAST = {
   STATUS: 10, DEMANDA_MENSUAL: 11
 };
 
-// STATUS a incluir en alertas
-var STATUS_VENC_ALERTAR  = { VENCIDO: true, CRITICO: true, RIESGO: true, ALERTA: true };
-var STATUS_ABAST_ALERTAR = { AGOTADO: true, CRITICO: true, BAJO: true };
+// STATUS a incluir — ALERTA y OK excluidos en vencimientos; BAJO, OPTIMO, EXCESO excluidos en abastecimiento
+var STATUS_VENC_ALERTAR  = { VENCIDO: true, CRITICO: true, RIESGO: true };
+var STATUS_ABAST_ALERTAR = { AGOTADO: true, CRITICO: true };
 
 // ──────────────────────────────────────────────────────────────
 // FUNCIÓN PRINCIPAL — configurar como trigger diario
 // ──────────────────────────────────────────────────────────────
 
-/**
- * Envía el correo consolidado de alertas.
- * Llamar directamente o vía trigger diario.
- */
 function enviarAlertasAutomaticas() {
   var summary = getAlertSummary_();
-
   if (!summary.hayAlertas) {
     Logger.log('Sin alertas que superen el nivel mínimo configurado. No se envía correo.');
     return;
   }
-
   var asunto = buildAsunto_(summary);
   var cuerpo  = buildHtml_(summary);
-
   ALERT_CONFIG.RECIPIENTS.forEach(function(dest) {
     MailApp.sendEmail({ to: dest, subject: asunto, htmlBody: cuerpo });
   });
-
   Logger.log('Correo de alertas enviado a: ' + ALERT_CONFIG.RECIPIENTS.join(', '));
 }
 
@@ -87,10 +76,6 @@ function enviarAlertasAutomaticas() {
 // FUNCIÓN AUXILIAR — construye resumen sin enviar (para testing)
 // ──────────────────────────────────────────────────────────────
 
-/**
- * Lee las hojas de reporte y devuelve un objeto con todas las alertas agrupadas.
- * @return {Object} summary con arrays de alertas por categoría y nivel máximo.
- */
 function getAlertSummary_() {
   var ss = SpreadsheetApp.openById(SS_ID);
 
@@ -101,12 +86,21 @@ function getAlertSummary_() {
   var fechaCorteVenc = (vencData.length > 0) ? vencData[0][COL_VENC.FECHA_CORTE] : '';
 
   var alertasVenc = [];
-  var contVenc    = { VENCIDO: 0, CRITICO: 0, RIESGO: 0, ALERTA: 0 };
+  // Contadores: cantidad de SKUs y totales monetarios por nivel
+  var contVenc = {
+    VENCIDO : { count: 0, cantidad: 0, valor: 0 },
+    CRITICO : { count: 0, cantidad: 0, valor: 0 },
+    RIESGO  : { count: 0, cantidad: 0, valor: 0 }
+  };
 
   vencData.forEach(function(row) {
     var status = String(row[COL_VENC.STATUS] || '').toUpperCase().trim();
     if (!STATUS_VENC_ALERTAR[status]) return;
-    if (contVenc[status] !== undefined) contVenc[status]++;
+    var cantidad = Number(row[COL_VENC.CANTIDAD])     || 0;
+    var valor    = Number(row[COL_VENC.VALOR_RIESGO]) || 0;
+    contVenc[status].count++;
+    contVenc[status].cantidad += cantidad;
+    contVenc[status].valor    += valor;
     alertasVenc.push({
       codigo      : row[COL_VENC.CODIGO],
       suministro  : row[COL_VENC.SUMINISTRO],
@@ -114,8 +108,8 @@ function getAlertSummary_() {
       lote        : row[COL_VENC.LOTE],
       fechaVto    : formatFecha_(row[COL_VENC.FECHA_VTO]),
       diasVto     : row[COL_VENC.DIAS_VTO],
-      cantidad    : row[COL_VENC.CANTIDAD],
-      valorRiesgo : row[COL_VENC.VALOR_RIESGO],
+      cantidad    : cantidad,
+      valorRiesgo : valor,
       nivel       : status
     });
   });
@@ -127,19 +121,24 @@ function getAlertSummary_() {
   var fechaCorteAbast = (abastData.length > 0) ? abastData[0][COL_ABAST.FECHA_CORTE] : '';
 
   var alertasAbast = [];
-  var contAbast    = { AGOTADO: 0, CRITICO: 0, BAJO: 0 };
+  var contAbast = {
+    AGOTADO : { count: 0, demanda: 0 },
+    CRITICO : { count: 0, demanda: 0 }
+  };
 
   abastData.forEach(function(row) {
-    var status = String(row[COL_ABAST.STATUS] || '').toUpperCase().trim();
+    var status  = String(row[COL_ABAST.STATUS] || '').toUpperCase().trim();
     if (!STATUS_ABAST_ALERTAR[status]) return;
-    if (contAbast[status] !== undefined) contAbast[status]++;
+    var demanda = Number(row[COL_ABAST.DEMANDA_MENSUAL]) || 0;
+    contAbast[status].count++;
+    contAbast[status].demanda += demanda;
     alertasAbast.push({
       codigo     : row[COL_ABAST.CODIGO],
       suministro : row[COL_ABAST.SUMINISTRO],
       grupo      : row[COL_ABAST.GRUPO],
       invProy    : row[COL_ABAST.INV_PROY],
       mesesCob   : row[COL_ABAST.MESES_COB],
-      demanda    : row[COL_ABAST.DEMANDA_MENSUAL],
+      demanda    : demanda,
       nivel      : status
     });
   });
@@ -152,51 +151,42 @@ function getAlertSummary_() {
     if (p > nivelMax) { nivelMax = p; nombreNivelMax = a.nivel; }
   });
 
-  // ── Filtrar según nivel mínimo configurado ─────────────────
   var minP = NIVELES_PRIORIDAD[ALERT_CONFIG.MIN_LEVEL_TO_SEND] || 2;
   var hayAlertas = nivelMax >= minP;
 
   return {
-    hayAlertas    : hayAlertas,
-    nivelMax      : nombreNivelMax,
-    fechaCorteVenc: fechaCorteVenc,
+    hayAlertas     : hayAlertas,
+    nivelMax       : nombreNivelMax,
+    fechaCorteVenc : fechaCorteVenc,
     fechaCorteAbast: fechaCorteAbast,
-    vencimientos  : alertasVenc,
-    abastecimiento: alertasAbast,
-    contVenc      : contVenc,
-    contAbast     : contAbast
+    vencimientos   : alertasVenc,
+    abastecimiento : alertasAbast,
+    contVenc       : contVenc,
+    contAbast      : contAbast
   };
 }
 
 // ──────────────────────────────────────────────────────────────
-// CONSTRUCCIÓN DEL CORREO HTML
+// CONSTRUCCIÓN DEL CORREO
 // ──────────────────────────────────────────────────────────────
 
 function buildAsunto_(summary) {
-  var emoji = iconNivel_(summary.nivelMax);
-  var totalVenc  = summary.vencimientos.length;
-  var totalAbast = summary.abastecimiento.length;
-  return emoji + ' [' + ALERT_CONFIG.SYSTEM_NAME + '] Alertas de inventario — ' +
-         totalVenc + ' vencimiento(s) · ' + totalAbast + ' desabastecimiento(s)';
+  var emoji      = iconNivel_(summary.nivelMax);
+  // Contar solo SKUs críticos reales (VENCIDO+CRITICO+RIESGO / AGOTADO+CRITICO)
+  var totalVenc  = summary.contVenc.VENCIDO.count + summary.contVenc.CRITICO.count + summary.contVenc.RIESGO.count;
+  var totalAbast = summary.contAbast.AGOTADO.count + summary.contAbast.CRITICO.count;
+  return emoji + ' [SALMI CEDIS Panamá] ' + totalVenc + ' SKUs en riesgo de vencimiento · ' + totalAbast + ' SKUs desabastecidos';
 }
 
 function buildHtml_(summary) {
-  // Estilos inline para compatibilidad con clientes de correo
-  var S = {
-    body    : 'font-family:Arial,sans-serif;font-size:13px;color:#222;margin:0;padding:16px;',
-    h2      : 'margin:0 0 8px;font-size:18px;',
-    h3      : 'margin:16px 0 6px;font-size:15px;',
-    p       : 'margin:4px 0;',
-    table   : 'border-collapse:collapse;width:100%;margin-bottom:16px;font-size:12px;',
-    th      : 'background:#2c3e50;color:#fff;padding:6px 10px;text-align:left;white-space:nowrap;',
-    td      : 'padding:5px 10px;border-bottom:1px solid #e0e0e0;vertical-align:top;',
-    tdR     : 'padding:5px 10px;border-bottom:1px solid #e0e0e0;text-align:right;vertical-align:top;',
-    counter : 'display:inline-block;margin:0 8px 8px 0;padding:6px 14px;border-radius:4px;font-size:13px;font-weight:bold;',
-    footer  : 'margin-top:20px;font-size:11px;color:#888;border-top:1px solid #e0e0e0;padding-top:10px;'
-  };
-  var BADGE_BG = { VENCIDO:'#c62828', AGOTADO:'#c62828', CRITICO:'#e65100', RIESGO:'#f9a825', ALERTA:'#558b2f', BAJO:'#f9a825' };
-  var BADGE_TXT = { VENCIDO:'#fff', AGOTADO:'#fff', CRITICO:'#fff', RIESGO:'#222', ALERTA:'#fff', BAJO:'#222' };
-  var ROW_BG   = { VENCIDO:'#ffd5d5', AGOTADO:'#ffd5d5', CRITICO:'#ffe0b2', RIESGO:'#fff9c4', ALERTA:'#e8f5e9', BAJO:'#fff9c4' };
+  var BADGE_BG  = { VENCIDO:'#c62828', AGOTADO:'#c62828', CRITICO:'#e65100', RIESGO:'#f9a825' };
+  var BADGE_TXT = { VENCIDO:'#fff',    AGOTADO:'#fff',    CRITICO:'#fff',    RIESGO:'#222'    };
+  var ROW_BG    = { VENCIDO:'#ffd5d5', AGOTADO:'#ffd5d5', CRITICO:'#ffe0b2', RIESGO:'#fff9c4' };
+
+  var TH = 'style="background:#2c3e50;color:#fff;padding:6px 10px;text-align:left;white-space:nowrap;"';
+  var TH_R = 'style="background:#2c3e50;color:#fff;padding:6px 10px;text-align:right;white-space:nowrap;"';
+  var TD  = 'style="padding:5px 10px;border-bottom:1px solid #e0e0e0;vertical-align:top;"';
+  var TD_R = 'style="padding:5px 10px;border-bottom:1px solid #e0e0e0;text-align:right;vertical-align:top;"';
 
   function badge(nivel) {
     return '<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:bold;' +
@@ -204,115 +194,162 @@ function buildHtml_(summary) {
            iconNivel_(nivel) + ' ' + nivel + '</span>';
   }
 
-  var html = '<div style="' + S.body + '">';
-  html += '<h2 style="' + S.h2 + '">📦 ' + esc_(ALERT_CONFIG.SYSTEM_NAME) + ' — Alertas de Inventario</h2>';
-
-  if (summary.fechaCorteVenc || summary.fechaCorteAbast) {
-    var fc = summary.fechaCorteVenc || summary.fechaCorteAbast;
-    html += '<p style="' + S.p + '">Fecha de corte: <strong>' + esc_(formatFecha_(fc)) + '</strong></p>';
+  function counterSpan(nivel, count) {
+    return '<span style="display:inline-block;margin:0 8px 8px 0;padding:6px 14px;border-radius:4px;font-size:13px;font-weight:bold;' +
+           'background:' + (BADGE_BG[nivel]||'#888') + ';color:' + (BADGE_TXT[nivel]||'#fff') + ';">' +
+           iconNivel_(nivel) + ' ' + nivel + ': ' + count + '</span>';
   }
 
-  // ── Resumen por nivel ──────────────────────────────────────
-  html += '<h3 style="' + S.h3 + '">📊 Resumen ejecutivo</h3>';
+  var fc = formatFecha_(summary.fechaCorteVenc || summary.fechaCorteAbast);
+  var html = '<div style="font-family:Arial,sans-serif;font-size:13px;color:#222;margin:0;padding:16px;">';
 
-  // Vencimientos counters
-  html += '<p style="' + S.p + '"><strong>Vencimientos:</strong></p>';
-  var ordVenc = ['VENCIDO','CRITICO','RIESGO','ALERTA'];
-  ordVenc.forEach(function(n) {
-    var cnt = summary.contVenc[n] || 0;
-    if (cnt === 0) return;
-    html += '<span style="' + S.counter + 'background:' + (BADGE_BG[n]||'#888') + ';color:' + (BADGE_TXT[n]||'#fff') + ';">' +
-            iconNivel_(n) + ' ' + n + ': ' + cnt + '</span>';
+  // ── Header ────────────────────────────────────────────────
+  html += '<h2 style="margin:0 0 4px;font-size:18px;">📦 Vigilancia — Inventario SALMI · CEDIS Panamá CSS</h2>';
+  html += '<p style="margin:0 0 12px;font-size:12px;color:#555;">Resumen ejecutivo de alertas críticas basado en lotes activos al corte en el sistema SALMI.</p>';
+  if (fc) {
+    html += '<p style="margin:0 0 16px;">Fecha de corte: <strong>' + esc_(fc) + '</strong></p>';
+  }
+
+  // ── Resumen ejecutivo ─────────────────────────────────────
+  html += '<h3 style="margin:0 0 8px;font-size:15px;">📊 Resumen ejecutivo</h3>';
+
+  // Vencimientos counters + totales
+  html += '<p style="margin:4px 0 6px;"><strong>Vencimientos:</strong></p>';
+  ['VENCIDO','CRITICO','RIESGO'].forEach(function(n) {
+    var c = summary.contVenc[n];
+    if (!c || c.count === 0) return;
+    html += counterSpan(n, c.count);
   });
-  if (!summary.vencimientos.length) {
-    html += '<span style="' + S.p + 'color:#666;">Sin alertas de vencimiento.</span>';
-  }
+  html += '<br>';
 
-  // Abastecimiento counters
-  html += '<p style="margin:12px 0 4px;"><strong>Abastecimiento:</strong></p>';
-  var ordAbast = ['AGOTADO','CRITICO','BAJO'];
-  ordAbast.forEach(function(n) {
-    var cnt = summary.contAbast[n] || 0;
-    if (cnt === 0) return;
-    html += '<span style="' + S.counter + 'background:' + (BADGE_BG[n]||'#888') + ';color:' + (BADGE_TXT[n]||'#fff') + ';">' +
-            iconNivel_(n) + ' ' + n + ': ' + cnt + '</span>';
-  });
-  if (!summary.abastecimiento.length) {
-    html += '<span style="' + S.p + 'color:#666;">Sin alertas de abastecimiento.</span>';
-  }
-
-  // ── Top alertas críticas — Vencimientos ───────────────────
-  var topVenc = summary.vencimientos
-    .filter(function(r) { return r.nivel === 'VENCIDO' || r.nivel === 'CRITICO'; })
-    .sort(function(a, b) { return Number(b.valorRiesgo) - Number(a.valorRiesgo); })
-    .slice(0, ALERT_CONFIG.MAX_ROWS_TABLE);
-
-  if (topVenc.length > 0) {
-    html += '<h3 style="' + S.h3 + '">🗓️ Alertas críticas — Vencimientos (top ' + topVenc.length + ' por Valor en Riesgo)</h3>';
-    html += '<table style="' + S.table + '"><thead><tr>' +
-            '<th style="' + S.th + '">Nivel</th>' +
-            '<th style="' + S.th + '">Código</th>' +
-            '<th style="' + S.th + '">Suministro</th>' +
-            '<th style="' + S.th + '">Grupo</th>' +
-            '<th style="' + S.th + '">Lote</th>' +
-            '<th style="' + S.th + '">Fecha VTO</th>' +
-            '<th style="' + S.th + 'text-align:right;">Días a VTO</th>' +
-            '<th style="' + S.th + 'text-align:right;">Cantidad</th>' +
-            '<th style="' + S.th + 'text-align:right;">Valor en Riesgo</th>' +
+  // Tabla de totales por nivel — vencimientos
+  var filasTotVenc = ['VENCIDO','CRITICO','RIESGO'].filter(function(n){ return summary.contVenc[n].count > 0; });
+  if (filasTotVenc.length > 0) {
+    html += '<table style="border-collapse:collapse;margin:8px 0 16px;font-size:12px;">';
+    html += '<thead><tr>' +
+            '<th ' + TH + '>Nivel</th>' +
+            '<th ' + TH_R + '>SKUs</th>' +
+            '<th ' + TH_R + '>Cantidad total</th>' +
+            '<th ' + TH_R + '>Valor en Riesgo</th>' +
             '</tr></thead><tbody>';
-    topVenc.forEach(function(r) {
-      var bg = ROW_BG[r.nivel] || '#fff';
+    filasTotVenc.forEach(function(n) {
+      var c  = summary.contVenc[n];
+      var bg = ROW_BG[n] || '#fff';
       html += '<tr style="background:' + bg + ';">' +
-              '<td style="' + S.td + '">' + badge(r.nivel) + '</td>' +
-              '<td style="' + S.td + '">' + esc_(r.codigo) + '</td>' +
-              '<td style="' + S.td + '">' + esc_(r.suministro) + '</td>' +
-              '<td style="' + S.td + '">' + esc_(r.grupo) + '</td>' +
-              '<td style="' + S.td + '">' + esc_(r.lote) + '</td>' +
-              '<td style="' + S.td + '">' + esc_(r.fechaVto) + '</td>' +
-              '<td style="' + S.tdR + '">' + esc_(String(r.diasVto)) + '</td>' +
-              '<td style="' + S.tdR + '">' + fmtNum_(r.cantidad) + '</td>' +
-              '<td style="' + S.tdR + '">' + fmtMoneda_(r.valorRiesgo) + '</td>' +
+              '<td ' + TD  + '>' + badge(n) + '</td>' +
+              '<td ' + TD_R + '>' + fmtNum_(c.count)    + '</td>' +
+              '<td ' + TD_R + '>' + fmtNum_(c.cantidad)  + '</td>' +
+              '<td ' + TD_R + '>' + fmtMoneda_(c.valor)  + '</td>' +
               '</tr>';
     });
     html += '</tbody></table>';
   }
 
-  // ── Top alertas críticas — Abastecimiento ─────────────────
-  var topAbast = summary.abastecimiento
-    .filter(function(r) { return r.nivel === 'AGOTADO' || r.nivel === 'CRITICO'; })
-    .sort(function(a, b) { return Number(a.mesesCob) - Number(b.mesesCob); })
-    .slice(0, ALERT_CONFIG.MAX_ROWS_TABLE);
+  // Abastecimiento counters + totales
+  html += '<p style="margin:4px 0 6px;"><strong>Abastecimiento:</strong></p>';
+  ['AGOTADO','CRITICO'].forEach(function(n) {
+    var c = summary.contAbast[n];
+    if (!c || c.count === 0) return;
+    html += counterSpan(n, c.count);
+  });
+  html += '<br>';
 
-  if (topAbast.length > 0) {
-    html += '<h3 style="' + S.h3 + '">⚠️ Alertas críticas — Abastecimiento (top ' + topAbast.length + ' por cobertura)</h3>';
-    html += '<table style="' + S.table + '"><thead><tr>' +
-            '<th style="' + S.th + '">Nivel</th>' +
-            '<th style="' + S.th + '">Código</th>' +
-            '<th style="' + S.th + '">Suministro</th>' +
-            '<th style="' + S.th + '">Grupo</th>' +
-            '<th style="' + S.th + 'text-align:right;">Meses Cob.</th>' +
-            '<th style="' + S.th + 'text-align:right;">Inv. Proyectado</th>' +
-            '<th style="' + S.th + 'text-align:right;">Demanda Mensual</th>' +
+  var filasTotAbast = ['AGOTADO','CRITICO'].filter(function(n){ return summary.contAbast[n].count > 0; });
+  if (filasTotAbast.length > 0) {
+    html += '<table style="border-collapse:collapse;margin:8px 0 16px;font-size:12px;">';
+    html += '<thead><tr>' +
+            '<th ' + TH + '>Nivel</th>' +
+            '<th ' + TH_R + '>SKUs</th>' +
+            '<th ' + TH_R + '>Demanda Mensual total</th>' +
             '</tr></thead><tbody>';
-    topAbast.forEach(function(r) {
+    filasTotAbast.forEach(function(n) {
+      var c  = summary.contAbast[n];
+      var bg = ROW_BG[n] || '#fff';
+      html += '<tr style="background:' + bg + ';">' +
+              '<td ' + TD   + '>' + badge(n) + '</td>' +
+              '<td ' + TD_R + '>' + fmtNum_(c.count)   + '</td>' +
+              '<td ' + TD_R + '>' + fmtNum_(c.demanda)  + '</td>' +
+              '</tr>';
+    });
+    html += '</tbody></table>';
+  }
+
+  // ── Top 10 CRITICO — Vencimientos ─────────────────────────
+  var topCritico = summary.vencimientos
+    .filter(function(r) { return r.nivel === 'CRITICO'; })
+    .sort(function(a, b) { return Number(b.valorRiesgo) - Number(a.valorRiesgo); })
+    .slice(0, ALERT_CONFIG.MAX_ROWS_CRITICO);
+
+  if (topCritico.length > 0) {
+    html += '<h3 style="margin:16px 0 6px;font-size:15px;">🔴 Top ' + topCritico.length + ' Críticos — Vencimientos (por Valor en Riesgo)</h3>';
+    html += '<table style="border-collapse:collapse;width:100%;margin-bottom:16px;font-size:12px;">';
+    html += '<thead><tr>' +
+            '<th ' + TH   + '>Nivel</th>' +
+            '<th ' + TH   + '>Código</th>' +
+            '<th ' + TH   + '>Suministro</th>' +
+            '<th ' + TH   + '>Grupo</th>' +
+            '<th ' + TH   + '>Lote</th>' +
+            '<th ' + TH   + '>Fecha VTO</th>' +
+            '<th ' + TH_R + '>Días a VTO</th>' +
+            '<th ' + TH_R + '>Cantidad</th>' +
+            '<th ' + TH_R + '>Valor en Riesgo</th>' +
+            '</tr></thead><tbody>';
+    topCritico.forEach(function(r) {
       var bg = ROW_BG[r.nivel] || '#fff';
       html += '<tr style="background:' + bg + ';">' +
-              '<td style="' + S.td + '">' + badge(r.nivel) + '</td>' +
-              '<td style="' + S.td + '">' + esc_(r.codigo) + '</td>' +
-              '<td style="' + S.td + '">' + esc_(r.suministro) + '</td>' +
-              '<td style="' + S.td + '">' + esc_(r.grupo) + '</td>' +
-              '<td style="' + S.tdR + '">' + fmtDecimal_(r.mesesCob) + '</td>' +
-              '<td style="' + S.tdR + '">' + fmtNum_(r.invProy) + '</td>' +
-              '<td style="' + S.tdR + '">' + fmtNum_(r.demanda) + '</td>' +
+              '<td ' + TD   + '>' + badge(r.nivel)         + '</td>' +
+              '<td ' + TD   + '>' + esc_(r.codigo)         + '</td>' +
+              '<td ' + TD   + '>' + esc_(r.suministro)     + '</td>' +
+              '<td ' + TD   + '>' + esc_(r.grupo)          + '</td>' +
+              '<td ' + TD   + '>' + esc_(r.lote)           + '</td>' +
+              '<td ' + TD   + '>' + esc_(r.fechaVto)       + '</td>' +
+              '<td ' + TD_R + '>' + esc_(String(r.diasVto))+ '</td>' +
+              '<td ' + TD_R + '>' + fmtNum_(r.cantidad)    + '</td>' +
+              '<td ' + TD_R + '>' + fmtMoneda_(r.valorRiesgo) + '</td>' +
+              '</tr>';
+    });
+    html += '</tbody></table>';
+  }
+
+  // ── Top 20 AGOTADO — Abastecimiento ───────────────────────
+  var topAgotado = summary.abastecimiento
+    .filter(function(r) { return r.nivel === 'AGOTADO'; })
+    .sort(function(a, b) { return Number(b.demanda) - Number(a.demanda); })
+    .slice(0, ALERT_CONFIG.MAX_ROWS_AGOTADO);
+
+  if (topAgotado.length > 0) {
+    html += '<h3 style="margin:16px 0 6px;font-size:15px;">🔴 Top ' + topAgotado.length + ' Agotados — Abastecimiento (por Demanda Mensual)</h3>';
+    html += '<table style="border-collapse:collapse;width:100%;margin-bottom:16px;font-size:12px;">';
+    html += '<thead><tr>' +
+            '<th ' + TH   + '>Nivel</th>' +
+            '<th ' + TH   + '>Código</th>' +
+            '<th ' + TH   + '>Suministro</th>' +
+            '<th ' + TH   + '>Grupo</th>' +
+            '<th ' + TH_R + '>Meses Cob.</th>' +
+            '<th ' + TH_R + '>Inv. Proyectado</th>' +
+            '<th ' + TH_R + '>Demanda Mensual</th>' +
+            '</tr></thead><tbody>';
+    topAgotado.forEach(function(r) {
+      var bg = ROW_BG[r.nivel] || '#fff';
+      html += '<tr style="background:' + bg + ';">' +
+              '<td ' + TD   + '>' + badge(r.nivel)          + '</td>' +
+              '<td ' + TD   + '>' + esc_(r.codigo)          + '</td>' +
+              '<td ' + TD   + '>' + esc_(r.suministro)      + '</td>' +
+              '<td ' + TD   + '>' + esc_(r.grupo)           + '</td>' +
+              '<td ' + TD_R + '>' + fmtDecimal_(r.mesesCob) + '</td>' +
+              '<td ' + TD_R + '>' + fmtNum_(r.invProy)      + '</td>' +
+              '<td ' + TD_R + '>' + fmtNum_(r.demanda)      + '</td>' +
               '</tr>';
     });
     html += '</tbody></table>';
   }
 
   // ── Footer ─────────────────────────────────────────────────
-  html += '<div style="' + S.footer + '">' +
-          'Generado automáticamente por <strong>' + esc_(ALERT_CONFIG.SYSTEM_NAME) + '</strong>. ' +
-          '<a href="' + esc_(ALERT_CONFIG.DASHBOARD_URL) + '" style="color:#1a73e8;">Abrir dashboard</a>' +
+  html += '<div style="margin-top:20px;font-size:11px;color:#888;border-top:1px solid #e0e0e0;padding-top:10px;">' +
+          'Generado por el sistema automatizado de vigilancia de inventario, en base a los lotes activos al corte registrado en el sistema SALMI' +
+          (fc ? ' (corte: ' + esc_(fc) + ')' : '') + '. ' +
+          'Gestionado por la Torre de Control de Operaciones Logísticas — CEDIS Panamá CSS. ' +
+          '<a href="' + esc_(ALERT_CONFIG.DASHBOARD_URL) + '" style="color:#1a73e8;">Ver Dashboard</a>' +
           '</div>';
 
   html += '</div>';
@@ -323,29 +360,16 @@ function buildHtml_(summary) {
 // GESTIÓN DE TRIGGERS
 // ──────────────────────────────────────────────────────────────
 
-/**
- * Instala un trigger diario a las 07:00 para enviarAlertasAutomaticas().
- * Ejecutar UNA SOLA VEZ desde el editor de Apps Script.
- */
 function configurarTriggerDiario() {
-  // Evitar duplicados
   eliminarTriggerAlertas();
   ScriptApp.newTrigger('enviarAlertasAutomaticas')
-    .timeBased()
-    .everyDays(1)
-    .atHour(7)
-    .create();
+    .timeBased().everyDays(1).atHour(7).create();
   Logger.log('Trigger diario configurado para las 07:00.');
 }
 
-/**
- * Elimina todos los triggers de enviarAlertasAutomaticas().
- */
 function eliminarTriggerAlertas() {
   ScriptApp.getProjectTriggers().forEach(function(t) {
-    if (t.getHandlerFunction() === 'enviarAlertasAutomaticas') {
-      ScriptApp.deleteTrigger(t);
-    }
+    if (t.getHandlerFunction() === 'enviarAlertasAutomaticas') ScriptApp.deleteTrigger(t);
   });
   Logger.log('Triggers de alertas eliminados.');
 }
@@ -354,30 +378,19 @@ function eliminarTriggerAlertas() {
 // FUNCIONES DE PRUEBA
 // ──────────────────────────────────────────────────────────────
 
-/**
- * Prueba el sistema: imprime el resumen en el log y envía correo de prueba
- * al primer destinatario de ALERT_CONFIG.RECIPIENTS.
- * Ejecutar manualmente desde el editor antes de activar el trigger.
- */
 function testEnviarAlertas() {
   var summary = getAlertSummary_();
   Logger.log('=== RESUMEN DE ALERTAS ===');
-  Logger.log('Nivel máximo detectado : ' + summary.nivelMax);
-  Logger.log('Vencimientos           : ' + summary.vencimientos.length);
-  Logger.log('Desabastecimiento      : ' + summary.abastecimiento.length);
-  Logger.log('¿Se enviaría correo?   : ' + summary.hayAlertas);
-
+  Logger.log('Nivel máximo    : ' + summary.nivelMax);
+  Logger.log('Vencimientos    : ' + summary.vencimientos.length);
+  Logger.log('Abastecimiento  : ' + summary.abastecimiento.length);
+  Logger.log('¿Enviar correo? : ' + summary.hayAlertas);
   if (!summary.hayAlertas) {
     Logger.log('No hay alertas que superen el nivel mínimo (' + ALERT_CONFIG.MIN_LEVEL_TO_SEND + ').');
     return;
   }
-
   var dest = ALERT_CONFIG.RECIPIENTS[0];
-  MailApp.sendEmail({
-    to: dest,
-    subject: '[TEST] ' + buildAsunto_(summary),
-    htmlBody: buildHtml_(summary)
-  });
+  MailApp.sendEmail({ to: dest, subject: '[TEST] ' + buildAsunto_(summary), htmlBody: buildHtml_(summary) });
   Logger.log('Correo de prueba enviado a: ' + dest);
 }
 
@@ -386,7 +399,7 @@ function testEnviarAlertas() {
 // ──────────────────────────────────────────────────────────────
 
 function iconNivel_(nivel) {
-  var icons = { VENCIDO: '🔴', AGOTADO: '🔴', CRITICO: '🟠', RIESGO: '🟡', ALERTA: '🟢', BAJO: '🟡' };
+  var icons = { VENCIDO:'🔴', AGOTADO:'🔴', CRITICO:'🟠', RIESGO:'🟡' };
   return icons[nivel] || '⚪';
 }
 
