@@ -425,10 +425,18 @@ async function fetchRetry(url, opts={}, retries=3, backoff=800){
 async function fetchJSON(url){ const r = await fetchRetry(url); return r.json(); }
 
 async function safeFetchList(force=false){
+  const LIST_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutos (debe coincidir con CACHE_TTL_SECONDS del backend)
+  if (!force) {
+    try {
+      const cached = sessionStorage.getItem('listCache');
+      if (cached) { const { t, data } = JSON.parse(cached); if (Date.now() - t < LIST_CACHE_TTL_MS) return data; }
+    } catch(_) {}
+  }
   try{
     const url = API_BASE + '?list=true' + (force ? ('&ts=' + Date.now()) : '');
     const data = await fetchJSON(url);
     localStorage.setItem('metaCache', JSON.stringify({t:Date.now(), data}));
+    sessionStorage.setItem('listCache', JSON.stringify({t:Date.now(), data}));
     return data;
   }
   catch(e){ const c = localStorage.getItem('metaCache'); if (c){ console.warn('Usando metaCache', e); setNet('Sin conexión (caché)'); return JSON.parse(c).data; } throw e; }
@@ -665,12 +673,9 @@ async function init(){
 
   modeSel.value='Suministro'; fillTerms(); 
   
-  // Si hay suministros, seleccionar el primero y ejecutar
+  // Si hay suministros, seleccionar el primero
   if(sups.length>0) {
     termInp.value = sups[0];
-    await run();
-  } else {
-    setBtnState(btn, '');
   }
 
   qty.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); qty.blur(); run(); } });
