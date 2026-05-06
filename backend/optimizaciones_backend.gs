@@ -74,10 +74,8 @@ function invalidarCacheF8() {
  *   Columna A: códigos únicos
  *   Columna B: suministros únicos
  *   Columna C: grupos únicos
- *   Columna D (fila 1 o 2): fecha mínima
- *   Columna E (fila 1 o 2): fecha máxima
  *
- * Si tu hoja Index tiene una estructura distinta, ajusta los índices de columna.
+ * Las fechas min/max se obtienen leyendo la columna A (Fecha) de la hoja Data.
  *
  * Uso en doGet():
  *   if (e.parameter.list === 'true') {
@@ -106,28 +104,37 @@ function doGet_list_optimizado_(ss) {
   }
 
   var vals = idxSh.getDataRange().getValues();
-  // Asume fila 0 como encabezados; ajusta si la hoja no tiene encabezados
+  // Asume fila 0 como encabezados; solo lee columnas A, B, C
   var codigos     = [];
   var suministros = [];
   var grupos      = [];
-  var minFecha    = '';
-  var maxFecha    = '';
 
   vals.forEach(function(row, i) {
-    if (i === 0) {
-      // Primera fila: encabezados o primera fecha — leer fechas si están aquí
-      if (row[3]) minFecha = formatFechaGs_(row[3]);
-      if (row[4]) maxFecha = formatFechaGs_(row[4]);
-      return;
-    }
+    if (i === 0) return; // saltar encabezados
     if (row[0]) codigos.push(String(row[0]).trim());
     if (row[1]) suministros.push(String(row[1]).trim());
     if (row[2]) grupos.push(String(row[2]).trim());
-    var f3 = row[3] ? formatFechaGs_(row[3]) : '';
-    var f4 = row[4] ? formatFechaGs_(row[4]) : '';
-    if (f3 && (!minFecha || f3 < minFecha)) minFecha = f3;
-    if (f4 && (!maxFecha || f4 > maxFecha)) maxFecha = f4;
   });
+
+  // Obtener min_fecha y max_fecha desde la columna A de la hoja Data
+  var minFecha = '';
+  var maxFecha = '';
+  var dataSh = ss.getSheetByName('Data');
+  if (dataSh) {
+    var lastRow = dataSh.getLastRow();
+    if (lastRow > 1) {
+      var fechaVals = dataSh.getRange(2, 1, lastRow - 1, 1).getValues();
+      var fechas = [];
+      fechaVals.forEach(function(r) {
+        if (r[0]) fechas.push(formatFechaGs_(r[0]));
+      });
+      fechas.sort();
+      if (fechas.length > 0) {
+        minFecha = fechas[0];
+        maxFecha = fechas[fechas.length - 1];
+      }
+    }
+  }
 
   // Deduplicar y ordenar
   codigos     = Array.from(new Set(codigos)).sort();
