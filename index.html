@@ -2897,5 +2897,287 @@ window.addEventListener('load', ()=>{
   }
 })();
 </script>
+<!-- ============================================================
+     SUBSECCIÓN: EVALUACIÓN DE PERFORMANCE POR ANALISTA
+     Estilo "consola corporativa" (clon del motor de asignaciones).
+     CÓMO INSTALAR (3 pasos), ver al final de este archivo.
+     Reutiliza el API_BASE existente del index. Requiere Chart.js
+     (se carga aquí si no está presente).
+     ============================================================ -->
+
+<!-- [1] ESTILOS de la subsección (scoped con prefijo .ev-) -->
+<style>
+  .ev-root{--bg:#ececec;--panel:#fff;--panel2:#f5f5f5;--panel3:#e8e8e8;
+    --border:#a8a8a8;--border2:#d0d0d0;--text:#1a1a1a;--sub:#444;--muted:#777;
+    --accent:#005a9e;--accent2:#0078d7;
+    --red:#c0392b;--rbg:#fdf3f2;--rbrd:#e8b5b0;
+    --amber:#c57a00;--abg:#fdf8ec;--abrd:#e8d080;
+    --green:#2d7a2d;--gbg:#f0f8f0;--gbrd:#90c890;
+    --blue:#1a4f8a;--bbg:#eef4fb;--bbrd:#90b8d8;
+    --purple:#5a2d82;--pbg:#f5f0fa;--pbrd:#c0a0d8;
+    --row-alt:#f9f9f9;
+    font-family:'Segoe UI',system-ui,-apple-system,sans-serif;color:var(--text);font-size:13px;line-height:1.5}
+  .ev-root *{box-sizing:border-box}
+  .ev-sh{margin:4px 0 10px;padding-bottom:6px;border-bottom:2px solid var(--accent2)}
+  .ev-stag{display:inline-block;font-family:'Consolas','Courier New',monospace;font-size:9.5px;
+    letter-spacing:.08em;text-transform:uppercase;padding:1px 6px;border:1px solid;font-weight:700;margin-bottom:3px;
+    background:var(--pbg);color:var(--purple);border-color:var(--pbrd)}
+  .ev-st{font-size:16px;font-weight:700;margin-bottom:1px}
+  .ev-sd{font-size:11.5px;color:var(--muted);max-width:950px}
+  .ev-toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0}
+  .ev-btn{font-family:inherit;font-size:12px;padding:6px 12px;border:1px solid var(--accent);
+    background:#fff;color:var(--accent);cursor:pointer;border-radius:3px;display:flex;gap:6px;align-items:center}
+  .ev-btn:hover{background:var(--accent);color:#fff}
+  .ev-btn.busy{opacity:.6;cursor:wait}
+  .ev-meta{font-size:11px;color:var(--muted);font-family:'Consolas',monospace}
+  /* KPI strip */
+  .ev-kg{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:6px;margin-bottom:10px}
+  .ev-kb{background:var(--panel);border:1px solid var(--border);padding:8px 10px;position:relative}
+  .ev-kb::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--accent)}
+  .ev-kb.r::before{background:var(--red)} .ev-kb.a::before{background:var(--amber)}
+  .ev-kb.g::before{background:var(--green)} .ev-kb.b::before{background:var(--blue)} .ev-kb.p::before{background:var(--purple)}
+  .ev-kl{font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+  .ev-kv{font-size:18px;font-weight:700;margin-top:2px;font-family:'Consolas','Courier New',monospace}
+  .ev-kb.r .ev-kv{color:var(--red)} .ev-kb.a .ev-kv{color:var(--amber)}
+  .ev-kb.g .ev-kv{color:var(--green)} .ev-kb.b .ev-kv{color:var(--blue)} .ev-kb.p .ev-kv{color:var(--purple)}
+  .ev-ks{font-size:10px;color:var(--muted);margin-top:1px}
+  /* chart grid */
+  .ev-cg{display:grid;gap:8px;margin-bottom:10px;grid-template-columns:1fr 1fr}
+  .ev-cc{background:var(--panel);border:1px solid var(--border);min-width:0;overflow:hidden}
+  .ev-cc.full{grid-column:1/-1}
+  .ev-cct{font-size:12px;font-weight:700;padding:5px 10px;background:var(--panel3);border-bottom:1px solid var(--border2)}
+  .ev-ccd{font-size:11px;color:var(--muted);padding:4px 10px 0;line-height:1.45}
+  .ev-cw{position:relative;padding:8px 10px;height:260px}
+  /* tables */
+  .ev-tbl{width:100%;border-collapse:collapse;font-size:12px}
+  .ev-tbl th{font-family:'Consolas','Courier New',monospace;font-size:9px;letter-spacing:.1em;
+    text-transform:uppercase;text-align:left;padding:6px 10px;background:#1a4a7a;color:rgba(255,255,255,.85);
+    font-weight:600;white-space:nowrap;position:sticky;top:0;z-index:1}
+  .ev-tbl td{padding:5px 10px;border-bottom:1px solid var(--border2);vertical-align:middle}
+  .ev-tbl tr:nth-child(even) td{background:var(--row-alt)}
+  .ev-tbl tr.clk:hover td{background:#e8f0fc;cursor:pointer}
+  .ev-tbl tr.sel td{background:#deeeff;font-weight:600}
+  .ev-mono{font-family:'Consolas','Courier New',monospace;font-size:11.5px}
+  .ev-rt{text-align:right;font-family:'Consolas','Courier New',monospace}
+  .ev-badge{font-family:'Consolas','Courier New',monospace;font-size:9px;padding:1px 6px;font-weight:700;border:1px solid;display:inline-block}
+  .ev-b-AGOTADO{background:var(--rbg);color:var(--red);border-color:var(--rbrd)}
+  .ev-b-CRITICO{background:var(--abg);color:var(--amber);border-color:var(--abrd)}
+  .ev-b-BAJO{background:#fdfbe8;color:#857000;border-color:#e0d080}
+  .ev-b-OPTIMO{background:var(--gbg);color:var(--green);border-color:var(--gbrd)}
+  .ev-b-EXCESO{background:var(--bbg);color:var(--blue);border-color:var(--bbrd)}
+  .ev-score{font-family:'Consolas','Courier New',monospace;font-weight:700;padding:2px 8px;border:1px solid;display:inline-block;min-width:34px;text-align:center}
+  .ev-s-hi{background:var(--gbg);color:var(--green);border-color:var(--gbrd)}
+  .ev-s-md{background:var(--abg);color:var(--amber);border-color:var(--abrd)}
+  .ev-s-lo{background:var(--pbg);color:var(--purple);border-color:var(--pbrd)}
+  .ev-s-cr{background:var(--rbg);color:var(--red);border-color:var(--rbrd)}
+  .ev-panel{background:var(--panel);border:1px solid var(--border);margin-bottom:10px}
+  .ev-ph{background:#e0e4ea;border-bottom:1px solid var(--border);padding:5px 10px;font-size:12px;font-weight:700;display:flex;justify-content:space-between;align-items:center}
+  .ev-pb{padding:0;max-height:420px;overflow:auto}
+  .ev-al{padding:6px 12px;font-size:12px;line-height:1.6;border:1px solid;margin:6px 0;border-left-width:4px;
+    background:var(--abg);border-color:var(--abrd);border-left-color:var(--amber);color:#4a3000}
+  .ev-back{font-size:11px;color:var(--accent);cursor:pointer;text-decoration:underline}
+  .ev-hide{display:none!important}
+  /* tabs */
+  .ev-tabs{display:flex;gap:4px;padding:6px 16px 0;background:linear-gradient(180deg,#1a5fa8,#0d4080)}
+  .ev-tab{font-family:inherit;font-size:12.5px;padding:7px 16px;border:1px solid transparent;border-bottom:none;
+    border-radius:4px 4px 0 0;color:#e0ecff;background:#1e5a9e;cursor:pointer;font-weight:600}
+  .ev-tab:hover{background:#2a6ab8;color:#fff}
+  .ev-tab.active{background:#fff;color:#0a2a5a;border-color:#b0c8e8}
+  @media(max-width:760px){.ev-cg{grid-template-columns:1fr}}
+</style>
+
+<!-- [2] BARRA DE PESTAÑAS — se inserta por JS justo bajo el header -->
+<!-- [3] CONTENEDOR de la subsección (oculto hasta que se elige la pestaña) -->
+<div id="evalAnalistas" class="ev-root container ev-hide">
+  <div class="ev-sh">
+    <span class="ev-stag">Evaluación de gestión</span>
+    <div class="ev-st">Performance por Planificador — CEDIS Panamá CSS</div>
+    <div class="ev-sd">Salud del inventario de cada analista en el corte actual. Haga clic en un analista del ranking para ver el detalle renglón por renglón de su cartera. El score es comparativo y debe leerse junto al tamaño de cartera (ver gráfico de carga).</div>
+  </div>
+
+  <div class="ev-toolbar">
+    <button class="ev-btn" id="evRefresh"><span>↻</span> Actualizar datos</button>
+    <button class="ev-btn" id="evXlsx"><span>📊</span> Descargar reporte Excel</button>
+    <span class="ev-meta" id="evGen"></span>
+  </div>
+
+  <div class="ev-kg" id="evKpis"></div>
+
+  <div class="ev-cg">
+    <div class="ev-cc"><div class="ev-cct">Score de salud por analista</div>
+      <div class="ev-ccd">Verde ≥45 · Ámbar 30-44 · Morado 15-29 · Rojo &lt;15.</div>
+      <div class="ev-cw"><canvas id="evChartScore"></canvas></div></div>
+    <div class="ev-cc"><div class="ev-cct">Score vs. tamaño de cartera</div>
+      <div class="ev-ccd">Si los de score bajo tienen más SKUs, la diferencia puede ser de CARGA, no de gestión.</div>
+      <div class="ev-cw"><canvas id="evChartScatter"></canvas></div></div>
+  </div>
+
+  <div class="ev-panel">
+    <div class="ev-ph"><span id="evRankTitle">▌ RANKING DE DESEMPEÑO</span><span class="ev-meta" id="evRankHint">clic en una fila → detalle</span></div>
+    <div class="ev-pb"><table class="ev-tbl" id="evRankTbl"></table></div>
+  </div>
+
+  <!-- Detalle granular por analista (oculto hasta hacer clic) -->
+  <div class="ev-panel ev-hide" id="evDetailPanel">
+    <div class="ev-ph"><span id="evDetailTitle">▌ DETALLE</span><span class="ev-back" id="evDetailBack">← volver al ranking</span></div>
+    <div class="ev-pb"><table class="ev-tbl" id="evDetailTbl"></table></div>
+  </div>
+
+  <div class="ev-al" id="evNote">
+    <strong>Lectura responsable:</strong> este tablero es insumo de diagnóstico, no prueba de responsabilidad individual.
+    Un score bajo generalizado sugiere causa sistémica (presupuesto, refrendos). Antes de cualquier medida, validar la
+    equidad de carteras, la evidencia de acción/inacción del analista, y separar los renglones de mercado restringido.
+  </div>
+</div>
+
+<!-- [4] LÓGICA -->
+<script>
+(function(){
+  // Cargar Chart.js si no está
+  function ensureChart(cb){
+    if(window.Chart) return cb();
+    var s=document.createElement('script');
+    s.src='https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js';
+    s.onload=cb; document.head.appendChild(s);
+  }
+  var API=(typeof API_BASE!=='undefined')?API_BASE:'';
+  var loaded=false, cache=null, chS=null, chX=null;
+  var allRows=null; // detalle granular (lazy)
+
+  function scoreClass(s){ if(s>=45)return'ev-s-hi'; if(s>=30)return'ev-s-md'; if(s>=15)return'ev-s-lo'; return'ev-s-cr'; }
+  function money(n){ return '$'+Number(n||0).toLocaleString('en-US',{maximumFractionDigits:0}); }
+  function num(n){ return Number(n||0).toLocaleString('en-US'); }
+
+  // ---- Navegación de pestañas ----
+  function injectTabs(){
+    var header=document.querySelector('.topbar')||document.querySelector('header')||document.body.firstElementChild;
+    var bar=document.createElement('div'); bar.className='ev-tabs';
+    bar.innerHTML='<button class="ev-tab active" data-v="curvas">📈 Curvas de Inventario</button>'+
+                  '<button class="ev-tab" data-v="eval">👥 Evaluación de Analistas</button>';
+    var curvas=document.getElementById('reportArea');
+    if(curvas&&curvas.parentNode){ curvas.parentNode.insertBefore(bar,curvas); }
+    else { document.body.insertBefore(bar,document.body.firstChild); }
+    bar.addEventListener('click',function(e){
+      var b=e.target.closest('.ev-tab'); if(!b)return;
+      bar.querySelectorAll('.ev-tab').forEach(function(t){t.classList.remove('active')});
+      b.classList.add('active');
+      var v=b.dataset.v, ev=document.getElementById('evalAnalistas');
+      if(v==='eval'){ if(curvas)curvas.classList.add('ev-hide'); ev.classList.remove('ev-hide'); if(!loaded)loadEval(); }
+      else { ev.classList.add('ev-hide'); if(curvas)curvas.classList.remove('ev-hide'); }
+    });
+  }
+
+  // ---- Carga del ranking ----
+  function loadEval(force){
+    var hint=document.getElementById('evRankHint'); hint.textContent='cargando…';
+    fetch(API+'?report=analistas&ts='+Date.now()).then(function(r){return r.json()}).then(function(d){
+      cache=d; loaded=true; hint.textContent='clic en una fila → detalle';
+      document.getElementById('evGen').textContent='Generado: '+(d.generado||'')+' · '+num(d.total_skus)+' SKUs · '+num(d.sin_analista_asignado)+' sin asignar';
+      renderKpis(d); renderRank(d); ensureChart(function(){ renderCharts(d); });
+    }).catch(function(){ hint.textContent='error al cargar'; });
+  }
+
+  function renderKpis(d){
+    var A=d.analistas||[];
+    var tAgo=A.reduce(function(s,a){return s+(a.agotados||0)},0);
+    var tCri=A.reduce(function(s,a){return s+(a.criticos||0)},0);
+    var tOpt=A.reduce(function(s,a){return s+(a.optimos||0)},0);
+    var tResv=A.reduce(function(s,a){return s+(a.con_reserva||0)},0);
+    var tVal=A.reduce(function(s,a){return s+(a.valor_riesgo||0)},0);
+    var tot=d.total_skus||1;
+    var k=[
+      ['SKUs Agotados',num(tAgo),'r',(100*tAgo/tot).toFixed(1)+'% del total'],
+      ['SKUs Críticos',num(tCri),'a',(100*tCri/tot).toFixed(1)+'% del total'],
+      ['SKUs Óptimos',num(tOpt),'g',(100*tOpt/tot).toFixed(1)+'% del total'],
+      ['Capital Congelado',num(tResv),'b','SKUs con reserva'],
+      ['Valor en Riesgo',money(tVal),'p','por vencimientos'],
+      ['Sin Analista',num(d.sin_analista_asignado),'a','renglones sin dueño'],
+    ];
+    document.getElementById('evKpis').innerHTML=k.map(function(x){
+      return '<div class="ev-kb '+x[2]+'"><div class="ev-kl">'+x[0]+'</div><div class="ev-kv">'+x[1]+'</div><div class="ev-ks">'+x[3]+'</div></div>';
+    }).join('');
+  }
+
+  function renderRank(d){
+    var A=(d.analistas||[]).slice().sort(function(a,b){return b.score_salud-a.score_salud});
+    var h='<thead><tr><th>#</th><th>Analista</th><th>Score</th><th>SKUs</th><th>Agot.</th><th>Crít.</th><th>Bajos</th><th>Ópt.</th><th>Exc.</th><th>% Rojo</th><th>Valor Riesgo</th></tr></thead><tbody>';
+    A.forEach(function(a,i){
+      h+='<tr class="clk" data-ana="'+a.analista+'">'+
+        '<td class="ev-mono">'+(i+1)+'</td>'+
+        '<td><strong>'+a.analista+'</strong></td>'+
+        '<td><span class="ev-score '+scoreClass(a.score_salud)+'">'+a.score_salud+'</span></td>'+
+        '<td class="ev-rt">'+num(a.total)+'</td>'+
+        '<td class="ev-rt">'+num(a.agotados)+'</td>'+
+        '<td class="ev-rt">'+num(a.criticos)+'</td>'+
+        '<td class="ev-rt">'+num(a.bajos)+'</td>'+
+        '<td class="ev-rt">'+num(a.optimos)+'</td>'+
+        '<td class="ev-rt">'+num(a.excesos)+'</td>'+
+        '<td class="ev-rt">'+a.pct_problema+'%</td>'+
+        '<td class="ev-rt">'+money(a.valor_riesgo)+'</td></tr>';
+    });
+    h+='</tbody>';
+    var t=document.getElementById('evRankTbl'); t.innerHTML=h;
+    t.querySelectorAll('tr.clk').forEach(function(tr){
+      tr.addEventListener('click',function(){ openDetail(tr.dataset.ana); });
+    });
+  }
+
+  function renderCharts(d){
+    var A=(d.analistas||[]).slice().sort(function(a,b){return b.score_salud-a.score_salud});
+    var colors=A.map(function(a){ var s=a.score_salud; return s>=45?'#2d7a2d':s>=30?'#c57a00':s>=15?'#5a2d82':'#c0392b'; });
+    if(chS)chS.destroy();
+    chS=new Chart(document.getElementById('evChartScore'),{type:'bar',
+      data:{labels:A.map(function(a){return a.analista}),datasets:[{data:A.map(function(a){return a.score_salud}),backgroundColor:colors}]},
+      options:{indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{max:100}},maintainAspectRatio:false}});
+    if(chX)chX.destroy();
+    chX=new Chart(document.getElementById('evChartScatter'),{type:'scatter',
+      data:{datasets:[{data:A.map(function(a){return{x:a.total,y:a.score_salud,label:a.analista}}),
+        backgroundColor:'#0078d7',pointRadius:6}]},
+      options:{plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return c.raw.label+': '+c.raw.x+' SKUs, score '+c.raw.y}}}},
+        scales:{x:{title:{display:true,text:'SKUs asignados'}},y:{title:{display:true,text:'Score'},max:100}},maintainAspectRatio:false}});
+  }
+
+  // ---- Detalle granular (carga coverage una vez y filtra por analista) ----
+  function openDetail(ana){
+    var panel=document.getElementById('evDetailPanel');
+    document.getElementById('evDetailTitle').textContent='▌ DETALLE — '+ana;
+    panel.classList.remove('ev-hide');
+    panel.scrollIntoView({behavior:'smooth',block:'start'});
+    var tbl=document.getElementById('evDetailTbl');
+    tbl.innerHTML='<tbody><tr><td style="padding:14px">Cargando renglones…</td></tr></tbody>';
+    function draw(){
+      var rows=allRows.filter(function(r){return (r.ANALISTA||'SIN ASIGNAR')===ana;});
+      var ord={AGOTADO:0,CRITICO:1,BAJO:2,OPTIMO:3,EXCESO:4};
+      rows.sort(function(a,b){return (ord[a.STATUS]||9)-(ord[b.STATUS]||9) || (b.DEMANDA_MENSUAL||0)-(a.DEMANDA_MENSUAL||0);});
+      var h='<thead><tr><th>Código</th><th>Renglón</th><th>Grupo</th><th>Status</th><th>Inv. Act</th><th>Recep</th><th>Tránsito</th><th>Reserva</th><th>Inv. Proy</th><th>Cob (m)</th><th>Demanda Mens.</th></tr></thead><tbody>';
+      rows.forEach(function(r){
+        h+='<tr><td class="ev-mono">'+r.CODIGO+'</td><td>'+(r.SUMINISTRO||'')+'</td><td>'+(r.GRUPO||'')+'</td>'+
+           '<td><span class="ev-badge ev-b-'+r.STATUS+'">'+r.STATUS+'</span></td>'+
+           '<td class="ev-rt">'+num(r.INV_ACTUAL)+'</td><td class="ev-rt">'+num(r.RECEPCION_7D)+'</td>'+
+           '<td class="ev-rt">'+num(r.TRANSITO)+'</td><td class="ev-rt">'+num(r.RESERVA)+'</td>'+
+           '<td class="ev-rt">'+num(r.INV_PROY)+'</td><td class="ev-rt">'+(r.MESES_COB||'')+'</td>'+
+           '<td class="ev-rt">'+num(r.DEMANDA_MENSUAL)+'</td></tr>';
+      });
+      h+='</tbody>';
+      tbl.innerHTML=h;
+    }
+    if(allRows){ draw(); return; }
+    fetch(API+'?report=coverage&ts='+Date.now()).then(function(r){return r.json()}).then(function(d){
+      allRows=Array.isArray(d)?d:(d.rows||d.data||[]); draw();
+    }).catch(function(){ tbl.innerHTML='<tbody><tr><td style="padding:14px;color:#c0392b">No se pudo cargar el detalle.</td></tr></tbody>'; });
+  }
+
+  document.addEventListener('DOMContentLoaded',function(){
+    injectTabs();
+    document.getElementById('evRefresh').addEventListener('click',function(){ loaded=false; allRows=null; loadEval(true); });
+    document.getElementById('evDetailBack').addEventListener('click',function(){ document.getElementById('evDetailPanel').classList.add('ev-hide'); });
+    document.getElementById('evXlsx').addEventListener('click',function(){
+      // Reutiliza el botón de Excel del módulo de reportes si existe; si no, abre el endpoint
+      var b=document.getElementById('btnAnalistaExcel');
+      if(b){ b.click(); } else { alert('El generador de Excel está en el módulo de reportes. Si no aparece, avísame.'); }
+    });
+  });
+})();
+</script>
 </body>
 </html>
