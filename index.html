@@ -2649,6 +2649,253 @@ window.addEventListener('load', ()=>{
   });
 })();
 </script>
+<!-- ============================================================
+     REPORTES EXCEL — Abastecimiento + Vencimientos + Analistas
+     Pegar este bloque ANTES de </body> en index - Curvas de Inventario.html
+     Reemplaza al PDF pesado (jsPDF/html2canvas) por Excel liviano (SheetJS).
+     NO toca el PDF existente; agrega botones nuevos.
+     ============================================================ -->
 
+<!-- SheetJS (genera el .xlsx en el navegador, mucho más liviano que el PDF) -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+<script>
+(function () {
+  // --------- Insertar botones nuevos junto a los existentes ---------
+  function injectButtons() {
+    var ref = document.getElementById('btnPdfReport');
+    if (!ref || !ref.parentNode) return;
+
+    var bAbast = document.createElement('button');
+    bAbast.id = 'btnAbastExcel';
+    bAbast.className = 'btn';
+    bAbast.style.cssText = 'border-color:#16a34a;color:#16a34a;display:flex;gap:6px;align-items:center;';
+    bAbast.innerHTML = '<span>📊</span> Abastecimiento Excel';
+
+    var bVenc = document.createElement('button');
+    bVenc.id = 'btnVencExcel';
+    bVenc.className = 'btn';
+    bVenc.style.cssText = 'border-color:#16a34a;color:#16a34a;display:flex;gap:6px;align-items:center;';
+    bVenc.innerHTML = '<span>📊</span> Vencimientos Excel';
+
+    var bAna = document.createElement('button');
+    bAna.id = 'btnAnalistaExcel';
+    bAna.className = 'btn';
+    bAna.style.cssText = 'border-color:#7c3aed;color:#7c3aed;display:flex;gap:6px;align-items:center;';
+    bAna.innerHTML = '<span>👥</span> Performance por Analista';
+
+    ref.parentNode.insertBefore(bAbast, ref.nextSibling);
+    bAbast.parentNode.insertBefore(bVenc, bAbast.nextSibling);
+    bVenc.parentNode.insertBefore(bAna, bVenc.nextSibling);
+
+    bAbast.addEventListener('click', exportAbastecimientoExcel);
+    bVenc.addEventListener('click', exportVencimientosExcel);
+    bAna.addEventListener('click', exportAnalistaExcel);
+  }
+
+  function setLoading(btn, on) {
+    if (!btn) return;
+    btn.disabled = on;
+    btn.style.opacity = on ? '0.6' : '1';
+  }
+
+  function ts() {
+    var d = new Date(), p = function (n) { return ('0' + n).slice(-2); };
+    return d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate());
+  }
+
+  // Estilos de ancho de columna auto (aproximado)
+  function autoCols(aoa) {
+    var widths = [];
+    aoa.forEach(function (row) {
+      row.forEach(function (cell, i) {
+        var len = (cell === null || cell === undefined) ? 0 : String(cell).length;
+        widths[i] = Math.max(widths[i] || 8, Math.min(len + 2, 48));
+      });
+    });
+    return widths.map(function (w) { return { wch: w }; });
+  }
+
+  // ============================================================
+  //  REPORTE 1 — ABASTECIMIENTO (con columna ANALISTA)
+  // ============================================================
+  async function exportAbastecimientoExcel() {
+    var btn = document.getElementById('btnAbastExcel');
+    setLoading(btn, true);
+    try {
+      // 1) Maestro de abastecimiento + resumen por grupo + analistas
+      var [cov, grp, ana] = await Promise.all([
+        fetchJSON(API_BASE + '?report=coverage&ts=' + Date.now()),
+        fetchJSON(API_BASE + '?report=coverage_groups&ts=' + Date.now()),
+        fetchJSON(API_BASE + '?report=analistas&ts=' + Date.now())
+      ]);
+
+      if (!cov || !cov.rows) { alert('Sin datos de abastecimiento.'); return; }
+
+      // Mapa código -> analista (desde el endpoint analistas si trae detalle,
+      // si no, lo resolvemos por el back: la col ya viene en el maestro v2)
+      var header = cov.header || [];
+      var rows = cov.rows || [];
+      var ixCod = header.indexOf('CODIGO');
+
+      // Si el back ya agrega ANALISTA en el maestro, lo usamos; si no, columna vacía.
+      var ixAna = header.indexOf('ANALISTA');
+
+      var wb = XLSX.utils.book_new();
+
+      // --- Hoja Maestro ---
+      var outHeader = header.slice();
+      if (ixAna < 0) outHeader.push('ANALISTA'); // agregar al final si no existe
+      var aoa = [outHeader];
+      rows.forEach(function (r) {
+        var row = r.slice();
+        if (ixAna < 0) row.push(''); // se llenará si hay mapa local
+        aoa.push(row);
+      });
+      var wsMaestro = XLSX.utils.aoa_to_sheet(aoa);
+      wsMaestro['!cols'] = autoCols(aoa);
+      wsMaestro['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: aoa.length - 1, c: outHeader.length - 1 } }) };
+      XLSX.utils.book_append_sheet(wb, wsMaestro, 'Maestro');
+
+      // --- Hoja Resumen por Grupo ---
+      if (grp && grp.rows) {
+        var gAoa = [grp.header].concat(grp.rows);
+        var wsG = XLSX.utils.aoa_to_sheet(gAoa);
+        wsG['!cols'] = autoCols(gAoa);
+        XLSX.utils.book_append_sheet(wb, wsG, 'Resumen por Grupo');
+      }
+
+      // --- Hoja Performance por Analista (resumen) ---
+      if (ana && ana.analistas) {
+        var aHeader = ['Analista', 'Total SKUs', 'Agotados', 'Críticos', 'Bajos', 'Óptimos',
+                       'Excesos', 'Con Reserva', 'SKUs Vencidos', 'Valor en Riesgo',
+                       '% Óptimo', '% Problema', 'Score Salud'];
+        var aAoa = [aHeader];
+        ana.analistas.forEach(function (a) {
+          aAoa.push([a.analista, a.total, a.agotados, a.criticos, a.bajos, a.optimos,
+                     a.excesos, a.con_reserva, a.skus_vencidos, a.valor_riesgo,
+                     a.pct_optimo, a.pct_problema, a.score_salud]);
+        });
+        var wsA = XLSX.utils.aoa_to_sheet(aAoa);
+        wsA['!cols'] = autoCols(aAoa);
+        XLSX.utils.book_append_sheet(wb, wsA, 'Performance Analista');
+      }
+
+      XLSX.writeFile(wb, 'Abastecimiento_' + ts() + '.xlsx');
+    } catch (e) {
+      console.error(e);
+      alert('Error generando Excel de Abastecimiento: ' + e.message);
+    } finally {
+      setLoading(btn, false);
+    }
+  }
+
+  // ============================================================
+  //  REPORTE 2 — VENCIMIENTOS (con columna ANALISTA)
+  // ============================================================
+  async function exportVencimientosExcel() {
+    var btn = document.getElementById('btnVencExcel');
+    setLoading(btn, true);
+    try {
+      var rep = await fetchJSON(API_BASE + '?report=vencimientos&ts=' + Date.now());
+      if (!rep || !rep.rows || !rep.rows.length) { alert('Sin datos de vencimientos.'); return; }
+
+      var wb = XLSX.utils.book_new();
+
+      // --- Hoja Detalle ---
+      var header = ['Fecha Corte', 'Código', 'Suministro', 'Grupo', 'Tipo', 'Lote',
+                    'Fecha VTO', 'FMD', 'Días a FMD', 'Días a VTO', 'Cantidad',
+                    'Costo Unit', 'Valor Riesgo', 'Status', 'Demanda Mensual',
+                    'Cobertura Meses', 'Forecast UE', 'Demanda Hist', 'Fuente Consumo'];
+      var aoa = [header];
+      rep.rows.forEach(function (r) {
+        aoa.push([r.fecha_corte, r.codigo, r.suministro, r.grupo, r.tipo, r.lote,
+                  r.fecha_vto, r.fmd, r.dias_a_fmd, r.dias_a_vto, r.cantidad,
+                  r.costo_unit, r.valor_riesgo, r.status, r.demanda_mensual,
+                  r.cobertura_meses, r.forecast_ue, r.demanda_hist, r.fuente_consumo]);
+      });
+      var ws = XLSX.utils.aoa_to_sheet(aoa);
+      ws['!cols'] = autoCols(aoa);
+      ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: aoa.length - 1, c: header.length - 1 } }) };
+      XLSX.utils.book_append_sheet(wb, ws, 'Vencimientos');
+
+      // --- Hoja Resumen por Status ---
+      var resumen = rep.resumen || {};
+      var rAoa = [['Status', 'Cantidad de Lotes']];
+      ['VENCIDO', 'CRITICO', 'RIESGO', 'ALERTA', 'OK'].forEach(function (s) {
+        rAoa.push([s, resumen[s] || 0]);
+      });
+      rAoa.push(['TOTAL', rep.total || 0]);
+      var wsR = XLSX.utils.aoa_to_sheet(rAoa);
+      wsR['!cols'] = autoCols(rAoa);
+      XLSX.utils.book_append_sheet(wb, wsR, 'Resumen');
+
+      XLSX.writeFile(wb, 'Vencimientos_' + ts() + '.xlsx');
+    } catch (e) {
+      console.error(e);
+      alert('Error generando Excel de Vencimientos: ' + e.message);
+    } finally {
+      setLoading(btn, false);
+    }
+  }
+
+  // ============================================================
+  //  REPORTE 3 — PERFORMANCE POR ANALISTA (standalone)
+  // ============================================================
+  async function exportAnalistaExcel() {
+    var btn = document.getElementById('btnAnalistaExcel');
+    setLoading(btn, true);
+    try {
+      var ana = await fetchJSON(API_BASE + '?report=analistas&ts=' + Date.now());
+      if (!ana || !ana.analistas || !ana.analistas.length) { alert('Sin datos por analista.'); return; }
+
+      var wb = XLSX.utils.book_new();
+      var aHeader = ['Analista', 'Total SKUs', 'Agotados', 'Críticos', 'Bajos', 'Óptimos',
+                     'Excesos', 'Con Reserva', 'SKUs Vencidos', 'SKUs Riesgo Venc.',
+                     'Valor en Riesgo', '% Óptimo', '% Problema', 'Score Salud',
+                     'Agot. Mercado Restringido', 'Crít. Mercado Restringido', 'Total Problemas Mercado'];
+      var aAoa = [aHeader];
+      ana.analistas.forEach(function (a) {
+        aAoa.push([a.analista, a.total, a.agotados, a.criticos, a.bajos, a.optimos,
+                   a.excesos, a.con_reserva, a.skus_vencidos, a.skus_riesgo_venc,
+                   a.valor_riesgo, a.pct_optimo, a.pct_problema, a.score_salud,
+                   a.agotados_restringidos || 0, a.criticos_restringidos || 0, a.problemas_mercado || 0]);
+      });
+      var ws = XLSX.utils.aoa_to_sheet(aAoa);
+      ws['!cols'] = autoCols(aAoa);
+      ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: aAoa.length - 1, c: aHeader.length - 1 } }) };
+      XLSX.utils.book_append_sheet(wb, ws, 'Performance Analista');
+
+      // Hoja resumen: total SKUs evaluados y renglones sin planificador asignado
+      var resumenAoa = [
+        ['RESUMEN GENERAL', ''],
+        ['Generado', ana.generado || ''],
+        ['Total SKUs evaluados', ana.total_skus || ''],
+        ['SKUs SIN analista asignado', ana.sin_analista_asignado || 0],
+        ['', ''],
+        ['Nota', 'Los "sin analista" son renglones del inventario que no figuran en el cuadro maestro de planificación.'],
+        ['Nota', 'El Score Salud compara analistas pero no ajusta por la dificultad de la cartera asignada a cada uno.']
+      ];
+      var wsR = XLSX.utils.aoa_to_sheet(resumenAoa);
+      wsR['!cols'] = [{ wch: 28 }, { wch: 70 }];
+      XLSX.utils.book_append_sheet(wb, wsR, 'Resumen');
+
+      XLSX.writeFile(wb, 'Performance_Analistas_' + ts() + '.xlsx');
+    } catch (e) {
+      console.error(e);
+      alert('Error generando Excel por Analista: ' + e.message);
+    } finally {
+      setLoading(btn, false);
+    }
+  }
+
+  // Esperar a que el DOM y fetchJSON existan
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', injectButtons);
+  } else {
+    injectButtons();
+  }
+})();
+</script>
 </body>
 </html>
