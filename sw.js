@@ -1,7 +1,7 @@
 // sw.js — Curvas_de_Inventario
 // =======================================================
 // CAMBIO CRÍTICO: Versión actualizada para forzar recarga
-const CACHE_VERSION = 'v8.0-eval-analistas-2026-05-29';
+const CACHE_VERSION = 'v10.0-fix-tabla-2026-05-29';
 const STATIC_CACHE = `static-${CACHE_VERSION}`;
 
 const APP_SHELL = [
