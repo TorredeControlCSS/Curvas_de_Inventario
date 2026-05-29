@@ -227,7 +227,7 @@
     <img src="icons/icon-512.png" alt="Logo" width="40" height="40" />
     <div class="title">
       <div class="title-main">Curvas de Inventario — CEDIS PANAMÁ CSS</div>
-      <div class="title-sub">v2.0 · Torre de Control</div>
+      <div class="title-sub">v1.0 · Torre de Control</div>
     </div>
     <div class="top-actions">
       <select id="theme" class="theme-select" title="Tema">
@@ -3005,8 +3005,8 @@ window.addEventListener('load', ()=>{
     <div class="ev-cc"><div class="ev-cct">Score vs. tama&ntilde;o de cartera</div>
       <div class="ev-ccd">Punto a la derecha = m&aacute;s SKUs. Score bajo + cartera grande puede ser CARGA, no gesti&oacute;n.</div>
       <div class="ev-cw"><canvas id="evChartScatter"></canvas></div></div>
-    <div class="ev-cc"><div class="ev-cct">Nivel de stock vs. Score</div>
-      <div class="ev-ccd">Inv. proyectado promedio de la cartera vs su score. &iquest;El que tiene menos stock saca peor score?</div>
+    <div class="ev-cc"><div class="ev-cct">Cartera sana vs. cartera crítica</div>
+      <div class="ev-ccd">Eje X: % en agotado+crítico. Eje Y: % óptimo+bajo. Arriba-izquierda = cartera sana; abajo-derecha = cartera en crisis.</div>
       <div class="ev-cw"><canvas id="evChartStock"></canvas></div></div>
   </div>
 
@@ -3061,8 +3061,20 @@ window.addEventListener('load', ()=>{
       fetch(API+'?report=coverage&ts='+Date.now()).then(function(r){return r.json()})
     ]).then(function(res){
       anaData=res[0];
-      var c=res[1]; rows=Array.isArray(c)?c:(c.rows||c.data||[]);
-      rows.forEach(function(r){ r.__cod=normCod(r.CODIGO); r.__ana=r.ANALISTA||'SIN ASIGNAR'; });
+      var c=res[1];
+      // El endpoint coverage devuelve {header:[...], rows:[[...],[...]]} (filas como arrays).
+      // Mapear cada fila-array a objeto usando los nombres de header.
+      var raw, hdr;
+      if(c && c.header && c.rows){ hdr=c.header; raw=c.rows; }
+      else if(Array.isArray(c)){ raw=c; hdr=null; }
+      else { raw=(c.rows||c.data||[]); hdr=c.header||null; }
+      rows=raw.map(function(row){
+        if(hdr && Array.isArray(row)){
+          var o={}; for(var i=0;i<hdr.length;i++){ o[hdr[i]]=row[i]; } return o;
+        }
+        return row; // ya es objeto
+      });
+      rows.forEach(function(r){ r.__cod=normCod(r.CODIGO); r.__ana=(r.ANALISTA&&String(r.ANALISTA).trim())||'SIN ASIGNAR'; });
       loaded=true;
       document.getElementById('evGen').textContent='Generado: '+(anaData.generado||'')+' \u00b7 '+num(anaData.total_skus)+' SKUs \u00b7 '+num(anaData.sin_analista_asignado)+' sin asignar';
       fillFiltro(); renderAll(); ensureChart(function(){ renderCharts(); });
@@ -3134,7 +3146,7 @@ window.addEventListener('load', ()=>{
     if(chS)chS.destroy();
     chS=new Chart(document.getElementById('evChartScore'),{type:'bar',
       data:{labels:A.map(function(a){return a.analista}),datasets:[{data:A.map(function(a){return a.score_salud}),backgroundColor:A.map(function(a){return sColor(a.score_salud)})}]},
-      options:{indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{max:100}},maintainAspectRatio:false}});
+      options:{indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{max:100},y:{ticks:{autoSkip:false,font:{size:10}}}},maintainAspectRatio:false}});
     var labelPlugin={id:'lbl',afterDatasetsDraw:function(c){var ct=c.ctx;ct.save();ct.font='10px Consolas';ct.fillStyle='#333';
       c.data.datasets[0].data.forEach(function(pt,i){var m=c.getDatasetMeta(0).data[i];if(m)ct.fillText(pt.label,m.x+5,m.y-4);});ct.restore();}};
     if(chX)chX.destroy();
@@ -3142,13 +3154,15 @@ window.addEventListener('load', ()=>{
       data:{datasets:[{data:A.map(function(a){return{x:a.total,y:a.score_salud,label:a.analista}}),backgroundColor:A.map(function(a){return sColor(a.score_salud)}),pointRadius:5}]},
       options:{plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return c.raw.label+': '+c.raw.x+' SKUs, score '+c.raw.y}}}},
         scales:{x:{title:{display:true,text:'SKUs asignados'}},y:{title:{display:true,text:'Score'},min:0,max:100}},maintainAspectRatio:false},plugins:[labelPlugin]});
-    var byAna={}; rows.forEach(function(r){ var k=r.__ana; if(!byAna[k])byAna[k]={sum:0,n:0}; byAna[k].sum+=Number(r.INV_PROY||0); byAna[k].n++; });
-    var pts=A.map(function(a){ var b=byAna[a.analista]; var avg=b?Math.round(b.sum/b.n):0; return {x:Math.max(1,avg),y:a.score_salud,label:a.analista}; });
+    var pts=A.map(function(a){ var t=Math.max(1,a.total);
+      var critPct=Math.round(100*(a.agotados+a.criticos)/t);
+      var sanoPct=Math.round(100*(a.optimos+a.bajos)/t);
+      return {x:critPct,y:sanoPct,label:a.analista}; });
     if(chK)chK.destroy();
     chK=new Chart(document.getElementById('evChartStock'),{type:'scatter',
-      data:{datasets:[{data:pts,backgroundColor:A.map(function(a){return sColor(a.score_salud)}),pointRadius:5}]},
-      options:{plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return c.raw.label+': inv.proy prom '+num(c.raw.x)+', score '+c.raw.y}}}},
-        scales:{x:{title:{display:true,text:'Inv. Proyectado promedio (log)'},type:'logarithmic'},y:{title:{display:true,text:'Score'},min:0,max:100}},maintainAspectRatio:false},plugins:[labelPlugin]});
+      data:{datasets:[{data:pts,backgroundColor:A.map(function(a){return sColor(a.score_salud)}),pointRadius:6}]},
+      options:{plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return c.raw.label+': '+c.raw.x+'% crítico, '+c.raw.y+'% sano'}}}},
+        scales:{x:{title:{display:true,text:'% cartera en agotado+crítico'},min:0,max:100},y:{title:{display:true,text:'% cartera óptimo+bajo'},min:0,max:100}},maintainAspectRatio:false},plugins:[labelPlugin]});
   }
 
   function renderAll(){ renderKpis(); renderRank(); renderTable(); }
