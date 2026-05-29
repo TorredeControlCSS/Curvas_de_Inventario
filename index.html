@@ -641,8 +641,14 @@ async function init(){
     termInp.addEventListener('keydown', (e)=>{
       if (e.key === 'Enter'){ e.preventDefault(); termInp.blur(); run(); }
     });
+    // Disparo en 'change' SOLO si el valor coincide EXACTO con un item de la lista
+    // (evita la cascada de peticiones al navegar el typeahead).
     termInp.addEventListener('change', ()=>{
-      if (termInp.value && termInp.value.trim().length > 0){ run(); }
+      const v = (termInp.value||'').trim();
+      if (!v) return;
+      const arr = (modeSel.value==='Código') ? codes : sups;
+      const exact = arr.some(x => String(x).toLowerCase() === v.toLowerCase());
+      if (exact) run();
     });
   }
 
@@ -681,7 +687,10 @@ async function init(){
   qty.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); qty.blur(); run(); } });
   qty.addEventListener('change', ()=>{ run(); });
 
+  let __running = false;
   async function run(forceRefresh=false){
+    if (__running) return;          // evita busquedas solapadas (anti-cascada)
+    __running = true;
     setBtnState(btn,'is-loading'); btn.disabled = true;
     try{
       const mode=modeSel.value, group=groupSel.value, Q=Number(qty.value||0);
@@ -968,6 +977,8 @@ async function init(){
     }catch(e){
       console.error(e);
       setBtnState(btn,'is-error'); setTimeout(()=>{ setBtnState(btn,''); btn.disabled=false; }, 1200);
+    }finally{
+      __running = false;           // libera el guard pase lo que pase
     }
   }
 
