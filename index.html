@@ -2898,6 +2898,143 @@ window.addEventListener('load', ()=>{
 })();
 </script>
 <!-- ============================================================
+     MÓDULO: FILTRO POR FAMILIA MACRO (Abastecimiento PDF + Excel)
+     Agrega un dropdown que limita el Reporte de Abastecimiento (PDF) y
+     el Abastecimiento Excel a una familia macro de grupos.
+
+     Familias:
+       MEDICAMENTOS  = G1, G2, G3, G4, G5
+       MATERIAL QUIRÚRGICO (MQ) = G9, G10
+       LABORATORIO   = G13, G14, G15
+       RADIOLOGÍA    = G12
+       ODONTOLOGÍA   = G11
+       (TODAS = sin filtro)
+
+     CÓMO FUNCIONA: intercepta fetchJSON para report=coverage y
+     report=coverage_groups SOLO mientras se genera un reporte de
+     abastecimiento, devolviendo los datos filtrados por la familia
+     elegida. No modifica tus generadores existentes.
+
+     INSTALAR: pegar este bloque ANTES de </body>, DESPUÉS del bloque
+     que crea los botones (btnAbastExcel / btnPdfReport).
+     ============================================================ -->
+<style>
+  #famWrap{display:inline-flex;align-items:center;gap:6px;margin-left:8px}
+  #famSel{font-family:inherit;font-size:13px;padding:7px 10px;border:1px solid #b45309;border-radius:6px;background:#fff;color:#b45309;font-weight:700;cursor:pointer}
+  #famWrap label{font-size:11px;color:#666;font-weight:600}
+  #famBadge{font-size:10px;color:#b45309;background:#fef3c7;border:1px solid #fcd34d;border-radius:10px;padding:1px 8px;font-weight:700}
+</style>
+<script>
+(function(){
+  // grupo (texto que aparece en la columna GRUPO) -> familia.
+  // Se hace por prefijo flexible: "G1-TABLETAS" -> G1, "G-11-ODONTOLOGIA" -> G11, etc.
+  var FAMILIAS={
+    'MEDICAMENTOS':['G1','G2','G3','G4','G5'],
+    'MATERIAL QUIRURGICO':['G9','G10'],
+    'LABORATORIO':['G13','G14','G15'],
+    'RADIOLOGIA':['G12'],
+    'ODONTOLOGIA':['G11']
+  };
+  var famActual='__TODAS__';
+
+  // Extrae el "Gn" de un texto de grupo: "G1-TABLETAS"->G1 ; "G-11-ODONTOLOGIA"->G11 ; "G15-LABORATORIO"->G15
+  function grupoBase(txt){
+    var s=String(txt||'').toUpperCase().replace(/\s/g,'');
+    var m=s.match(/G-?(\d+)/);
+    return m?('G'+m[1]):'';
+  }
+  function gruposDeFamilia(fam){ return FAMILIAS[fam]||null; }
+  function perteneceFamilia(grupoTxt,fam){
+    if(fam==='__TODAS__')return true;
+    var gs=gruposDeFamilia(fam); if(!gs)return true;
+    return gs.indexOf(grupoBase(grupoTxt))>=0;
+  }
+
+  // Inserta el dropdown junto a los botones de abastecimiento
+  function injectFamilia(){
+    var ref=document.getElementById('btnAbastExcel')||document.getElementById('btnPdfReport');
+    if(!ref||!ref.parentNode){ return setTimeout(injectFamilia,400); }
+    if(document.getElementById('famWrap'))return;
+    var w=document.createElement('span'); w.id='famWrap';
+    w.innerHTML='<label>Familia:</label>'+
+      '<select id="famSel">'+
+      '<option value="__TODAS__">Todas las familias</option>'+
+      '<option value="MEDICAMENTOS">Medicamentos (G1-G5)</option>'+
+      '<option value="MATERIAL QUIRURGICO">Material Quir\u00fargico (G9,G10)</option>'+
+      '<option value="LABORATORIO">Laboratorio (G13,G14,G15)</option>'+
+      '<option value="RADIOLOGIA">Radiolog\u00eda (G12)</option>'+
+      '<option value="ODONTOLOGIA">Odontolog\u00eda (G11)</option>'+
+      '</select><span id="famBadge">TODAS</span>';
+    ref.parentNode.insertBefore(w, ref);
+    var sel=document.getElementById('famSel');
+    sel.addEventListener('change',function(){
+      famActual=sel.value;
+      document.getElementById('famBadge').textContent=(famActual==='__TODAS__')?'TODAS':famActual;
+    });
+  }
+
+  // ---- Intercepción de fetchJSON para filtrar por familia ----
+  // Envuelve la función global fetchJSON. Cuando la URL es coverage o
+  // coverage_groups y hay familia activa, filtra el resultado.
+  function wrapFetch(){
+    if(typeof window.fetchJSON!=='function'){ return setTimeout(wrapFetch,400); }
+    if(window.__fetchJSON_fam_wrapped)return;
+    var orig=window.fetchJSON;
+    window.fetchJSON=function(url){
+      var p=orig.apply(this,arguments);
+      if(famActual==='__TODAS__')return p;
+      var u=String(url||'');
+      if(u.indexOf('report=coverage_groups')>=0){
+        return p.then(function(d){ return filtrarGrupos(d); });
+      }
+      if(u.indexOf('report=coverage')>=0 && u.indexOf('coverage_group')<0){
+        return p.then(function(d){ return filtrarCoverage(d); });
+      }
+      return p;
+    };
+    window.__fetchJSON_fam_wrapped=true;
+  }
+
+  // coverage: {header, rows:[[...]]} con columna GRUPO
+  function filtrarCoverage(d){
+    if(!d||!d.header||!d.rows)return d;
+    var ixG=d.header.indexOf('GRUPO'); if(ixG<0)return d;
+    var rows=d.rows.filter(function(r){ return perteneceFamilia(r[ixG],famActual); });
+    return {header:d.header,rows:rows,generated:d.generated,__familia:famActual};
+  }
+  // coverage_groups: puede venir como {rows:[...]} o array; cada item tiene GRUPO/grupo
+  function filtrarGrupos(d){
+    function ok(item){ var g=item.GRUPO||item.grupo||item[0]; return perteneceFamilia(g,famActual); }
+    if(Array.isArray(d)) return d.filter(ok);
+    if(d&&d.rows){ var copy={}; for(var k in d)copy[k]=d[k]; copy.rows=d.rows.filter(ok); return copy; }
+    return d;
+  }
+
+  // Añadir el sufijo de familia al nombre de archivo descargado (best-effort):
+  // intercepta XLSX.writeFile si está disponible.
+  function wrapXlsxName(){
+    if(typeof XLSX==='undefined'||!XLSX.writeFile){ return setTimeout(wrapXlsxName,500); }
+    if(XLSX.__fam_wrapped)return;
+    var ow=XLSX.writeFile;
+    XLSX.writeFile=function(wb,name){
+      if(famActual!=='__TODAS__'&&typeof name==='string'){
+        var fam=famActual.replace(/\s+/g,'_');
+        name=name.replace(/(\.xlsx)$/i,'_'+fam+'$1');
+      }
+      return ow.apply(this,arguments);
+    };
+    XLSX.__fam_wrapped=true;
+  }
+
+  document.addEventListener('DOMContentLoaded',function(){
+    injectFamilia(); wrapFetch(); wrapXlsxName();
+  });
+  // por si el DOM ya cargó
+  injectFamilia(); wrapFetch(); wrapXlsxName();
+})();
+</script>
+
+<!-- ============================================================
      SUBSECCIÓN: EVALUACIÓN DE PERFORMANCE POR ANALISTA  (v2 robusta)
      Novedades v2:
       - Filtro/dropdown por analista (afecta KPIs, ranking, tabla, gráficos)
@@ -2978,6 +3115,8 @@ window.addEventListener('load', ()=>{
     border-radius:4px 4px 0 0;color:#e0ecff;background:#1e5a9e;cursor:pointer;font-weight:600}
   .ev-tab:hover{background:#2a6ab8;color:#fff}
   .ev-tab.active{background:#fff;color:#0a2a5a;border-color:#b0c8e8}
+  .ev-tbl td:nth-child(3){max-width:280px;white-space:normal;word-break:break-word;font-size:11px;line-height:1.3}
+  #evDetailTbl th:nth-child(3),#evDetailTbl td:nth-child(3){max-width:280px}
   @media(max-width:980px){.ev-cg{grid-template-columns:1fr}}
 </style>
 
@@ -3011,13 +3150,13 @@ window.addEventListener('load', ()=>{
   </div>
 
   <div class="ev-panel">
-    <div class="ev-ph"><span id="evRankTitle">&#9612; RANKING DE DESEMPE&Ntilde;O</span><span class="ev-meta">clic en una fila &rarr; filtra la tabla inferior</span></div>
-    <div class="ev-pb"><table class="ev-tbl" id="evRankTbl"></table></div>
+    <div class="ev-ph"><span id="evDetailTitle">&#9612; DETALLE POR RENGL&Oacute;N &mdash; TODOS</span><span class="ev-cnt" id="evDetailCount"></span></div>
+    <div class="ev-pb"><table class="ev-tbl" id="evDetailTbl"></table></div>
   </div>
 
   <div class="ev-panel">
-    <div class="ev-ph"><span id="evDetailTitle">&#9612; DETALLE POR RENGL&Oacute;N &mdash; TODOS</span><span class="ev-cnt" id="evDetailCount"></span></div>
-    <div class="ev-pb"><table class="ev-tbl" id="evDetailTbl"></table></div>
+    <div class="ev-ph"><span id="evRankTitle">&#9612; RANKING DE DESEMPE&Ntilde;O</span><span class="ev-meta">clic en una fila &rarr; filtra la tabla inferior</span></div>
+    <div class="ev-pb"><table class="ev-tbl" id="evRankTbl"></table></div>
   </div>
 
   <div class="ev-al">
@@ -3032,6 +3171,19 @@ window.addEventListener('load', ()=>{
   function ensureChart(cb){ if(window.Chart)return cb();
     var s=document.createElement('script'); s.src='https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js'; s.onload=cb; document.head.appendChild(s); }
   var API=(typeof API_BASE!=='undefined')?API_BASE:'';
+  // Mapa iniciales -> nombre completo (Depto. Planeación de Suministros).
+  // MAR queda "por confirmar" hasta verificar con el departamento.
+  var NOMBRES={
+    "SS":"Sim\u00f3n Sotillo","VD":"Vladimir De Le\u00f3n","BS":"Braulio Serrano",
+    "JME":"Jos\u00e9 M. Espinosa","JE":"Jos\u00e9 M. Espinosa","FC":"Fernando Calder\u00f3n",
+    "WP":"William Pui","NS":"Nohelia S\u00e1nchez","OC":"Orlando Cerrud","JL":"Jenny L\u00f3pez",
+    "LM":"Lorena Montero","MF":"Marisol Flores","DC":"Dax Castro","YR":"Yaricell Rivera",
+    "ON":"Orlando Navarro","DH":"Daira Herrera","EB":"Edilma Batista","DD":"Desiluz Doviaza",
+    "EM":"Edwin Mac\u00edas","FM":"Francisco Mora","RG":"Rub\u00e9n Gonz\u00e1lez",
+    "SF":"Selene Fern\u00e1ndez","YV":"Yarelis V\u00e1squez","MAR":"MAR (por confirmar)"
+  };
+  function nombreDe(ini){ if(ini==='SIN ASIGNAR')return'Sin asignar'; return NOMBRES[ini]||ini; }
+  function nombreFull(ini){ if(ini==='SIN ASIGNAR')return'SIN ASIGNAR'; var n=NOMBRES[ini]; return n?(ini+' \u2014 '+n):ini; }
   var loaded=false, anaData=null, rows=null, chS=null,chX=null,chK=null, curFilter='__ALL__';
 
   function sClass(s){ if(s>=45)return'ev-s-hi'; if(s>=30)return'ev-s-md'; if(s>=15)return'ev-s-lo'; return'ev-s-cr'; }
@@ -3085,7 +3237,7 @@ window.addEventListener('load', ()=>{
     var sel=document.getElementById('evFiltro');
     var names=(anaData.analistas||[]).map(function(a){return a.analista}).sort();
     if(names.indexOf('SIN ASIGNAR')<0) names.push('SIN ASIGNAR');
-    sel.innerHTML='<option value="__ALL__">Todos los analistas</option>'+names.map(function(n){return '<option value="'+n+'">'+n+'</option>'}).join('');
+    sel.innerHTML='<option value="__ALL__">Todos los analistas</option>'+names.map(function(n){return '<option value="'+n+'">'+nombreFull(n)+'</option>'}).join('');
     sel.onchange=function(){ curFilter=sel.value; renderAll(); };
   }
 
@@ -3133,7 +3285,7 @@ window.addEventListener('load', ()=>{
     document.getElementById('evDetailCount').textContent=num(data.length)+' renglones';
     var h='<thead><tr><th>Analista</th><th>C\u00f3digo</th><th>Rengl\u00f3n</th><th>Grupo</th><th>Status</th><th>Inv. Act</th><th>Recep</th><th>Tr\u00e1nsito</th><th>Reserva</th><th>Inv. Proy</th><th>Cob (m)</th><th>Demanda Mens.</th></tr></thead><tbody>';
     data.forEach(function(r){
-      h+='<tr><td><strong>'+r.__ana+'</strong></td><td class="ev-mono">'+r.__cod+'</td><td>'+(r.SUMINISTRO||'')+'</td><td>'+(r.GRUPO||'')+'</td>'+
+      h+='<tr><td><strong>'+r.__ana+'</strong> <span style="color:#555;font-weight:400">'+nombreDe(r.__ana)+'</span></td><td class="ev-mono">'+r.__cod+'</td><td>'+(r.SUMINISTRO||'')+'</td><td>'+(r.GRUPO||'')+'</td>'+
         '<td><span class="ev-badge ev-b-'+r.STATUS+'">'+r.STATUS+'</span></td>'+
         '<td class="ev-rt">'+num(r.INV_ACTUAL)+'</td><td class="ev-rt">'+num(r.RECEPCION_7D)+'</td><td class="ev-rt">'+num(r.TRANSITO)+'</td>'+
         '<td class="ev-rt">'+num(r.RESERVA)+'</td><td class="ev-rt">'+num(r.INV_PROY)+'</td><td class="ev-rt">'+(r.MESES_COB||'')+'</td><td class="ev-rt">'+num(r.DEMANDA_MENSUAL)+'</td></tr>';
