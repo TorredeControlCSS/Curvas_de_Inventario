@@ -238,11 +238,11 @@
       <span id="net" class="net"></span>
       
       <!-- BOTÓN REPORTE PDF (Nuevo nombre) -->
-      <button id="btnPdfReport" class="btn" style="border-color:#0b5fff; color:#0b5fff; display:flex; gap:6px; align-items:center;">
-        <span>📄</span> Reporte de Abastecimiento
+      <button id="btnPdfReport" class="btn" style="border-color:#0b5fff; color:#0b5fff;">
+        Reporte de Abastecimiento
       </button>
-      <button id="btnVencimientosPdf" class="btn" aria-label="Generar reporte PDF del tablero de vencimientos" style="border-color:#f97316; color:#f97316; display:flex; gap:6px; align-items:center;">
-        <span role="img" aria-hidden="true">📋</span> Tablero de Vencimientos
+      <button id="btnVencimientosPdf" class="btn" aria-label="Tablero de vencimientos" style="border-color:#f97316; color:#f97316;">
+        Tablero de Vencimientos
       </button>
       <button id="refreshBtn" class="btn ghost">Actualizar</button>
       <button id="exportPdfBtn" class="btn">Descargar PDF</button>
@@ -2669,20 +2669,20 @@ window.addEventListener('load', ()=>{
     var bAbast = document.createElement('button');
     bAbast.id = 'btnAbastExcel';
     bAbast.className = 'btn';
-    bAbast.style.cssText = 'border-color:#16a34a;color:#16a34a;display:flex;gap:6px;align-items:center;';
-    bAbast.innerHTML = '<span>📊</span> Abastecimiento Excel';
+    bAbast.style.cssText = 'border-color:#16a34a;color:#16a34a;';
+    bAbast.innerHTML = 'Abastecimiento Excel';
 
     var bVenc = document.createElement('button');
     bVenc.id = 'btnVencExcel';
     bVenc.className = 'btn';
-    bVenc.style.cssText = 'border-color:#16a34a;color:#16a34a;display:flex;gap:6px;align-items:center;';
-    bVenc.innerHTML = '<span>📊</span> Vencimientos Excel';
+    bVenc.style.cssText = 'border-color:#16a34a;color:#16a34a;';
+    bVenc.innerHTML = 'Vencimientos Excel';
 
     var bAna = document.createElement('button');
     bAna.id = 'btnAnalistaExcel';
     bAna.className = 'btn';
-    bAna.style.cssText = 'border-color:#7c3aed;color:#7c3aed;display:flex;gap:6px;align-items:center;';
-    bAna.innerHTML = '<span>👥</span> Performance por Analista';
+    bAna.style.cssText = 'border-color:#7c3aed;color:#7c3aed;';
+    bAna.innerHTML = 'Performance por Analista';
 
     ref.parentNode.insertBefore(bAbast, ref.nextSibling);
     bAbast.parentNode.insertBefore(bVenc, bAbast.nextSibling);
@@ -3130,8 +3130,6 @@ window.addEventListener('load', ()=>{
   <div class="ev-toolbar">
     <label class="ev-meta">Filtrar analista:</label>
     <select class="ev-sel" id="evFiltro"><option value="__ALL__">Todos los analistas</option></select>
-    <button class="ev-btn" id="evRefresh">&#8635; Actualizar</button>
-    <button class="ev-btn" id="evXlsx">&#128202; Descargar Excel</button>
     <span class="ev-meta" id="evGen"></span>
   </div>
 
@@ -3159,10 +3157,15 @@ window.addEventListener('load', ()=>{
     <div class="ev-pb"><table class="ev-tbl" id="evRankTbl"></table></div>
   </div>
 
-  <div class="ev-al">
-    <strong>Lectura responsable:</strong> este tablero es insumo de diagn&oacute;stico, no prueba de responsabilidad individual.
-    Un score bajo generalizado sugiere causa sist&eacute;mica (presupuesto, refrendos). Antes de cualquier medida, validar la
-    equidad de carteras (gr&aacute;ficos de carga y stock), la evidencia de acci&oacute;n/inacci&oacute;n del analista, y separar los renglones de mercado restringido.
+  <div class="ev-al" style="background:#f5f0fa;border-color:#c0a0d8;border-left-color:#5a2d82;color:#3a2050">
+    <strong>&#191;C&#243;mo se calcula el Score de Salud (0&ndash;100)?</strong><br>
+    Mide el estado del inventario de los renglones asignados a cada analista en el corte actual.<br>
+    <span style="font-family:'Consolas',monospace;font-size:11px;background:#fff;border:1px solid #c0a0d8;padding:2px 8px;display:inline-block;margin:4px 0">
+    score = ((sano &minus; penalizaci&#243;n) / total) &times; 100 + 50</span><br>
+    <strong>Inventario sano</strong> = &Oacute;ptimos &times; 1.0 + Bajos &times; 0.6 &nbsp;|&nbsp;
+    <strong>Penalizaci&#243;n</strong> = Agotados &times; 1.0 + Cr&#237;ticos &times; 0.7 + Vencidos &times; 0.5 + Excesos &times; 0.3.<br>
+    El +50 centra la escala (50 = neutro). <strong>Colores:</strong> Verde &#8805;45 &middot; &Aacute;mbar 30-44 &middot; Morado 15-29 &middot; Rojo &lt;15.<br>
+    <span style="color:#7a5a9a;font-size:11px">Nota: el score compara analistas pero NO ajusta por la dificultad de la cartera (ver gr&#225;ficos de carga). Es un insumo de diagn&#243;stico, no una prueba de responsabilidad individual.</span>
   </div>
 </div>
 
@@ -3245,6 +3248,13 @@ window.addEventListener('load', ()=>{
     var A=anaData.analistas||[]; var f=(curFilter==='__ALL__')?A:A.filter(function(a){return a.analista===curFilter});
     var s=function(k){return f.reduce(function(t,a){return t+(a[k]||0)},0)};
     var tot=(curFilter==='__ALL__')?(anaData.total_skus||1):Math.max(1,s('total'));
+    // Consumo en riesgo = FORECAST_UE de renglones agotados+críticos (demanda mensual no atendida)
+    var consumoRiesgo=0;
+    if(rows){ rows.forEach(function(r){
+      if((curFilter==='__ALL__'||r.__ana===curFilter) && (r.STATUS==='AGOTADO'||r.STATUS==='CRITICO')){
+        consumoRiesgo+=Number(r.FORECAST_UE||0);
+      }
+    }); }
     var sinA=(curFilter==='__ALL__')?anaData.sin_analista_asignado:(curFilter==='SIN ASIGNAR'?s('total'):0);
     var k=[
       ['SKUs Agotados',num(s('agotados')),'r',(100*s('agotados')/tot).toFixed(1)+'% de su cartera','Renglones con inventario proyectado = 0.'],
@@ -3252,6 +3262,7 @@ window.addEventListener('load', ()=>{
       ['SKUs \u00d3ptimos',num(s('optimos')),'g',(100*s('optimos')/tot).toFixed(1)+'% de su cartera','Cobertura entre 4 y 12 meses.'],
       ['Capital Congelado',num(s('con_reserva')),'b','SKUs con reserva','Conteo de renglones con inventario reservado/comprometido (no disponible para despacho libre).'],
       ['Valor en Riesgo',money(s('valor_riesgo')),'p','vencido + cr\u00edtico + riesgo','Valor (cantidad x costo) de los lotes en riesgo de vencimiento de esta cartera. Incluye vencidos y por vencer.'],
+      ['Consumo en Riesgo',num(consumoRiesgo),'r','demanda mensual no atendida','Suma del consumo mensual de las Unidades Ejecutoras (FORECAST_UE) de los renglones agotados o cr\u00edticos de esta cartera. Es la demanda que NO se est\u00e1 atendiendo por falta de stock.'],
       ['Sin Analista',num(sinA),'a','renglones sin due\u00f1o','Renglones del inventario que no figuran en el cuadro maestro.'],
     ];
     document.getElementById('evKpis').innerHTML=k.map(function(x){
@@ -3321,8 +3332,8 @@ window.addEventListener('load', ()=>{
 
   document.addEventListener('DOMContentLoaded',function(){
     injectTabs();
-    document.getElementById('evRefresh').addEventListener('click',function(){ loaded=false; loadAll(); });
-    document.getElementById('evXlsx').addEventListener('click',function(){ var b=document.getElementById('btnAnalistaExcel'); if(b)b.click(); else alert('El generador de Excel est\u00e1 en el m\u00f3dulo de reportes.'); });
+    
+    
   });
 })();
 </script>
