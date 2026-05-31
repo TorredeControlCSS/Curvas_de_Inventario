@@ -46,8 +46,8 @@
     .topbar.topbar--hidden{ transform:translateY(-110%); }
     .topbar img{width: clamp(40px, 6vw, 56px); height: clamp(40px, 6vw, 56px); border-radius:12px; flex:0 0 auto;}
     .title{font-size:16px;font-weight:700;letter-spacing:.3px;flex:1 1 auto;min-width:200px;}
-    .top-actions{display:flex;gap:8px;align-items:center;flex:0 0 auto;}
-    .btn{padding:8px 10px;border:1px solid var(--ring);border-radius:10px;background:#fff;color:#0f172a;cursor:pointer;font-weight:600}
+    .top-actions{display:flex;flex-wrap:wrap;gap:6px;align-items:center;flex:1 1 auto;justify-content:flex-end;}
+    .btn{padding:7px 11px;border:1px solid var(--ring);border-radius:9px;background:#fff;color:#0f172a;cursor:pointer;font-weight:600;font-size:13px;white-space:nowrap;display:inline-flex;align-items:center;justify-content:center}
     .btn.ghost{background:transparent;color:#fff;border-color:rgba(255,255,255,.25)}
     .btn.install{background:#00b894;color:#fff;border-color:#00b894}
     .theme-select{padding:6px 8px;border:1px solid rgba(255,255,255,.25);border-radius:10px;background:transparent;color:#fff; min-width:110px}
@@ -221,6 +221,16 @@
       cursor:not-allowed;
     }
   </style>
+<style id="ev-header-fix">
+  .topbar .top-actions{display:flex !important;flex-wrap:wrap !important;gap:6px !important;align-items:center !important;justify-content:flex-end !important;flex:1 1 auto !important;}
+  .topbar .top-actions .btn,
+  .topbar .top-actions .theme-select{flex:0 0 auto !important;width:auto !important;max-width:none !important;}
+  #famWrap{flex:0 0 auto !important;}
+  @media (max-width:720px){
+    .topbar .top-actions{justify-content:center !important;}
+    .topbar .top-actions .btn,.topbar .top-actions .theme-select{width:100% !important;max-width:360px !important;}
+  }
+</style>
 </head>
 <body>
   <div class="topbar">
@@ -2920,7 +2930,7 @@ window.addEventListener('load', ()=>{
      ============================================================ -->
 <style>
   #famWrap{display:inline-flex;align-items:center;gap:6px;margin-left:8px}
-  #famSel{font-family:inherit;font-size:13px;padding:7px 10px;border:1px solid #b45309;border-radius:6px;background:#fff;color:#b45309;font-weight:700;cursor:pointer}
+  #famSel{font-family:inherit;font-size:12px;padding:7px 8px;border:1px solid #b45309;border-radius:6px;background:#fff;color:#b45309;font-weight:700;cursor:pointer;min-width:185px}
   #famWrap label{font-size:11px;color:#666;font-weight:600}
   #famBadge{font-size:10px;color:#b45309;background:#fef3c7;border:1px solid #fcd34d;border-radius:10px;padding:1px 8px;font-weight:700}
 </style>
@@ -2956,7 +2966,7 @@ window.addEventListener('load', ()=>{
     if(!ref||!ref.parentNode){ return setTimeout(injectFamilia,400); }
     if(document.getElementById('famWrap'))return;
     var w=document.createElement('span'); w.id='famWrap';
-    w.innerHTML='<label>Familia:</label>'+
+    w.innerHTML='<label>Familia</label>'+
       '<select id="famSel">'+
       '<option value="__TODAS__">Todas las familias</option>'+
       '<option value="MEDICAMENTOS">Medicamentos (G1-G5)</option>'+
@@ -2964,12 +2974,12 @@ window.addEventListener('load', ()=>{
       '<option value="LABORATORIO">Laboratorio (G13,G14,G15)</option>'+
       '<option value="RADIOLOGIA">Radiolog\u00eda (G12)</option>'+
       '<option value="ODONTOLOGIA">Odontolog\u00eda (G11)</option>'+
-      '</select><span id="famBadge">TODAS</span>';
+      '</select>';
     ref.parentNode.insertBefore(w, ref);
     var sel=document.getElementById('famSel');
     sel.addEventListener('change',function(){
       famActual=sel.value;
-      document.getElementById('famBadge').textContent=(famActual==='__TODAS__')?'TODAS':famActual;
+      
     });
   }
 
@@ -3060,7 +3070,7 @@ window.addEventListener('load', ()=>{
     letter-spacing:.08em;text-transform:uppercase;padding:1px 6px;border:1px solid;font-weight:700;margin-bottom:3px;
     background:var(--pbg);color:var(--purple);border-color:var(--pbrd)}
   .ev-st{font-size:16px;font-weight:700;margin-bottom:1px}
-  .ev-sd{font-size:11.5px;color:var(--muted);max-width:980px}
+  .ev-sd{font-size:11.5px;color:var(--muted);max-width:none}
   .ev-toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0}
   .ev-btn{font-family:inherit;font-size:12px;padding:6px 12px;border:1px solid var(--accent);
     background:#fff;color:var(--accent);cursor:pointer;border-radius:3px;display:inline-flex;gap:6px;align-items:center}
@@ -3122,7 +3132,6 @@ window.addEventListener('load', ()=>{
 
 <div id="evalAnalistas" class="ev-root container ev-hide">
   <div class="ev-sh">
-    <span class="ev-stag">Evaluación de gestión</span>
     <div class="ev-st">Performance por Planificador — CEDIS Panamá CSS</div>
     <div class="ev-sd">Salud del inventario de cada analista en el corte actual. Use el filtro para aislar un analista; la tabla inferior muestra cada renglón asignado. El score es comparativo: léalo junto al tamaño y nivel de stock de la cartera (gráficos de carga y correlación).</div>
   </div>
@@ -3136,7 +3145,7 @@ window.addEventListener('load', ()=>{
   <div class="ev-kg" id="evKpis"></div>
 
   <div class="ev-cg">
-    <div class="ev-cc"><div class="ev-cct">Score de salud por analista</div>
+    <div class="ev-cc"><div class="ev-cct">Score de Salud del Inventario por Analista</div>
       <div class="ev-ccd">Verde &#8805;45 &middot; &Aacute;mbar 30-44 &middot; Morado 15-29 &middot; Rojo &lt;15</div>
       <div class="ev-cw"><canvas id="evChartScore"></canvas></div></div>
     <div class="ev-cc"><div class="ev-cct">Score vs. tama&ntilde;o de cartera</div>
@@ -3270,17 +3279,53 @@ window.addEventListener('load', ()=>{
     }).join('');
   }
 
+  var rankSortKey='score_salud', rankSortDir=-1;
+  function computeConsumo(ana){
+    if(!rows)return 0; var sum=0;
+    rows.forEach(function(r){ if(r.__ana===ana && (r.STATUS==='AGOTADO'||r.STATUS==='CRITICO')) sum+=Number(r.FORECAST_UE||0); });
+    return sum;
+  }
   function renderRank(){
-    var A=(anaData.analistas||[]).slice().sort(function(a,b){return b.score_salud-a.score_salud});
-    var h='<thead><tr><th>#</th><th>Analista</th><th>Score</th><th>SKUs</th><th>Agot.</th><th>Cr\u00edt.</th><th>Bajos</th><th>\u00d3pt.</th><th>Exc.</th><th>% Rojo</th><th>Valor Riesgo</th></tr></thead><tbody>';
+    var A=(anaData.analistas||[]).slice();
+    A.forEach(function(a){ a.__consumo=computeConsumo(a.analista); });
+    A.sort(function(a,b){
+      var x=a[rankSortKey], y=b[rankSortKey];
+      if(rankSortKey==='analista'){ return rankSortDir*String(x).localeCompare(String(y)); }
+      return rankSortDir*((Number(y)||0)-(Number(x)||0))*-1*-1; // numérico
+    });
+    // ordenar numérico correcto
+    A.sort(function(a,b){
+      if(rankSortKey==='analista') return rankSortDir*String(a.analista).localeCompare(String(b.analista));
+      return rankSortDir*((Number(b[rankSortKey])||0)-(Number(a[rankSortKey])||0));
+    });
+    function arrow(k){ return rankSortKey===k?(rankSortDir<0?' \u25bc':' \u25b2'):''; }
+    var cols=[['analista','Analista'],['score_salud','Score'],['total','SKUs'],['agotados','Agot.'],['criticos','Cr\u00edt.'],['bajos','Bajos'],['optimos','\u00d3pt.'],['excesos','Exc.'],['pct_problema','% Rojo'],['__consumo','Consumo Riesgo']];
+    var h='<thead><tr><th style="text-align:center">#</th>';
+    cols.forEach(function(c){ h+='<th data-k="'+c[0]+'" style="text-align:center">'+c[1]+arrow(c[0])+'</th>'; });
+    h+='</tr></thead><tbody>';
     A.forEach(function(a,i){
-      h+='<tr class="clk'+(a.analista===curFilter?' sel':'')+'" data-ana="'+a.analista+'"><td class="ev-mono">'+(i+1)+'</td><td><strong>'+a.analista+'</strong></td>'+
-        '<td><span class="ev-score '+sClass(a.score_salud)+'">'+a.score_salud+'</span></td>'+
-        '<td class="ev-rt">'+num(a.total)+'</td><td class="ev-rt">'+num(a.agotados)+'</td><td class="ev-rt">'+num(a.criticos)+'</td>'+
-        '<td class="ev-rt">'+num(a.bajos)+'</td><td class="ev-rt">'+num(a.optimos)+'</td><td class="ev-rt">'+num(a.excesos)+'</td>'+
-        '<td class="ev-rt">'+a.pct_problema+'%</td><td class="ev-rt">'+money(a.valor_riesgo)+'</td></tr>';
+      h+='<tr class="clk'+(a.analista===curFilter?' sel':'')+'" data-ana="'+a.analista+'">'+
+        '<td class="ev-mono" style="text-align:center">'+(i+1)+'</td>'+
+        '<td style="text-align:left"><strong>'+a.analista+'</strong> <span style="color:#555;font-weight:400">'+nombreDe(a.analista)+'</span></td>'+
+        '<td style="text-align:center"><span class="ev-score '+sClass(a.score_salud)+'">'+a.score_salud+'</span></td>'+
+        '<td class="ev-rt" style="text-align:center">'+num(a.total)+'</td>'+
+        '<td class="ev-rt" style="text-align:center">'+num(a.agotados)+'</td>'+
+        '<td class="ev-rt" style="text-align:center">'+num(a.criticos)+'</td>'+
+        '<td class="ev-rt" style="text-align:center">'+num(a.bajos)+'</td>'+
+        '<td class="ev-rt" style="text-align:center">'+num(a.optimos)+'</td>'+
+        '<td class="ev-rt" style="text-align:center">'+num(a.excesos)+'</td>'+
+        '<td class="ev-rt" style="text-align:center">'+a.pct_problema+'%</td>'+
+        '<td class="ev-rt" style="text-align:right;color:#991b1b;font-weight:700">'+num(a.__consumo)+'</td></tr>';
     });
     h+='</tbody>'; var t=document.getElementById('evRankTbl'); t.innerHTML=h;
+    t.querySelectorAll('thead th[data-k]').forEach(function(th){
+      th.style.cursor='pointer';
+      th.addEventListener('click',function(){
+        var k=th.dataset.k;
+        if(rankSortKey===k){ rankSortDir*=-1; } else { rankSortKey=k; rankSortDir=(k==='analista')?1:-1; }
+        renderRank();
+      });
+    });
     t.querySelectorAll('tr.clk').forEach(function(tr){ tr.addEventListener('click',function(){
       curFilter=(curFilter===tr.dataset.ana)?'__ALL__':tr.dataset.ana;
       document.getElementById('evFiltro').value=curFilter; renderAll(); }); });
@@ -3308,10 +3353,23 @@ window.addEventListener('load', ()=>{
     var A=(anaData.analistas||[]).slice().sort(function(a,b){return b.score_salud-a.score_salud});
     if(chS)chS.destroy();
     chS=new Chart(document.getElementById('evChartScore'),{type:'bar',
-      data:{labels:A.map(function(a){return a.analista}),datasets:[{data:A.map(function(a){return a.score_salud}),backgroundColor:A.map(function(a){return sColor(a.score_salud)})}]},
+      data:{labels:A.map(function(a){return nombreDe(a.analista)}),datasets:[{data:A.map(function(a){return a.score_salud}),backgroundColor:A.map(function(a){return sColor(a.score_salud)})}]},
       options:{indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{max:100},y:{ticks:{autoSkip:false,font:{size:10}}}},maintainAspectRatio:false}});
-    var labelPlugin={id:'lbl',afterDatasetsDraw:function(c){var ct=c.ctx;ct.save();ct.font='10px Consolas';ct.fillStyle='#333';
-      c.data.datasets[0].data.forEach(function(pt,i){var m=c.getDatasetMeta(0).data[i];if(m)ct.fillText(pt.label,m.x+5,m.y-4);});ct.restore();}};
+    var labelPlugin={id:'lbl',afterDatasetsDraw:function(c){
+      var ct=c.ctx; ct.save(); ct.font='9px Consolas';
+      var meta=c.getDatasetMeta(0);
+      // ordenar por x para alternar el lado de la etiqueta y reducir solape
+      var idx=c.data.datasets[0].data.map(function(p,i){return i;}).sort(function(a,b){
+        return c.data.datasets[0].data[a].x-c.data.datasets[0].data[b].x; });
+      idx.forEach(function(i,rank){
+        var pt=c.data.datasets[0].data[i]; var m=meta.data[i]; if(!m)return;
+        var up=(rank%2===0); var dx=7, dy=up?-10:12;
+        ct.strokeStyle='rgba(120,120,120,.5)'; ct.lineWidth=0.6;
+        ct.beginPath(); ct.moveTo(m.x,m.y); ct.lineTo(m.x+dx,m.y+dy*0.7); ct.stroke();
+        ct.fillStyle='#222'; ct.textAlign='left';
+        ct.fillText(pt.label,m.x+dx+1,m.y+dy);
+      });
+      ct.restore(); }};
     if(chX)chX.destroy();
     chX=new Chart(document.getElementById('evChartScatter'),{type:'scatter',
       data:{datasets:[{data:A.map(function(a){return{x:a.total,y:a.score_salud,label:a.analista}}),backgroundColor:A.map(function(a){return sColor(a.score_salud)}),pointRadius:5}]},
