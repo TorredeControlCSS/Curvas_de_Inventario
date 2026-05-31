@@ -3036,6 +3036,94 @@ window.addEventListener('load', ()=>{
 </script>
 
 <!-- ============================================================
+     MÓDULO: BOTONES EXCEL PREMIUM (descarga desde Apps Script)
+     Hace que "Abastecimiento Excel", "Vencimientos Excel" y
+     "Performance por Analista" descarguen el Excel PREMIUM generado
+     en el backend (con formato NAVY, KPIs, semáforos), respetando el
+     filtro de Familia activo.
+
+     Reemplaza el comportamiento de los botones existentes (que antes
+     generaban planos con SheetJS).
+
+     INSTALAR: pegar este bloque ANTES de </body>, DESPUÉS del bloque
+     de botones y del MÓDULO de familia.
+
+     REQUIERE en el backend (doGet) el endpoint:
+        if (e.parameter.report === 'excel_premium') return _doGetExcelPremium_(e);
+     ============================================================ -->
+<style>
+  #ev-dl-toast{position:fixed;bottom:18px;right:18px;z-index:9999;background:#0B1F3A;color:#fff;
+    padding:12px 16px;border-radius:8px;font-family:'Segoe UI',sans-serif;font-size:13px;
+    box-shadow:0 4px 16px rgba(0,0,0,.3);display:none;max-width:320px}
+  #ev-dl-toast .sp{display:inline-block;width:12px;height:12px;border:2px solid #fff;border-top-color:transparent;
+    border-radius:50%;animation:evspin .7s linear infinite;margin-right:8px;vertical-align:middle}
+  @keyframes evspin{to{transform:rotate(360deg)}}
+</style>
+<script>
+(function(){
+  var API=(typeof API_BASE!=='undefined')?API_BASE:'';
+
+  function toast(msg, spinner){
+    var t=document.getElementById('ev-dl-toast');
+    if(!t){ t=document.createElement('div'); t.id='ev-dl-toast'; document.body.appendChild(t); }
+    t.innerHTML=(spinner?'<span class="sp"></span>':'')+msg;
+    t.style.display='block';
+  }
+  function hideToast(delay){ var t=document.getElementById('ev-dl-toast'); if(t) setTimeout(function(){t.style.display='none';}, delay||0); }
+
+  // Lee la familia activa del dropdown del módulo de familia (si existe)
+  function familiaActiva(){
+    var sel=document.getElementById('famSel');
+    if(!sel) return '';
+    return (sel.value && sel.value!=='__TODAS__') ? sel.value : '';
+  }
+
+  function descargarPremium(tipo, etiqueta){
+    var fam=familiaActiva();
+    toast('Generando '+etiqueta+(fam?(' ('+fam+')'):'')+'… esto puede tardar unos segundos.', true);
+    var url=API+'?report=excel_premium&tipo='+encodeURIComponent(tipo)+
+            '&familia='+encodeURIComponent(fam||'__TODAS__')+'&ts='+Date.now();
+    fetch(url).then(function(r){return r.json();}).then(function(res){
+      if(res && res.ok && res.url){
+        toast('✅ Listo: '+res.name+'. Iniciando descarga…', false);
+        // Abrir la URL de descarga directa
+        var a=document.createElement('a'); a.href=res.url; a.download=res.name||''; a.target='_blank';
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        hideToast(4000);
+      } else {
+        toast('⚠️ No se pudo generar: '+((res&&res.error)||'error desconocido'), false);
+        hideToast(6000);
+      }
+    }).catch(function(err){
+      toast('⚠️ Error de conexión al generar el Excel.', false);
+      hideToast(6000);
+    });
+  }
+
+  // Reemplaza los listeners de los botones existentes
+  function rewire(){
+    var map=[
+      ['btnAbastExcel','abastecimiento','Abastecimiento'],
+      ['btnVencExcel','vencimientos','Vencimientos'],
+      ['btnAnalistaExcel','analistas','Performance por Analista']
+    ];
+    var pendientes=0;
+    map.forEach(function(m){
+      var b=document.getElementById(m[0]);
+      if(!b){ pendientes++; return; }
+      // Clonar para eliminar listeners previos (los de SheetJS)
+      var nb=b.cloneNode(true); b.parentNode.replaceChild(nb,b);
+      nb.addEventListener('click',function(ev){ ev.preventDefault(); descargarPremium(m[1],m[2]); });
+    });
+    if(pendientes>0) setTimeout(rewire,500); // reintentar si los botones aún no existen
+  }
+
+  document.addEventListener('DOMContentLoaded',rewire);
+  rewire();
+})();
+</script>
+
+<!-- ============================================================
      SUBSECCIÓN: EVALUACIÓN DE PERFORMANCE POR ANALISTA  (v2 robusta)
      Novedades v2:
       - Filtro/dropdown por analista (afecta KPIs, ranking, tabla, gráficos)
@@ -3248,11 +3336,11 @@ window.addEventListener('load', ()=>{
     var A=anaData.analistas||[]; var f=(curFilter==='__ALL__')?A:A.filter(function(a){return a.analista===curFilter});
     var s=function(k){return f.reduce(function(t,a){return t+(a[k]||0)},0)};
     var tot=(curFilter==='__ALL__')?(anaData.total_skus||1):Math.max(1,s('total'));
-    // Consumo en riesgo = FORECAST_UE de renglones agotados+críticos (demanda mensual no atendida)
+    // Consumo en riesgo = DEMANDA_MENSUAL de renglones agotados+críticos (demanda mensual no atendida)
     var consumoRiesgo=0;
     if(rows){ rows.forEach(function(r){
       if((curFilter==='__ALL__'||r.__ana===curFilter) && (r.STATUS==='AGOTADO'||r.STATUS==='CRITICO')){
-        consumoRiesgo+=Number(r.FORECAST_UE||0);
+        consumoRiesgo+=Number(r.DEMANDA_MENSUAL||0);
       }
     }); }
     var sinA=(curFilter==='__ALL__')?anaData.sin_analista_asignado:(curFilter==='SIN ASIGNAR'?s('total'):0);
@@ -3262,7 +3350,7 @@ window.addEventListener('load', ()=>{
       ['SKUs \u00d3ptimos',num(s('optimos')),'g',(100*s('optimos')/tot).toFixed(1)+'% de su cartera','Cobertura entre 4 y 12 meses.'],
       ['Capital Congelado',num(s('con_reserva')),'b','SKUs con reserva','Conteo de renglones con inventario reservado/comprometido (no disponible para despacho libre).'],
       ['Valor en Riesgo',money(s('valor_riesgo')),'p','vencido + cr\u00edtico + riesgo','Valor (cantidad x costo) de los lotes en riesgo de vencimiento de esta cartera. Incluye vencidos y por vencer.'],
-      ['Consumo en Riesgo',num(consumoRiesgo),'r','demanda mensual no atendida','Suma del consumo mensual de las Unidades Ejecutoras (FORECAST_UE) de los renglones agotados o cr\u00edticos de esta cartera. Es la demanda que NO se est\u00e1 atendiendo por falta de stock.'],
+      ['Consumo en Riesgo',num(consumoRiesgo),'r','demanda mensual no atendida','Suma de la demanda mensual de los renglones agotados o cr\u00edticos de esta cartera. Es el consumo mensual que NO se est\u00e1 atendiendo por falta de stock.'],
       ['Sin Analista',num(sinA),'a','renglones sin due\u00f1o','Renglones del inventario que no figuran en el cuadro maestro.'],
     ];
     document.getElementById('evKpis').innerHTML=k.map(function(x){
@@ -3273,7 +3361,7 @@ window.addEventListener('load', ()=>{
   var rankSortKey='score_salud', rankSortDir=-1;
   function computeConsumo(ana){
     if(!rows)return 0; var sum=0;
-    rows.forEach(function(r){ if(r.__ana===ana && (r.STATUS==='AGOTADO'||r.STATUS==='CRITICO')) sum+=Number(r.FORECAST_UE||0); });
+    rows.forEach(function(r){ if(r.__ana===ana && (r.STATUS==='AGOTADO'||r.STATUS==='CRITICO')) sum+=Number(r.DEMANDA_MENSUAL||0); });
     return sum;
   }
   function renderRank(){
