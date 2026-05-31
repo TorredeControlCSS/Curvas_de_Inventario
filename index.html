@@ -221,6 +221,14 @@
       cursor:not-allowed;
     }
   </style>
+<style id="ev-btn-order">
+  .topbar .top-actions{align-items:center}
+  #btnPdfReport{order:1} #btnVencimientosPdf{order:2}
+  #btnAbastExcel{order:3} #btnVencExcel{order:4} #btnAnalistaExcel{order:5}
+  #exportPdfBtn{order:8} #installBtn{order:9}
+  #famWrap{order:0}
+  .ev-grp-sep{order:2; width:1px; background:rgba(255,255,255,.25); align-self:stretch; margin:2px 2px}
+</style>
 <style id="ev-header-fix">.topbar .top-actions{display:flex !important;flex-wrap:wrap !important;gap:6px !important;align-items:center !important;justify-content:flex-end !important;flex:1 1 auto !important;}.topbar .top-actions .btn,.topbar .top-actions .theme-select{flex:0 0 auto !important;width:auto !important;max-width:none !important;}#famWrap{flex:0 0 auto !important;}@media (max-width:720px){.topbar .top-actions{justify-content:center !important;}.topbar .top-actions .btn,.topbar .top-actions .theme-select{width:100% !important;max-width:360px !important;}}</style>
 </head>
 <body>
@@ -239,14 +247,12 @@
       <span id="net" class="net"></span>
       
       <!-- BOTÓN REPORTE PDF (Nuevo nombre) -->
-      <button id="btnPdfReport" class="btn" style="border-color:#0b5fff; color:#0b5fff;">
-        Reporte de Abastecimiento
-      </button>
+      <button id="btnPdfReport" class="btn" style="border-color:#0b5fff; color:#0b5fff;"> Abastecimiento (PDF) </button>
       <button id="btnVencimientosPdf" class="btn" aria-label="Tablero de vencimientos" style="border-color:#f97316; color:#f97316;">
-        Tablero de Vencimientos
+        Vencimientos (PDF)
       </button>
       <button id="refreshBtn" class="btn ghost">Actualizar</button>
-      <button id="exportPdfBtn" class="btn">Descargar PDF</button>
+      <button id="exportPdfBtn" class="btn">Capturar Pantalla</button>
       <button id="installBtn" class="btn install hidden">Instalar app</button>
     </div>
   </div>
@@ -1756,7 +1762,7 @@ function generarTableroVencimientosPDF(rep){
       try { doc.addImage(logoDataUrl, 'PNG', 14, 10, 15, 15); } catch (_) {}
     }
     doc.setFont('helvetica', 'bold').setFontSize(17).setTextColor(...azul);
-    doc.text('Tablero de Vencimientos | CEDIS Panamá', 35, 18);
+    doc.text('Vencimientos (PDF) | CEDIS Panamá', 35, 18);
     doc.setFont('helvetica', 'normal').setFontSize(9.5).setTextColor(80);
     doc.text(`Corte Datos: ${corte} | Generado: ${fechaHoyIso}`, 35, 24);
     doc.setDrawColor(200);
@@ -2671,19 +2677,19 @@ window.addEventListener('load', ()=>{
     bAbast.id = 'btnAbastExcel';
     bAbast.className = 'btn';
     bAbast.style.cssText = 'border-color:#16a34a;color:#16a34a;';
-    bAbast.innerHTML = 'Abastecimiento Excel';
+    bAbast.innerHTML = 'Abastecimiento (XLS)';
 
     var bVenc = document.createElement('button');
     bVenc.id = 'btnVencExcel';
     bVenc.className = 'btn';
     bVenc.style.cssText = 'border-color:#16a34a;color:#16a34a;';
-    bVenc.innerHTML = 'Vencimientos Excel';
+    bVenc.innerHTML = 'Vencimientos (XLS)';
 
     var bAna = document.createElement('button');
     bAna.id = 'btnAnalistaExcel';
     bAna.className = 'btn';
     bAna.style.cssText = 'border-color:#7c3aed;color:#7c3aed;';
-    bAna.innerHTML = 'Performance por Analista';
+    bAna.innerHTML = 'Performance (XLS)';
 
     ref.parentNode.insertBefore(bAbast, ref.nextSibling);
     bAbast.parentNode.insertBefore(bVenc, bAbast.nextSibling);
@@ -3228,7 +3234,7 @@ window.addEventListener('load', ()=>{
       <div class="ev-ccd">Verde &#8805;45 &middot; &Aacute;mbar 30-44 &middot; Morado 15-29 &middot; Rojo &lt;15</div>
       <div class="ev-cw"><canvas id="evChartScore"></canvas></div></div>
     <div class="ev-cc"><div class="ev-cct">Score vs. tama&ntilde;o de cartera</div>
-      <div class="ev-ccd">Punto a la derecha = m&aacute;s SKUs. Score bajo + cartera grande puede ser CARGA, no gesti&oacute;n.</div>
+      <div class="ev-ccd">Punto a la derecha = más renglones. Score bajo + cartera grande puede ser CARGA, no gesti&oacute;n.</div>
       <div class="ev-cw"><canvas id="evChartScatter"></canvas></div></div>
     <div class="ev-cc"><div class="ev-cct">Cartera sana vs. cartera crítica</div>
       <div class="ev-ccd">Eje X: % en agotado+crítico. Eje Y: % óptimo+bajo. Arriba-izquierda = cartera sana; abajo-derecha = cartera en crisis.</div>
@@ -3319,7 +3325,7 @@ window.addEventListener('load', ()=>{
       });
       rows.forEach(function(r){ r.__cod=normCod(r.CODIGO); r.__ana=(r.ANALISTA&&String(r.ANALISTA).trim())||'SIN ASIGNAR'; });
       loaded=true;
-      document.getElementById('evGen').textContent='Generado: '+(anaData.generado||'')+' \u00b7 '+num(anaData.total_skus)+' SKUs \u00b7 '+num(anaData.sin_analista_asignado)+' sin asignar';
+      document.getElementById('evGen').textContent='Generado: '+(anaData.generado||'')+' \u00b7 '+num(anaData.total_skus)+' renglones · '+num(anaData.sin_analista_asignado)+' sin asignar';
       fillFiltro(); renderAll(); ensureChart(function(){ renderCharts(); });
     }).catch(function(){ document.getElementById('evGen').textContent='error al cargar'; });
   }
@@ -3345,10 +3351,10 @@ window.addEventListener('load', ()=>{
     }); }
     var sinA=(curFilter==='__ALL__')?anaData.sin_analista_asignado:(curFilter==='SIN ASIGNAR'?s('total'):0);
     var k=[
-      ['SKUs Agotados',num(s('agotados')),'r',(100*s('agotados')/tot).toFixed(1)+'% de su cartera','Renglones con inventario proyectado = 0.'],
-      ['SKUs Cr\u00edticos',num(s('criticos')),'a',(100*s('criticos')/tot).toFixed(1)+'% de su cartera','Cobertura menor a 1 mes.'],
-      ['SKUs \u00d3ptimos',num(s('optimos')),'g',(100*s('optimos')/tot).toFixed(1)+'% de su cartera','Cobertura entre 4 y 12 meses.'],
-      ['Capital Congelado',num(s('con_reserva')),'b','SKUs con reserva','Conteo de renglones con inventario reservado/comprometido (no disponible para despacho libre).'],
+      ['Renglones Agotados',num(s('agotados')),'r',(100*s('agotados')/tot).toFixed(1)+'% de su cartera','Renglones con inventario proyectado = 0.'],
+      ['Renglones Críticos',num(s('criticos')),'a',(100*s('criticos')/tot).toFixed(1)+'% de su cartera','Cobertura menor a 1 mes.'],
+      ['Renglones Óptimos',num(s('optimos')),'g',(100*s('optimos')/tot).toFixed(1)+'% de su cartera','Cobertura entre 4 y 12 meses.'],
+      ['Capital Congelado',num(s('con_reserva')),'b','Renglones con reserva','Conteo de renglones con inventario reservado/comprometido (no disponible para despacho libre).'],
       ['Valor en Riesgo',money(s('valor_riesgo')),'p','vencido + cr\u00edtico + riesgo','Valor (cantidad x costo) de los lotes en riesgo de vencimiento de esta cartera. Incluye vencidos y por vencer.'],
       ['Consumo en Riesgo',num(consumoRiesgo),'r','demanda mensual no atendida','Suma de la demanda mensual de los renglones agotados o cr\u00edticos de esta cartera. Es el consumo mensual que NO se est\u00e1 atendiendo por falta de stock.'],
       ['Sin Analista',num(sinA),'a','renglones sin due\u00f1o','Renglones del inventario que no figuran en el cuadro maestro.'],
@@ -3378,7 +3384,7 @@ window.addEventListener('load', ()=>{
       return rankSortDir*((Number(b[rankSortKey])||0)-(Number(a[rankSortKey])||0));
     });
     function arrow(k){ return rankSortKey===k?(rankSortDir<0?' \u25bc':' \u25b2'):''; }
-    var cols=[['analista','Analista'],['score_salud','Score'],['total','SKUs'],['agotados','Agot.'],['criticos','Cr\u00edt.'],['bajos','Bajos'],['optimos','\u00d3pt.'],['excesos','Exc.'],['pct_problema','% Rojo'],['__consumo','Consumo Riesgo']];
+    var cols=[['analista','Analista'],['score_salud','Score'],['total','Renglones'],['agotados','Agot.'],['criticos','Cr\u00edt.'],['bajos','Bajos'],['optimos','\u00d3pt.'],['excesos','Exc.'],['pct_problema','% Rojo'],['__consumo','Consumo Riesgo']];
     var h='<thead><tr><th style="text-align:center">#</th>';
     cols.forEach(function(c){ h+='<th data-k="'+c[0]+'" style="text-align:center">'+c[1]+arrow(c[0])+'</th>'; });
     h+='</tr></thead><tbody>';
@@ -3480,8 +3486,8 @@ window.addEventListener('load', ()=>{
     if(chX)chX.destroy();
     chX=new Chart(document.getElementById('evChartScatter'),{type:'scatter',
       data:{datasets:[{data:A.map(function(a){return{x:a.total,y:a.score_salud,label:a.analista}}),backgroundColor:A.map(function(a){return sColor(a.score_salud)}),pointRadius:5}]},
-      options:{plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return c.raw.label+': '+c.raw.x+' SKUs, score '+c.raw.y}}}},
-        scales:{x:{title:{display:true,text:'SKUs asignados'}},y:{title:{display:true,text:'Score'},min:0,max:100}},maintainAspectRatio:false},plugins:[labelPlugin]});
+      options:{plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return c.raw.label+': '+c.raw.x+' renglones, score '+c.raw.y}}}},
+        scales:{x:{title:{display:true,text:'Renglones asignados'}},y:{title:{display:true,text:'Score'},min:0,max:100}},maintainAspectRatio:false},plugins:[labelPlugin]});
     var pts=A.map(function(a){ var t=Math.max(1,a.total);
       var critPct=Math.round(100*(a.agotados+a.criticos)/t);
       var sanoPct=Math.round(100*(a.optimos+a.bajos)/t);
