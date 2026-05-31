@@ -46,8 +46,8 @@
     .topbar.topbar--hidden{ transform:translateY(-110%); }
     .topbar img{width: clamp(40px, 6vw, 56px); height: clamp(40px, 6vw, 56px); border-radius:12px; flex:0 0 auto;}
     .title{font-size:16px;font-weight:700;letter-spacing:.3px;flex:1 1 auto;min-width:200px;}
-    .top-actions{display:flex;flex-wrap:wrap;gap:6px;align-items:center;flex:1 1 auto;justify-content:flex-end;}
-    .btn{padding:7px 11px;border:1px solid var(--ring);border-radius:9px;background:#fff;color:#0f172a;cursor:pointer;font-weight:600;font-size:13px;white-space:nowrap;display:inline-flex;align-items:center;justify-content:center}
+    .top-actions{display:flex;gap:8px;align-items:center;flex:0 0 auto;}
+    .btn{padding:8px 10px;border:1px solid var(--ring);border-radius:10px;background:#fff;color:#0f172a;cursor:pointer;font-weight:600}
     .btn.ghost{background:transparent;color:#fff;border-color:rgba(255,255,255,.25)}
     .btn.install{background:#00b894;color:#fff;border-color:#00b894}
     .theme-select{padding:6px 8px;border:1px solid rgba(255,255,255,.25);border-radius:10px;background:transparent;color:#fff; min-width:110px}
@@ -221,16 +221,7 @@
       cursor:not-allowed;
     }
   </style>
-<style id="ev-header-fix">
-  .topbar .top-actions{display:flex !important;flex-wrap:wrap !important;gap:6px !important;align-items:center !important;justify-content:flex-end !important;flex:1 1 auto !important;}
-  .topbar .top-actions .btn,
-  .topbar .top-actions .theme-select{flex:0 0 auto !important;width:auto !important;max-width:none !important;}
-  #famWrap{flex:0 0 auto !important;}
-  @media (max-width:720px){
-    .topbar .top-actions{justify-content:center !important;}
-    .topbar .top-actions .btn,.topbar .top-actions .theme-select{width:100% !important;max-width:360px !important;}
-  }
-</style>
+<style id="ev-header-fix">.topbar .top-actions{display:flex !important;flex-wrap:wrap !important;gap:6px !important;align-items:center !important;justify-content:flex-end !important;flex:1 1 auto !important;}.topbar .top-actions .btn,.topbar .top-actions .theme-select{flex:0 0 auto !important;width:auto !important;max-width:none !important;}#famWrap{flex:0 0 auto !important;}@media (max-width:720px){.topbar .top-actions{justify-content:center !important;}.topbar .top-actions .btn,.topbar .top-actions .theme-select{width:100% !important;max-width:360px !important;}}</style>
 </head>
 <body>
   <div class="topbar">
@@ -3331,22 +3322,50 @@ window.addEventListener('load', ()=>{
       document.getElementById('evFiltro').value=curFilter; renderAll(); }); });
   }
 
+  var tblSortKey=null, tblSortDir=1;
   function renderTable(){
     var data=(curFilter==='__ALL__')?rows:rows.filter(function(r){return r.__ana===curFilter;});
     var ord={AGOTADO:0,CRITICO:1,BAJO:2,OPTIMO:3,EXCESO:4};
-    data=data.slice().sort(function(a,b){
-      if(curFilter==='__ALL__'){ var an=(a.__ana==='SIN ASIGNAR'?'zzz':a.__ana),bn=(b.__ana==='SIN ASIGNAR'?'zzz':b.__ana); if(an!==bn)return an<bn?-1:1; }
-      return (ord[a.STATUS]||9)-(ord[b.STATUS]||9) || (b.DEMANDA_MENSUAL||0)-(a.DEMANDA_MENSUAL||0); });
+    data=data.slice();
+    if(tblSortKey){
+      // orden manual por la columna elegida
+      data.sort(function(a,b){
+        var x,y;
+        if(tblSortKey==='__ana'){ x=a.__ana; y=b.__ana; return tblSortDir*String(x).localeCompare(String(y)); }
+        if(tblSortKey==='__cod'){ x=a.__cod; y=b.__cod; return tblSortDir*String(x).localeCompare(String(y),undefined,{numeric:true}); }
+        if(tblSortKey==='SUMINISTRO'||tblSortKey==='GRUPO'){ x=a[tblSortKey]||''; y=b[tblSortKey]||''; return tblSortDir*String(x).localeCompare(String(y)); }
+        if(tblSortKey==='STATUS'){ return tblSortDir*((ord[a.STATUS]||9)-(ord[b.STATUS]||9)); }
+        if(tblSortKey==='MESES_COB'){ return tblSortDir*((parseFloat(a.MESES_COB)||0)-(parseFloat(b.MESES_COB)||0)); }
+        // numéricas
+        return tblSortDir*((Number(a[tblSortKey])||0)-(Number(b[tblSortKey])||0));
+      });
+    } else {
+      // orden por defecto: analista, luego gravedad, luego demanda
+      data.sort(function(a,b){
+        if(curFilter==='__ALL__'){ var an=(a.__ana==='SIN ASIGNAR'?'zzz':a.__ana),bn=(b.__ana==='SIN ASIGNAR'?'zzz':b.__ana); if(an!==bn)return an<bn?-1:1; }
+        return (ord[a.STATUS]||9)-(ord[b.STATUS]||9) || (b.DEMANDA_MENSUAL||0)-(a.DEMANDA_MENSUAL||0); });
+    }
     document.getElementById('evDetailTitle').textContent='\u9612 DETALLE POR RENGL\u00d3N \u2014 '+(curFilter==='__ALL__'?'TODOS':curFilter);
     document.getElementById('evDetailCount').textContent=num(data.length)+' renglones';
-    var h='<thead><tr><th>Analista</th><th>C\u00f3digo</th><th>Rengl\u00f3n</th><th>Grupo</th><th>Status</th><th>Inv. Act</th><th>Recep</th><th>Tr\u00e1nsito</th><th>Reserva</th><th>Inv. Proy</th><th>Cob (m)</th><th>Demanda Mens.</th></tr></thead><tbody>';
+    function arr(k){ return tblSortKey===k?(tblSortDir<0?' \u25bc':' \u25b2'):''; }
+    var cols=[['__ana','Analista'],['__cod','C\u00f3digo'],['SUMINISTRO','Rengl\u00f3n'],['GRUPO','Grupo'],['STATUS','Status'],['INV_ACTUAL','Inv. Act'],['RECEPCION_7D','Recep'],['TRANSITO','Tr\u00e1nsito'],['RESERVA','Reserva'],['INV_PROY','Inv. Proy'],['MESES_COB','Cob (m)'],['DEMANDA_MENSUAL','Demanda Mens.']];
+    var h='<thead><tr>';
+    cols.forEach(function(c){ h+='<th data-tk="'+c[0]+'" style="cursor:pointer">'+c[1]+arr(c[0])+'</th>'; });
+    h+='</tr></thead><tbody>';
     data.forEach(function(r){
       h+='<tr><td><strong>'+r.__ana+'</strong> <span style="color:#555;font-weight:400">'+nombreDe(r.__ana)+'</span></td><td class="ev-mono">'+r.__cod+'</td><td>'+(r.SUMINISTRO||'')+'</td><td>'+(r.GRUPO||'')+'</td>'+
         '<td><span class="ev-badge ev-b-'+r.STATUS+'">'+r.STATUS+'</span></td>'+
         '<td class="ev-rt">'+num(r.INV_ACTUAL)+'</td><td class="ev-rt">'+num(r.RECEPCION_7D)+'</td><td class="ev-rt">'+num(r.TRANSITO)+'</td>'+
         '<td class="ev-rt">'+num(r.RESERVA)+'</td><td class="ev-rt">'+num(r.INV_PROY)+'</td><td class="ev-rt">'+(r.MESES_COB||'')+'</td><td class="ev-rt">'+num(r.DEMANDA_MENSUAL)+'</td></tr>';
     });
-    h+='</tbody>'; document.getElementById('evDetailTbl').innerHTML=h;
+    h+='</tbody>'; var t=document.getElementById('evDetailTbl'); t.innerHTML=h;
+    t.querySelectorAll('thead th[data-tk]').forEach(function(th){
+      th.addEventListener('click',function(){
+        var k=th.dataset.tk;
+        if(tblSortKey===k){ tblSortDir*=-1; } else { tblSortKey=k; tblSortDir=(k==='__ana'||k==='__cod'||k==='SUMINISTRO'||k==='GRUPO'||k==='STATUS')?1:-1; }
+        renderTable();
+      });
+    });
   }
 
   function renderCharts(){
