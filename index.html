@@ -406,9 +406,8 @@ const horizon = (Q)=> Number(Q) > 0 ? LEAD + EXTRA_AFTER_ORDER : LEAD;
 let chartInstance=null, deferredPrompt=null;
 let codes=[], sups=[], groups=[];
 
-// Mapas para mostrar analista + score al buscar un renglón (cargados de coverage + analistas).
+// Mapa para mostrar el analista responsable al buscar un renglón (cargado de coverage).
 let ANA_BY_COD = {};      // codigoNorm -> iniciales del analista
-let SCORE_BY_ANA = {};    // iniciales -> score_salud
 const ANA_NOMBRES = {
   "SS":"Simón Sotillo","VD":"Vladimir De León","BS":"Braulio Serrano",
   "JME":"José M. Espinosa","JE":"José M. Espinosa","FC":"Fernando Calderón",
@@ -420,23 +419,19 @@ const ANA_NOMBRES = {
 };
 function anaNorm(c){ c=String(c==null?'':c).trim(); return c.indexOf('.')>=0?c.replace(/\.0+$/,''):c; }
 function anaNombre(ini){ if(!ini||ini==='SIN ASIGNAR')return'Sin asignar'; return ANA_NOMBRES[ini]||ini; }
-function scoreCls(s){ if(s>=45)return['#2d7a2d','VERDE']; if(s>=30)return['#c57a00','ÁMBAR']; if(s>=15)return['#5a2d82','MORADO']; return['#c0392b','ROJO']; }
 
 async function loadAnalistaMaps(){
   try{
-    const [cov,ana]=await Promise.all([
-      fetchJSON(API_BASE+'?report=coverage&ts='+Date.now()),
-      fetchJSON(API_BASE+'?report=analistas&ts='+Date.now())
-    ]);
-    // coverage: {header, rows} con CODIGO y (en maestro v2) ANALISTA
+    // Solo necesitamos código -> analista para mostrar el nombre del responsable.
+    // (El score ya no se muestra en Curvas, así que no pedimos report=analistas aquí.)
+    const cov=await fetchJSON(API_BASE+'?report=coverage&ts='+Date.now());
     if(cov&&cov.header&&cov.rows){
       const ixCod=cov.header.indexOf('CODIGO'), ixAna=cov.header.indexOf('ANALISTA');
       if(ixCod>=0&&ixAna>=0){
         cov.rows.forEach(r=>{ const c=anaNorm(r[ixCod]); const a=String(r[ixAna]||'').trim(); if(c) ANA_BY_COD[c]=a||'SIN ASIGNAR'; });
       }
     }
-    if(ana&&ana.analistas){ ana.analistas.forEach(a=>{ SCORE_BY_ANA[a.analista]=a.score_salud; }); }
-  }catch(e){ console.warn('No se pudieron cargar mapas de analista:',e); }
+  }catch(e){ console.warn('No se pudo cargar el mapa de analista:',e); }
 }
 
 function renderAnalistaCard(codigo){
@@ -447,21 +442,9 @@ function renderAnalistaCard(codigo){
   if(!cod || ini===undefined || ini===null){ card.style.display='none'; return; }
   const asignado=(ini && ini!=='SIN ASIGNAR');
   const nombre=anaNombre(ini);
-  const score=asignado?SCORE_BY_ANA[ini]:undefined;
-  let scoreHtml='';
-  if(asignado && typeof score==='number'){
-    const sc=scoreCls(score);
-    scoreHtml='<div style="margin-top:6px;display:flex;align-items:center;gap:8px">'+
-      '<span style="font-family:Consolas,monospace;font-size:28px;font-weight:700;color:'+sc[0]+'">'+score+'</span>'+
-      '<span style="font-size:11px;font-weight:700;color:#fff;background:'+sc[0]+';padding:2px 8px;border-radius:3px">'+sc[1]+'</span>'+
-      '<span style="font-size:11px;color:#666">score de salud actual</span></div>';
-  } else if(asignado){
-    scoreHtml='<div style="margin-top:6px;font-size:11px;color:#888">Score no disponible en este corte.</div>';
-  }
   body.innerHTML='<div style="font-size:16px;font-weight:700;color:#0b1f3a">'+nombre+
     (asignado?' <span style="font-size:12px;font-weight:400;color:#666;font-family:Consolas,monospace">('+ini+')</span>':'')+'</div>'+
-    (asignado?'':'<div style="font-size:11px;color:#c0392b;margin-top:2px">Este renglón no figura en el cuadro maestro.</div>')+
-    scoreHtml;
+    (asignado?'':'<div style="font-size:11px;color:#c0392b;margin-top:2px">Este renglón no figura en el cuadro maestro.</div>');
   card.style.display='';
 }
 let lastSerieForReports = null; 
@@ -3301,6 +3284,7 @@ window.addEventListener('load', ()=>{
   .ev-kb.r .ev-kv{color:var(--red)} .ev-kb.a .ev-kv{color:var(--amber)}
   .ev-kb.g .ev-kv{color:var(--green)} .ev-kb.b .ev-kv{color:var(--blue)} .ev-kb.p .ev-kv{color:var(--purple)}
   .ev-ks{font-size:10px;color:var(--muted);margin-top:1px}
+  .ev-kr{display:inline-block;font-size:10px;font-weight:700;font-family:'Consolas','Courier New',monospace;background:#eef2f7;border:1px solid #cdd6e2;color:#33475b;padding:0 5px;margin-top:3px;border-radius:2px}
   .ev-cg{display:grid;gap:8px;margin-bottom:10px;grid-template-columns:1fr 1fr 1fr}
   .ev-cc{background:var(--panel);border:1px solid var(--border);min-width:0;overflow:hidden}
   .ev-cct{font-size:12px;font-weight:700;padding:5px 10px;background:var(--panel3);border-bottom:1px solid var(--border2)}
@@ -3374,9 +3358,7 @@ window.addEventListener('load', ()=>{
   <div class="ev-toolbar">
     <label class="ev-meta">Filtrar analista:</label>
     <select class="ev-sel" id="evFiltro"><option value="__ALL__">Todos los analistas</option></select>
-    <label class="ev-meta">Grupo:</label>
-    <select class="ev-sel" id="evFiltroGrupo"><option value="__ALL__">Todos los grupos</option></select>
-    <label class="ev-meta">Renglón:</label>
+    <label class="ev-meta">Buscar renglón (solo aísla en la tabla de detalle):</label>
     <input class="ev-sel" id="evFiltroRenglon" list="evRenglonOpts" placeholder="Código o nombre del renglón" autocomplete="off" style="min-width:240px">
     <datalist id="evRenglonOpts"></datalist>
     <button class="ev-sel" id="evFiltroClear" style="cursor:pointer;background:#fff;border:1px solid var(--border)">Limpiar filtros</button>
@@ -3445,61 +3427,17 @@ window.addEventListener('load', ()=>{
   function nombreDe(ini){ if(ini==='SIN ASIGNAR')return'Sin asignar'; return NOMBRES[ini]||ini; }
   function nombreFull(ini){ if(ini==='SIN ASIGNAR')return'SIN ASIGNAR'; var n=NOMBRES[ini]; return n?(ini+' \u2014 '+n):ini; }
   var loaded=false, anaData=null, rows=null, chS=null,chX=null,chK=null, curFilter='__ALL__';
-  var curGrupo='__ALL__', curRenglon='';  // renglón = código normalizado o '' (todos)
+  var curRenglon='';  // renglón = código normalizado o '' (todos) — SOLO afecta la tabla de detalle
 
-  // ¿Pasa una fila los filtros de grupo y renglón? (el de analista se aplica aparte)
-  function passGR(r){
-    if(curGrupo!=='__ALL__' && String(r.GRUPO||'')!==curGrupo) return false;
-    if(curRenglon!=='' && r.__cod!==curRenglon) return false;
-    return true;
-  }
-  // ¿Pasa una fila TODOS los filtros activos (analista + grupo + renglón)?
-  function passAll(r){
-    if(curFilter!=='__ALL__' && r.__ana!==curFilter) return false;
-    return passGR(r);
-  }
+  // El score y los agregados por analista NO dependen del renglón: el score es la nota
+  // de toda la cartera del analista en el corte actual. El filtro de renglón solo
+  // sirve para aislar un renglón dentro de la tabla de detalle inferior.
 
   function sClass(s){ if(s>=45)return'ev-s-hi'; if(s>=30)return'ev-s-md'; if(s>=15)return'ev-s-lo'; return'ev-s-cr'; }
   function sColor(s){ if(s>=45)return'#2d7a2d'; if(s>=30)return'#c57a00'; if(s>=15)return'#5a2d82'; return'#c0392b'; }
   function money(n){ return '$'+Number(n||0).toLocaleString('en-US',{maximumFractionDigits:0}); }
   function num(n){ return Number(n||0).toLocaleString('en-US'); }
   function normCod(c){ c=String(c==null?'':c).trim(); return c.indexOf('.')>=0?c.replace(/\.0+$/,''):c; }
-
-  // ¿Hay un filtro de grupo o renglón activo? (entonces hay que recalcular por analista)
-  function grActive(){ return curGrupo!=='__ALL__' || curRenglon!==''; }
-
-  // Score de salud (misma fórmula documentada en el panel):
-  // score = ((sano - penalización)/total)*100 + 50
-  // sano = óptimos*1.0 + bajos*0.6 ; penalización = agotados*1.0 + críticos*0.7 + excesos*0.3
-  // (vencidos no es recalculable por renglón desde coverage; se asume 0 en el recálculo filtrado)
-  function calcScore(b){
-    var total=Math.max(1,b.total);
-    var sano=b.optimos*1.0 + b.bajos*0.6;
-    var pen =b.agotados*1.0 + b.criticos*0.7 + b.excesos*0.3;
-    return Math.round(((sano-pen)/total)*100 + 50);
-  }
-
-  // Recalcula el desglose por analista a partir de las filas que pasan los filtros de grupo/renglón.
-  // Devuelve la misma forma que anaData.analistas[] para reutilizar render.
-  function analistasFiltrados(){
-    if(!grActive()) return (anaData.analistas||[]).slice();
-    var by={};
-    (rows||[]).forEach(function(r){
-      if(!passGR(r)) return;
-      var a=r.__ana; if(!by[a]) by[a]={analista:a,total:0,agotados:0,criticos:0,bajos:0,optimos:0,excesos:0,con_reserva:0,valor_riesgo:0,skus_vencidos:0};
-      var b=by[a]; b.total++;
-      switch(r.STATUS){ case 'AGOTADO':b.agotados++;break; case 'CRITICO':b.criticos++;break;
-        case 'BAJO':b.bajos++;break; case 'OPTIMO':b.optimos++;break; case 'EXCESO':b.excesos++;break; }
-      if(Number(r.RESERVA||0)>0) b.con_reserva++;
-    });
-    return Object.keys(by).map(function(k){
-      var b=by[k];
-      b.score_salud=calcScore(b);
-      b.pct_problema=b.total?Math.round(100*(b.agotados+b.criticos)/b.total):0;
-      b.pct_optimo=b.total?Math.round(100*b.optimos/b.total):0;
-      return b;
-    });
-  }
 
   function injectTabs(){
     var bar=document.createElement('div'); bar.className='ev-tabs';
@@ -3549,15 +3487,7 @@ window.addEventListener('load', ()=>{
     sel.innerHTML='<option value="__ALL__">Todos los analistas</option>'+names.map(function(n){return '<option value="'+n+'">'+nombreFull(n)+'</option>'}).join('');
     sel.onchange=function(){ curFilter=sel.value; renderAll(); };
 
-    // Filtro de grupo: grupos únicos presentes en los renglones
-    var gsel=document.getElementById('evFiltroGrupo');
-    var grupos={};
-    (rows||[]).forEach(function(r){ var g=String(r.GRUPO||'').trim(); if(g) grupos[g]=1; });
-    var glist=Object.keys(grupos).sort();
-    gsel.innerHTML='<option value="__ALL__">Todos los grupos</option>'+glist.map(function(g){return '<option value="'+g+'">'+g+'</option>'}).join('');
-    gsel.onchange=function(){ curGrupo=gsel.value; renderAll(); };
-
-    // Filtro de renglón (autocompletar por código — nombre)
+    // Filtro de renglón (autocompletar por código — nombre). SOLO aísla en la tabla de detalle.
     var dl=document.getElementById('evRenglonOpts');
     var seen={}, opts=[];
     (rows||[]).forEach(function(r){ if(r.__cod && !seen[r.__cod]){ seen[r.__cod]=1; opts.push('<option value="'+r.__cod+' — '+(String(r.SUMINISTRO||'').replace(/"/g,'')+'')+'"></option>'); } });
@@ -3565,8 +3495,7 @@ window.addEventListener('load', ()=>{
     var rinp=document.getElementById('evFiltroRenglon');
     function applyRenglon(){
       var v=String(rinp.value||'').trim();
-      if(v===''){ curRenglon=''; renderAll(); return; }
-      // aceptar "codigo — nombre" o solo codigo o nombre
+      if(v===''){ curRenglon=''; renderTable(); return; }
       var cod=normCod(v.split('—')[0]);
       var match=(rows||[]).filter(function(r){ return r.__cod===cod; });
       if(!match.length){
@@ -3574,59 +3503,53 @@ window.addEventListener('load', ()=>{
         match=(rows||[]).filter(function(r){ return String(r.SUMINISTRO||'').toLowerCase().indexOf(low)>=0 || r.__cod.indexOf(normCod(v))>=0; });
       }
       curRenglon=match.length?match[0].__cod:'';
-      renderAll();
+      renderTable();  // el renglón solo afecta la tabla de detalle; KPIs/gráficos/score no cambian
     }
     rinp.onchange=applyRenglon;
     rinp.onkeydown=function(e){ if(e.key==='Enter') applyRenglon(); };
 
     document.getElementById('evFiltroClear').onclick=function(){
-      curFilter='__ALL__'; curGrupo='__ALL__'; curRenglon='';
-      sel.value='__ALL__'; gsel.value='__ALL__'; rinp.value='';
+      curFilter='__ALL__'; curRenglon='';
+      sel.value='__ALL__'; rinp.value='';
       renderAll();
     };
   }
 
   function renderKpis(){
-    var A=analistasFiltrados();
-    var f=(curFilter==='__ALL__')?A:A.filter(function(a){return a.analista===curFilter});
+    var A=anaData.analistas||[]; var f=(curFilter==='__ALL__')?A:A.filter(function(a){return a.analista===curFilter});
     var s=function(k){return f.reduce(function(t,a){return t+(a[k]||0)},0)};
-    var tot;
-    if(grActive()){ tot=Math.max(1,s('total')); }
-    else { tot=(curFilter==='__ALL__')?(anaData.total_skus||1):Math.max(1,s('total')); }
-    // Consumo en riesgo = DEMANDA_MENSUAL de renglones agotados+críticos que pasan TODOS los filtros
+    var tot=(curFilter==='__ALL__')?(anaData.total_skus||1):Math.max(1,s('total'));
+    // Consumo en riesgo = DEMANDA_MENSUAL de renglones agotados+críticos del analista (no depende del renglón aislado)
     var consumoRiesgo=0;
     if(rows){ rows.forEach(function(r){
-      if(passAll(r) && (r.STATUS==='AGOTADO'||r.STATUS==='CRITICO')){
+      if((curFilter==='__ALL__'||r.__ana===curFilter) && (r.STATUS==='AGOTADO'||r.STATUS==='CRITICO')){
         consumoRiesgo+=Number(r.DEMANDA_MENSUAL||0);
       }
     }); }
-    // Valor en riesgo: si hay filtro GR, no es recalculable por renglón -> se omite (—)
-    var valorRiesgoTxt = grActive() ? '—' : money(s('valor_riesgo'));
-    var sinA;
-    if(grActive()){ sinA=(curFilter==='__ALL__'||curFilter==='SIN ASIGNAR')?(f.filter(function(a){return a.analista==='SIN ASIGNAR'}).reduce(function(t,a){return t+a.total},0)):0; }
-    else { sinA=(curFilter==='__ALL__')?anaData.sin_analista_asignado:(curFilter==='SIN ASIGNAR'?s('total'):0); }
+    var sinA=(curFilter==='__ALL__')?anaData.sin_analista_asignado:(curFilter==='SIN ASIGNAR'?s('total'):0);
     var k=[
-      ['Renglones Agotados',num(s('agotados')),'r',(100*s('agotados')/tot).toFixed(1)+'% de su cartera','Renglones con inventario proyectado = 0.'],
-      ['Renglones Críticos',num(s('criticos')),'a',(100*s('criticos')/tot).toFixed(1)+'% de su cartera','Cobertura menor a 1 mes.'],
-      ['Renglones Óptimos',num(s('optimos')),'g',(100*s('optimos')/tot).toFixed(1)+'% de su cartera','Cobertura entre 4 y 12 meses.'],
-      ['Capital Congelado',num(s('con_reserva')),'b','Renglones con reserva','Conteo de renglones con inventario reservado/comprometido (no disponible para despacho libre).'],
-      ['Valor en Riesgo',valorRiesgoTxt,'p','vencido + cr\u00edtico + riesgo','Valor (cantidad x costo) de los lotes en riesgo de vencimiento de esta cartera. Incluye vencidos y por vencer.'+(grActive()?' No disponible con filtro de grupo/rengl\u00f3n activo.':'')],
-      ['Consumo en Riesgo',num(consumoRiesgo),'r','demanda mensual no atendida','Suma de la demanda mensual de los renglones agotados o cr\u00edticos de esta cartera. Es el consumo mensual que NO se est\u00e1 atendiendo por falta de stock.'],
-      ['Sin Analista',num(sinA),'a','renglones sin due\u00f1o','Renglones del inventario que no figuran en el cuadro maestro.'],
+      ['Renglones Agotados',num(s('agotados')),'r',(100*s('agotados')/tot).toFixed(1)+'% de su cartera','Inv. proyectado = 0 (quiebre de stock).','0 meses de cobertura'],
+      ['Renglones Críticos',num(s('criticos')),'a',(100*s('criticos')/tot).toFixed(1)+'% de su cartera','Cobertura menor a 1 mes.','< 1 mes'],
+      ['Renglones Óptimos',num(s('optimos')),'g',(100*s('optimos')/tot).toFixed(1)+'% de su cartera','Cobertura entre 4 y 12 meses.','4 a 12 meses'],
+      ['Capital Congelado',num(s('con_reserva')),'b','Renglones con reserva','Conteo de renglones con inventario reservado/comprometido (no disponible para despacho libre).',''],
+      ['Valor en Riesgo',money(s('valor_riesgo')),'p','vencido + cr\u00edtico + riesgo','Valor (cantidad x costo) de los lotes en riesgo de vencimiento de esta cartera. Incluye vencidos y por vencer.',''],
+      ['Consumo en Riesgo',num(consumoRiesgo),'r','demanda mensual no atendida','Suma de la demanda mensual de los renglones agotados o cr\u00edticos de esta cartera. Es el consumo mensual que NO se est\u00e1 atendiendo por falta de stock.',''],
+      ['Sin Analista',num(sinA),'a','renglones sin due\u00f1o','Renglones del inventario que no figuran en el cuadro maestro.',''],
     ];
     document.getElementById('evKpis').innerHTML=k.map(function(x){
-      return '<div class="ev-kb '+x[2]+'"><div class="ev-kl" title="'+x[4]+'">'+x[0]+'</div><div class="ev-kv">'+x[1]+'</div><div class="ev-ks">'+x[3]+'</div></div>';
+      var rango=x[6]?('<div class="ev-kr">'+x[6]+'</div>'):'';
+      return '<div class="ev-kb '+x[2]+'"><div class="ev-kl" title="'+x[4]+'">'+x[0]+'</div><div class="ev-kv">'+x[1]+'</div>'+rango+'<div class="ev-ks">'+x[3]+'</div></div>';
     }).join('');
   }
 
   var rankSortKey='score_salud', rankSortDir=-1;
   function computeConsumo(ana){
     if(!rows)return 0; var sum=0;
-    rows.forEach(function(r){ if(r.__ana===ana && passGR(r) && (r.STATUS==='AGOTADO'||r.STATUS==='CRITICO')) sum+=Number(r.DEMANDA_MENSUAL||0); });
+    rows.forEach(function(r){ if(r.__ana===ana && (r.STATUS==='AGOTADO'||r.STATUS==='CRITICO')) sum+=Number(r.DEMANDA_MENSUAL||0); });
     return sum;
   }
   function renderRank(){
-    var A=analistasFiltrados();
+    var A=(anaData.analistas||[]).slice();
     A.forEach(function(a){ a.__consumo=computeConsumo(a.analista); });
     A.sort(function(a,b){
       var x=a[rankSortKey], y=b[rankSortKey];
@@ -3675,7 +3598,11 @@ window.addEventListener('load', ()=>{
 
   var tblSortKey=null, tblSortDir=1;
   function renderTable(){
-    var data=(rows||[]).filter(function(r){return passAll(r);});
+    var data=(rows||[]).filter(function(r){
+      if(curFilter!=='__ALL__' && r.__ana!==curFilter) return false;
+      if(curRenglon!=='' && r.__cod!==curRenglon) return false;
+      return true;
+    });
     var ord={AGOTADO:0,CRITICO:1,BAJO:2,OPTIMO:3,EXCESO:4};
     data=data.slice();
     if(tblSortKey){
@@ -3698,7 +3625,6 @@ window.addEventListener('load', ()=>{
     }
     var titleParts=[];
     titleParts.push(curFilter==='__ALL__'?'TODOS':curFilter);
-    if(curGrupo!=='__ALL__') titleParts.push('Grupo: '+curGrupo);
     if(curRenglon!=='') titleParts.push('Rengl\u00f3n: '+curRenglon);
     document.getElementById('evDetailTitle').textContent='\u9612 DETALLE POR RENGL\u00d3N \u2014 '+titleParts.join(' \u00b7 ');
     document.getElementById('evDetailCount').textContent=num(data.length)+' renglones';
@@ -3724,21 +3650,28 @@ window.addEventListener('load', ()=>{
   }
 
   function renderCharts(){
-    var A=analistasFiltrados().slice().sort(function(a,b){return b.score_salud-a.score_salud});
+    var A=(anaData.analistas||[]).slice().sort(function(a,b){return b.score_salud-a.score_salud});
     // Resaltado: si hay analista filtrado, atenuar los demás
     function colorFor(a){
-      var base=sColor(a.score_salud);
       if(curFilter!=='__ALL__' && a.analista!==curFilter) return 'rgba(180,180,180,0.45)';
-      return base;
+      return sColor(a.score_salud);
     }
+    // Rango dinámico del eje de score: permitir negativos sin capar.
+    var scores=A.map(function(a){return Number(a.score_salud)||0});
+    var sMin=Math.min.apply(null,scores.concat([0]));
+    var sMax=Math.max.apply(null,scores.concat([100]));
+    var scoreAxisMin=Math.floor((sMin-10)/10)*10;   // margen inferior
+    var scoreAxisMax=Math.ceil((sMax+10)/10)*10;     // margen superior
+
     if(chS)chS.destroy();
     chS=new Chart(document.getElementById('evChartScore'),{type:'bar',
-      data:{labels:A.map(function(a){return nombreDe(a.analista)}),datasets:[{data:A.map(function(a){return a.score_salud}),backgroundColor:A.map(colorFor)}]},
-      options:{indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{max:100},y:{ticks:{autoSkip:false,font:{size:10}}}},maintainAspectRatio:false}});
+      data:{labels:A.map(function(a){return nombreDe(a.analista)}),datasets:[{data:scores,backgroundColor:A.map(colorFor)}]},
+      options:{indexAxis:'y',plugins:{legend:{display:false}},
+        scales:{x:{min:scoreAxisMin,max:scoreAxisMax,grid:{color:function(c){return c.tick.value===0?'#888':'rgba(0,0,0,.08)'}}},
+                y:{ticks:{autoSkip:false,font:{size:10}}}},maintainAspectRatio:false}});
     var labelPlugin={id:'lbl',afterDatasetsDraw:function(c){
       var ct=c.ctx; ct.save(); ct.font='9px Consolas';
       var meta=c.getDatasetMeta(0);
-      // ordenar por x para alternar el lado de la etiqueta y reducir solape
       var idx=c.data.datasets[0].data.map(function(p,i){return i;}).sort(function(a,b){
         return c.data.datasets[0].data[a].x-c.data.datasets[0].data[b].x; });
       idx.forEach(function(i,rank){
@@ -3750,11 +3683,20 @@ window.addEventListener('load', ()=>{
         ct.fillText(pt.label,m.x+dx+1,m.y+dy);
       });
       ct.restore(); }};
+
+    // Scatter score vs tamaño: márgenes en ambos ejes para que los puntos no caigan en el borde.
+    var totales=A.map(function(a){return Number(a.total)||0});
+    var tMax=Math.max.apply(null,totales.concat([1]));
+    var xPad=Math.max(5,Math.ceil(tMax*0.08));
     if(chX)chX.destroy();
     chX=new Chart(document.getElementById('evChartScatter'),{type:'scatter',
       data:{datasets:[{data:A.map(function(a){return{x:a.total,y:a.score_salud,label:a.analista}}),backgroundColor:A.map(colorFor),pointRadius:5}]},
       options:{plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return c.raw.label+': '+c.raw.x+' renglones, score '+c.raw.y}}}},
-        scales:{x:{title:{display:true,text:'Renglones asignados'}},y:{title:{display:true,text:'Score'},min:0,max:100}},maintainAspectRatio:false},plugins:[labelPlugin]});
+        scales:{x:{title:{display:true,text:'Renglones asignados'},min:-xPad,suggestedMax:tMax+xPad},
+                y:{title:{display:true,text:'Score'},min:scoreAxisMin,max:scoreAxisMax,grid:{color:function(c){return c.tick.value===0?'#888':'rgba(0,0,0,.08)'}}}},
+        maintainAspectRatio:false},plugins:[labelPlugin]});
+
+    // Scatter cartera sana vs crítica: margen alrededor del 0-100 para no pegar al borde.
     var pts=A.map(function(a){ var t=Math.max(1,a.total);
       var critPct=Math.round(100*(a.agotados+a.criticos)/t);
       var sanoPct=Math.round(100*(a.optimos+a.bajos)/t);
@@ -3763,28 +3705,29 @@ window.addEventListener('load', ()=>{
     chK=new Chart(document.getElementById('evChartStock'),{type:'scatter',
       data:{datasets:[{data:pts,backgroundColor:A.map(colorFor),pointRadius:6}]},
       options:{plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return c.raw.label+': '+c.raw.x+'% crítico, '+c.raw.y+'% sano'}}}},
-        scales:{x:{title:{display:true,text:'% cartera en agotado+crítico'},min:0,max:100},y:{title:{display:true,text:'% cartera óptimo+bajo'},min:0,max:100}},maintainAspectRatio:false},plugins:[labelPlugin]});
+        scales:{x:{title:{display:true,text:'% cartera en agotado+crítico'},min:-5,max:105},
+                y:{title:{display:true,text:'% cartera óptimo+bajo'},min:-5,max:105}},maintainAspectRatio:false},plugins:[labelPlugin]});
   }
 
   function renderAll(){ renderKpis(); renderRank(); renderTable(); if(window.Chart && loaded){ renderCharts(); } }
 
   // ===== Modal: explicación del Score por analista =====
   function openScoreModal(ana){
-    var A=analistasFiltrados();
+    var A=anaData.analistas||[];
     var a=null; for(var i=0;i<A.length;i++){ if(A[i].analista===ana){ a=A[i]; break; } }
     if(!a) return;
     var total=Math.max(1,a.total);
     var sanoOpt=a.optimos*1.0, sanoBajo=a.bajos*0.6, sano=sanoOpt+sanoBajo;
-    var pAg=a.agotados*1.0, pCr=a.criticos*0.7, pEx=a.excesos*0.3, pen=pAg+pCr+pEx;
     var venc=(typeof a.skus_vencidos==='number')?a.skus_vencidos:0;
-    var pVe=grActive()?0:venc*0.5; pen+=pVe;
+    var pAg=a.agotados*1.0, pCr=a.criticos*0.7, pVe=venc*0.5, pEx=a.excesos*0.3;
+    var pen=pAg+pCr+pVe+pEx;
     var bruto=((sano-pen)/total)*100, score=Math.round(bruto+50);
     var nf=function(x){ return (Math.round(x*100)/100).toLocaleString('en-US'); };
     var cl=sClass(score), col=sColor(score);
     var html=''+
       '<div class="evm-ttl">Score de Salud \u2014 <strong>'+ana+'</strong> <span style="font-weight:400;color:#555">'+nombreDe(ana)+'</span></div>'+
       '<div class="evm-big" style="color:'+col+'">'+score+' <span class="evm-tag '+cl+'">'+(score>=45?'VERDE':score>=30?'\u00c1MBAR':score>=15?'MORADO':'ROJO')+'</span></div>'+
-      '<div class="evm-sub">Cartera de '+num(a.total)+' renglones en el corte actual'+(grActive()?' (filtrada)':'')+'.</div>'+
+      '<div class="evm-sub">Nota global del manejo de toda su cartera: '+num(a.total)+' renglones en el corte actual. No depende de un renglón ni grupo en particular.</div>'+
       '<table class="evm-tbl">'+
         '<tr class="evm-h"><td>Componente</td><td>Renglones</td><td>Peso</td><td>Aporte</td></tr>'+
         '<tr class="evm-pos"><td>\u00d3ptimos</td><td>'+num(a.optimos)+'</td><td>\u00d7 1.0</td><td>+'+nf(sanoOpt)+'</td></tr>'+
@@ -3792,7 +3735,7 @@ window.addEventListener('load', ()=>{
         '<tr class="evm-st"><td colspan="3">Inventario sano</td><td>+'+nf(sano)+'</td></tr>'+
         '<tr class="evm-neg"><td>Agotados</td><td>'+num(a.agotados)+'</td><td>\u00d7 1.0</td><td>\u2212'+nf(pAg)+'</td></tr>'+
         '<tr class="evm-neg"><td>Cr\u00edticos</td><td>'+num(a.criticos)+'</td><td>\u00d7 0.7</td><td>\u2212'+nf(pCr)+'</td></tr>'+
-        '<tr class="evm-neg"><td>Vencidos</td><td>'+(grActive()?'n/d':num(venc))+'</td><td>\u00d7 0.5</td><td>\u2212'+nf(pVe)+'</td></tr>'+
+        '<tr class="evm-neg"><td>Vencidos</td><td>'+num(venc)+'</td><td>\u00d7 0.5</td><td>\u2212'+nf(pVe)+'</td></tr>'+
         '<tr class="evm-neg"><td>Excesos</td><td>'+num(a.excesos)+'</td><td>\u00d7 0.3</td><td>\u2212'+nf(pEx)+'</td></tr>'+
         '<tr class="evm-st"><td colspan="3">Penalizaci\u00f3n</td><td>\u2212'+nf(pen)+'</td></tr>'+
       '</table>'+
@@ -3800,9 +3743,9 @@ window.addEventListener('load', ()=>{
         'score = ((sano \u2212 penalizaci\u00f3n) / total) \u00d7 100 + 50<br>'+
         'score = (('+nf(sano)+' \u2212 '+nf(pen)+') / '+num(total)+') \u00d7 100 + 50 = <strong>'+nf(bruto)+' + 50 = '+score+'</strong>'+
       '</div>'+
-      '<div class="evm-note">El +50 centra la escala (50 = neutro). <strong>Colores:</strong> Verde \u226545 \u00b7 \u00c1mbar 30\u201344 \u00b7 Morado 15\u201329 \u00b7 Rojo &lt;15.'+
-      (grActive()?'<br><strong>Nota:</strong> con filtro de grupo/rengl\u00f3n activo el score se recalcula sobre la cartera filtrada; los renglones vencidos no se contabilizan en ese recálculo.':'')+
-      '<br>El score compara analistas pero NO ajusta por la dificultad de la cartera (ver gr\u00e1ficos de carga). Es un insumo de diagn\u00f3stico, no una prueba de responsabilidad individual.</div>';
+      '<div class="evm-note"><strong>Rangos de estado</strong> (cobertura = inv. proyectado \u00f7 despacho mensual): Agotado = 0 \u00b7 Cr\u00edtico &lt;1 mes \u00b7 Bajo 1\u20134 meses \u00b7 \u00d3ptimo 4\u201312 meses \u00b7 Exceso &gt;12 meses.<br>'+
+      'El +50 centra la escala (50 = neutro). <strong>Colores:</strong> Verde \u226545 \u00b7 \u00c1mbar 30\u201344 \u00b7 Morado 15\u201329 \u00b7 Rojo &lt;15. El score puede ser negativo si la cartera tiene muchos agotados/cr\u00edticos.<br>'+
+      'El score compara analistas pero NO ajusta por la dificultad de la cartera (ver gr\u00e1ficos de carga). Es un insumo de diagn\u00f3stico, no una prueba de responsabilidad individual.</div>';
     document.getElementById('evmBody').innerHTML=html;
     document.getElementById('evmOverlay').style.display='flex';
   }
