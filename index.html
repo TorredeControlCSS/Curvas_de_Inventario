@@ -3337,11 +3337,12 @@ window.addEventListener('load', ()=>{
   #evDetailTbl th:nth-child(3),#evDetailTbl td:nth-child(3){max-width:280px}
   .ev-score-clk{cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px}
   .ev-score-clk:hover{filter:brightness(0.9);outline:1px solid #888}
-  .evm-overlay{display:none;position:fixed;inset:0;background:rgba(20,30,50,.55);z-index:9999;align-items:flex-start;justify-content:center;padding:40px 16px;overflow:auto}
-  .evm-box{background:#fff;border:1px solid #b0c8e8;max-width:560px;width:100%;box-shadow:0 8px 30px rgba(0,0,0,.3);font-family:inherit}
-  .evm-head{background:linear-gradient(180deg,#1a5fa8,#0d4080);color:#fff;padding:8px 14px;font-size:13px;font-weight:700;display:flex;justify-content:space-between;align-items:center}
-  .evm-x{cursor:pointer;font-size:18px;line-height:1;background:none;border:none;color:#fff;font-weight:700}
-  .evm-body{padding:14px 16px;font-size:12.5px;color:#222}
+  .evm-overlay{display:none;position:fixed;inset:0;background:rgba(20,30,50,.55);z-index:9999;align-items:flex-start;justify-content:center;padding:5vh 16px;overflow:auto}
+  .evm-box{background:#fff;border:1px solid #b0c8e8;max-width:620px;width:100%;box-shadow:0 8px 30px rgba(0,0,0,.3);font-family:inherit;margin:auto;border-radius:4px;overflow:hidden}
+  .evm-head{background:linear-gradient(180deg,#1a5fa8,#0d4080);color:#fff;padding:10px 14px;font-size:13px;font-weight:700;display:flex;justify-content:space-between;align-items:center;gap:10px}
+  .evm-head span{flex:1}
+  .evm-x{cursor:pointer;font-size:20px;line-height:1;background:none;border:none;color:#fff;font-weight:700;flex:0 0 auto}
+  .evm-body{padding:14px 16px;font-size:12.5px;color:#222;max-height:80vh;overflow:auto}
   .evm-ttl{font-size:13px;margin-bottom:4px}
   .evm-big{font-family:'Consolas',monospace;font-size:34px;font-weight:700;line-height:1}
   .evm-tag{font-size:11px;font-weight:700;padding:2px 8px;border:1px solid;border-radius:3px;vertical-align:middle;margin-left:6px}
@@ -3429,7 +3430,7 @@ window.addEventListener('load', ()=>{
 
 <div class="evm-overlay" id="evmOverlay">
   <div class="evm-box">
-    <div class="evm-head"><span>&#191;C&#243;mo se lleg&#243; a este Score?</span><button class="evm-x" id="evmClose">&times;</button></div>
+    <div class="evm-head"><span id="evmTitle">&#191;C&#243;mo se lleg&#243; a este Score?</span><button class="evm-x" id="evmClose">&times;</button></div>
     <div class="evm-body" id="evmBody"></div>
   </div>
 </div>
@@ -3773,22 +3774,29 @@ window.addEventListener('load', ()=>{
     var statsBox=document.getElementById('evDistStats');
     if(!st || scores.length<3){ if(statsBox) statsBox.innerHTML='<div style="color:#888">Datos insuficientes para el análisis.</div>'; return; }
 
-    // BARRAS POR VALOR EXACTO: un punto por cada score real, contando repeticiones.
-    // Sin agrupar en bins. Cada barra de ancho 1 sobre el eje de score.
-    var freq={};
-    scores.forEach(function(s){ freq[s]=(freq[s]||0)+1; });
-    var barData=Object.keys(freq).map(function(k){ return {x:Number(k),y:freq[k]}; }).sort(function(a,b){return a.x-b.x;});
+    // BARRAS AGRUPADAS POR RANGOS (bins). Ancho de bin = 10 puntos de score,
+    // alineado a múltiplos de 10. Cada barra cubre [inicio, inicio+10).
+    var binW=10;
+    var bLo=Math.floor(st.min/binW)*binW, bHi=Math.ceil((st.max+0.0001)/binW)*binW;
+    if(bHi<=bLo) bHi=bLo+binW;
+    var bins=[];
+    for(var bb=bLo;bb<bHi;bb+=binW){ bins.push({ini:bb,fin:bb+binW,centro:bb+binW/2,n:0}); }
+    scores.forEach(function(s){
+      var idx=Math.floor((s-bLo)/binW); if(idx<0)idx=0; if(idx>=bins.length)idx=bins.length-1;
+      bins[idx].n++;
+    });
+    // Barras posicionadas en el centro de cada rango, ancho proporcional al bin.
+    var barData=bins.map(function(b){ return {x:b.centro,y:b.n}; });
 
     // Eje continuo con margen modesto a ambos lados.
     var pad=Math.max(8,st.sd*0.6);
-    var xLo=Math.floor(st.min-pad), xHi=Math.ceil(st.max+pad);
+    var xLo=Math.min(bLo,Math.floor(st.min-pad)), xHi=Math.max(bHi,Math.ceil(st.max+pad));
 
     // KDE gaussiano (densidad real, continua). Ancho de banda: regla de Silverman.
     var bw=1.06*st.sd*Math.pow(st.n,-0.2); if(!(bw>0)) bw=5;
     function kde(xv){ var s=0; for(var i=0;i<scores.length;i++){ s+=normPdf(xv,scores[i],bw); } return s/scores.length; }
-    // Escala: la densidad (área=1) se lleva a "n° de analistas" multiplicando por n.
-    // (las barras de ancho 1 representan conteo; densidad×n×1 las hace comparables)
-    var scale=scores.length;
+    // Escala: densidad (área=1) -> "n° de analistas" multiplicando por n*binW (área del histograma).
+    var scale=scores.length*binW;
     var xs=[]; for(var x=xLo;x<=xHi;x+=1) xs.push(x);
     var kdeData=xs.map(function(xv){ return {x:xv,y:kde(xv)*scale}; });
     var normData=xs.map(function(xv){ return {x:xv,y:normPdf(xv,st.mean,st.sd)*scale}; });
@@ -3796,14 +3804,15 @@ window.addEventListener('load', ()=>{
     if(window.__chDist) window.__chDist.destroy();
     window.__chDist=new Chart(document.getElementById('evChartDist'),{
       data:{datasets:[
-        {type:'bar',label:'Analistas (valor exacto)',data:barData,backgroundColor:'#9db8d6',borderColor:'#5a8fc7',borderWidth:1,order:3,barThickness:8},
+        {type:'bar',label:'Analistas por rango',data:barData,backgroundColor:'#9db8d6',borderColor:'#5a8fc7',borderWidth:1,order:3,barThickness:'flex',categoryPercentage:1,barPercentage:0.96},
         {type:'line',label:'Densidad real (KDE)',data:kdeData,borderColor:'#1a5fa8',backgroundColor:'rgba(26,95,168,0.10)',fill:true,borderWidth:2.5,tension:0.4,pointRadius:0,order:1},
         {type:'line',label:'Normal teórica (referencia)',data:normData,borderColor:'#c0392b',backgroundColor:'transparent',borderWidth:1.5,borderDash:[5,4],tension:0.4,pointRadius:0,order:2}
       ]},
       options:{maintainAspectRatio:false,parsing:false,
         plugins:{legend:{position:'bottom',labels:{font:{size:11},boxWidth:14}},
-          tooltip:{callbacks:{title:function(it){return 'Score '+Math.round(it[0].parsed.x)}}}},
-        scales:{x:{type:'linear',min:xLo,max:xHi,title:{display:true,text:'Score'},ticks:{stepSize:10,font:{size:9}}},
+          tooltip:{callbacks:{title:function(it){var c=it[0].parsed.x;return 'Rango '+(c-binW/2)+' a '+(c+binW/2);},
+                              label:function(it){return it.dataset.label+': '+(it.dataset.type==='bar'?it.parsed.y+' analista(s)':it.parsed.y.toFixed(2));}}}},
+        scales:{x:{type:'linear',min:xLo,max:xHi,title:{display:true,text:'Score (rangos de '+binW+')'},ticks:{stepSize:10,font:{size:9}}},
                 y:{title:{display:true,text:'N° de analistas'},beginAtZero:true,ticks:{precision:0}}}}
     });
 
@@ -3844,7 +3853,6 @@ window.addEventListener('load', ()=>{
 
   function openDistHelpModal(){
     var html=''+
-      '<div class="evm-ttl"><strong>C\u00f3mo leer la distribuci\u00f3n del score</strong></div>'+
       '<div style="font-size:12px;color:#222;line-height:1.6">'+
       'Este panel responde: <em>\u00bfc\u00f3mo se reparten los scores de desempe\u00f1o entre los analistas? \u00bfForman una campana sim\u00e9trica o hay un sesgo?</em><br><br>'+
       '<strong>Las tres capas del gr\u00e1fico:</strong>'+
@@ -3865,6 +3873,7 @@ window.addEventListener('load', ()=>{
       '<div class="evm-calc">La columna \u201cModelo al que apunta\u201d del panel traduce cada n\u00famero al tipo de distribuci\u00f3n que sugiere (normal, sesgo negativo/positivo, leptoc\u00fartica, etc.). El recuadro final resume a qu\u00e9 modelo se ajusta el conjunto.</div>'+
       '<div class="evm-note">El score se calcula sobre los valores <strong>reales</strong> (incluyendo negativos). Con pocos analistas el test de Shapiro-Wilk tiene poca potencia: la forma de la curva azul (KDE) suele ser m\u00e1s informativa que el p-valor por s\u00ed solo.</div>'+
       '</div>';
+    document.getElementById('evmTitle').innerHTML='C\u00f3mo leer la distribuci\u00f3n del score';
     document.getElementById('evmBody').innerHTML=html;
     document.getElementById('evmOverlay').style.display='flex';
   }
@@ -3962,8 +3971,9 @@ window.addEventListener('load', ()=>{
         'score = (('+nf(sano)+' \u2212 '+nf(pen)+') / '+num(total)+') \u00d7 100 + 50 = <strong>'+nf(bruto)+' + 50 = '+score+'</strong>'+
       '</div>'+
       '<div class="evm-note"><strong>Rangos de estado</strong> (cobertura = inv. proyectado \u00f7 despacho mensual): Agotado = 0 \u00b7 Cr\u00edtico &lt;1 mes \u00b7 Bajo 1\u20134 meses \u00b7 \u00d3ptimo 4\u201312 meses \u00b7 Exceso &gt;12 meses.<br>'+
-      'El +50 centra la escala (50 = neutro). <strong>Colores:</strong> Verde \u226545 \u00b7 \u00c1mbar 30\u201344 \u00b7 Morado 15\u201329 \u00b7 Rojo &lt;15. El score puede ser negativo si la cartera tiene muchos agotados/cr\u00edticos.<br>'+
+      '<strong>M\u00e1s alto = mejor</strong> (ideal 100). El +50 solo desplaza la escala; 50 es el empate, no la meta. <strong>Colores:</strong> Verde \u226545 \u00b7 \u00c1mbar 30\u201344 \u00b7 Morado 15\u201329 \u00b7 Rojo &lt;15. El score puede ser negativo si la cartera tiene muchos agotados/cr\u00edticos.<br>'+
       'El score compara analistas pero NO ajusta por la dificultad de la cartera (ver gr\u00e1ficos de carga). Es un insumo de diagn\u00f3stico, no una prueba de responsabilidad individual.</div>';
+    document.getElementById('evmTitle').innerHTML='&#191;C\u00f3mo se lleg\u00f3 a este Score?';
     document.getElementById('evmBody').innerHTML=html;
     document.getElementById('evmOverlay').style.display='flex';
   }
