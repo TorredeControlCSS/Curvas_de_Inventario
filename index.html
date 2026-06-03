@@ -408,6 +408,7 @@ let codes=[], sups=[], groups=[];
 
 // Mapa para mostrar el analista responsable al buscar un renglón (cargado de coverage).
 let ANA_BY_COD = {};      // codigoNorm -> iniciales del analista
+let CLASE_BY_COD = {};    // codigoNorm -> {clase, cv} ABC-XYZ
 const ANA_NOMBRES = {
   "SS":"Simón Sotillo","VD":"Vladimir De León","BS":"Braulio Serrano",
   "JME":"José M. Espinosa","JE":"José M. Espinosa","FC":"Fernando Calderón",
@@ -427,8 +428,9 @@ async function loadAnalistaMaps(){
     const cov=await fetchJSON(API_BASE+'?report=coverage&ts='+Date.now());
     if(cov&&cov.header&&cov.rows){
       const ixCod=cov.header.indexOf('CODIGO'), ixAna=cov.header.indexOf('ANALISTA');
+      const ixClase=cov.header.indexOf('CLASE'), ixCv=cov.header.indexOf('CV');
       if(ixCod>=0&&ixAna>=0){
-        cov.rows.forEach(r=>{ const c=anaNorm(r[ixCod]); const a=String(r[ixAna]||'').trim(); if(c) ANA_BY_COD[c]=a||'SIN ASIGNAR'; });
+        cov.rows.forEach(r=>{ const c=anaNorm(r[ixCod]); const a=String(r[ixAna]||'').trim(); if(c){ ANA_BY_COD[c]=a||'SIN ASIGNAR'; if(ixClase>=0) CLASE_BY_COD[c]={clase:String(r[ixClase]||'').toUpperCase(),cv:(ixCv>=0?r[ixCv]:null)}; } });
       }
     }
   }catch(e){ console.warn('No se pudo cargar el mapa de analista:',e); }
@@ -442,9 +444,21 @@ function renderAnalistaCard(codigo){
   if(!cod || ini===undefined || ini===null){ card.style.display='none'; return; }
   const asignado=(ini && ini!=='SIN ASIGNAR');
   const nombre=anaNombre(ini);
+  const ci=CLASE_BY_COD[cod];
+  let claseHtml='';
+  if(ci && /^[ABC][XYZ]$/.test(ci.clase)){
+    const abc=ci.clase.charAt(0);
+    const bg= abc==='A'?'#fdecea':abc==='B'?'#fff4e0':'#eef2f7';
+    const bd= abc==='A'?'#e0a0a0':abc==='B'?'#e0c080':'#c0c8d4';
+    const fg= abc==='A'?'#9a2018':abc==='B'?'#7a5300':'#33475b';
+    claseHtml='<div style="margin-top:5px;font-size:11px;color:var(--muted)">Clasificaci\u00f3n ABC-XYZ: '+
+      '<span style="font-family:Consolas,monospace;font-weight:700;padding:1px 6px;border:1px solid '+bd+';background:'+bg+';color:'+fg+';border-radius:2px">'+ci.clase+'</span>'+
+      (ci.cv!=null?' <span style="font-family:Consolas,monospace">CV='+ci.cv+'</span>':'')+'</div>';
+  }
   body.innerHTML='<div style="font-size:16px;font-weight:700;color:var(--text)">'+nombre+
     (asignado?' <span style="font-size:12px;font-weight:400;color:var(--muted);font-family:Consolas,monospace">('+ini+')</span>':'')+'</div>'+
-    (asignado?'':'<div style="font-size:11px;color:#e06666;margin-top:2px">Este renglón no figura en el cuadro maestro.</div>');
+    (asignado?'':'<div style="font-size:11px;color:#e06666;margin-top:2px">Este renglón no figura en el cuadro maestro.</div>')+
+    claseHtml;
   card.style.display='';
 }
 let lastSerieForReports = null; 
@@ -3352,6 +3366,11 @@ window.addEventListener('load', ()=>{
   .evm-tbl td:first-child{font-family:inherit;text-align:left;width:34%}
   .evm-tbl td:not(:first-child){text-align:right}
   .evm-tbl td.evm-desc,.evm-tbl td[style*="text-align:left"]{font-family:inherit;text-align:left}
+  /* Tablas del modal de AYUDA: texto descriptivo, layout natural (no fixed, no monospace) */
+  .evm-help{width:100%;border-collapse:collapse;font-size:11.5px;margin:6px 0 10px;table-layout:auto}
+  .evm-help td{padding:5px 8px;border:1px solid #d4dae3;font-family:inherit;text-align:left;vertical-align:top;line-height:1.4}
+  .evm-help td:first-child{width:30%;font-weight:600;white-space:normal}
+  .evm-help .evm-h td{background:#e0e4ea;font-weight:700;text-align:center}
   .evm-h td{background:#e0e4ea;font-weight:700;font-family:inherit!important;text-align:center!important}
   .evm-pos td{background:#f0f7f0;color:#2d7a2d}
   .evm-neg td{background:#fdf0f0;color:#c0392b}
@@ -3428,6 +3447,19 @@ window.addEventListener('load', ()=>{
   </div>
 </div>
 
+<div id="abcxyzView" class="ev-root container ev-hide">
+  <div style="padding:14px 0 6px">
+    <div style="font-size:17px;font-weight:700;color:#0a2a5a">Clasificaci&oacute;n ABC-XYZ &mdash; Criticidad de Rengl&oacute;n</div>
+    <div style="font-size:12px;color:#555;margin-top:3px;max-width:900px">No todos los renglones se comportan igual. Esta matriz cruza el <strong>valor de consumo</strong> (ABC) con la <strong>variabilidad de demanda</strong> (XYZ). Un AX (alto valor, demanda estable) no tiene excusa para fallar; un CZ (bajo valor, demanda err&aacute;tica) es intr&iacute;nsecamente dif&iacute;cil. Esta &oacute;ptica pondera la evaluaci&oacute;n del planificador.</div>
+  </div>
+  <div class="ev-al" style="background:#eef4fb;border-color:#90b8d8;border-left-color:#1a5fa8;color:#0d2a52;font-size:11.5px">
+    <strong>ABC (volumen):</strong> A = top 80% del consumo acumulado &middot; B = siguiente 15% &middot; C = resto. &nbsp;|&nbsp;
+    <strong>XYZ (variabilidad, CV=&sigma;/&mu;):</strong> X = estable (CV&le;0.5) &middot; Y = moderada (0.5&ndash;1) &middot; Z = err&aacute;tica (CV&gt;1).
+  </div>
+  <div id="abcMatrix" style="margin-top:10px"></div>
+  <div id="abcDetail" style="margin-top:12px"></div>
+</div>
+
 <div class="evm-overlay" id="evmOverlay">
   <div class="evm-box">
     <div class="evm-head"><span id="evmTitle">&#191;C&#243;mo se lleg&#243; a este Score?</span><button class="evm-x" id="evmClose">&times;</button></div>
@@ -3464,6 +3496,16 @@ window.addEventListener('load', ()=>{
   function sColor(s){ if(s>=45)return'#2d7a2d'; if(s>=30)return'#c57a00'; if(s>=15)return'#5a2d82'; return'#c0392b'; }
   function money(n){ return '$'+Number(n||0).toLocaleString('en-US',{maximumFractionDigits:0}); }
   function num(n){ return Number(n||0).toLocaleString('en-US'); }
+  // Badge de clase ABC-XYZ. Color por criticidad: A/X tonos fuertes, C/Z suaves.
+  function claseBadge(clase){
+    var c=String(clase||'').toUpperCase();
+    if(!c) return '<span style="color:#999">\u2014</span>';
+    var abc=c.charAt(0);
+    var bg = abc==='A' ? '#fdecea' : abc==='B' ? '#fff4e0' : '#eef2f7';
+    var bd = abc==='A' ? '#e0a0a0' : abc==='B' ? '#e0c080' : '#c0c8d4';
+    var fg = abc==='A' ? '#9a2018' : abc==='B' ? '#7a5300' : '#33475b';
+    return '<span title="ABC-XYZ" style="display:inline-block;font-family:Consolas,monospace;font-weight:700;font-size:11px;padding:1px 6px;border:1px solid '+bd+';background:'+bg+';color:'+fg+';border-radius:2px">'+c+'</span>';
+  }
   function normCod(c){ c=String(c==null?'':c).trim(); return c.indexOf('.')>=0?c.replace(/\.0+$/,''):c; }
 
   // score_real = score de salud definitivo que usan ranking, gráficos y distribución.
@@ -3492,15 +3534,19 @@ window.addEventListener('load', ()=>{
   function injectTabs(){
     var bar=document.createElement('div'); bar.className='ev-tabs';
     bar.innerHTML='<button class="ev-tab active" data-v="curvas">\uD83D\uDCC8 Curvas de Inventario</button>'+
-                  '<button class="ev-tab" data-v="eval">\uD83D\uDC65 Evaluaci\u00f3n de Analistas</button>';
+                  '<button class="ev-tab" data-v="eval">\uD83D\uDC65 Evaluaci\u00f3n de Analistas</button>'+
+                  '<button class="ev-tab" data-v="abcxyz">\uD83D\uDD22 ABC-XYZ</button>';
     var curvas=document.getElementById('reportArea');
     if(curvas&&curvas.parentNode){ curvas.parentNode.insertBefore(bar,curvas); }
     else { document.body.insertBefore(bar,document.body.firstChild); }
     bar.addEventListener('click',function(e){ var b=e.target.closest('.ev-tab'); if(!b)return;
       bar.querySelectorAll('.ev-tab').forEach(function(t){t.classList.remove('active')}); b.classList.add('active');
-      var v=b.dataset.v, ev=document.getElementById('evalAnalistas');
-      if(v==='eval'){ if(curvas)curvas.classList.add('ev-hide'); ev.classList.remove('ev-hide'); if(!loaded)loadAll(); }
-      else { ev.classList.add('ev-hide'); if(curvas)curvas.classList.remove('ev-hide'); } });
+      var v=b.dataset.v, ev=document.getElementById('evalAnalistas'), abc=document.getElementById('abcxyzView');
+      // ocultar todo primero
+      if(curvas)curvas.classList.add('ev-hide'); ev.classList.add('ev-hide'); if(abc)abc.classList.add('ev-hide');
+      if(v==='eval'){ ev.classList.remove('ev-hide'); if(!loaded)loadAll(); }
+      else if(v==='abcxyz'){ abc.classList.remove('ev-hide'); if(!loaded){ loadAll(); } else { renderAbcXyz(); } }
+      else { if(curvas)curvas.classList.remove('ev-hide'); } });
   }
 
   function loadAll(){
@@ -3528,6 +3574,7 @@ window.addEventListener('load', ()=>{
       injectScoreReal();
       document.getElementById('evGen').textContent='Generado: '+(anaData.generado||'')+' \u00b7 '+num(anaData.total_skus)+' renglones · '+num(anaData.sin_analista_asignado)+' sin asignar';
       fillFiltro(); renderAll(); ensureChart(function(){ renderCharts(); });
+      renderAbcXyz();
     }).catch(function(){ document.getElementById('evGen').textContent='error al cargar'; });
   }
 
@@ -3681,15 +3728,21 @@ window.addEventListener('load', ()=>{
     document.getElementById('evDetailTitle').textContent='\u9612 DETALLE POR RENGL\u00d3N \u2014 '+titleParts.join(' \u00b7 ');
     document.getElementById('evDetailCount').textContent=num(data.length)+' renglones';
     function arr(k){ return tblSortKey===k?(tblSortDir<0?' \u25bc':' \u25b2'):''; }
-    var cols=[['__ana','Analista'],['__cod','C\u00f3digo'],['SUMINISTRO','Rengl\u00f3n'],['GRUPO','Grupo'],['STATUS','Status'],['INV_ACTUAL','Inv. Act'],['RECEPCION_7D','Recep'],['TRANSITO','Tr\u00e1nsito'],['RESERVA','Reserva'],['INV_PROY','Inv. Proy'],['MESES_COB','Cob (m)'],['DEMANDA_MENSUAL','Demanda Mens.']];
+    var cols=[['__ana','Analista'],['__cod','C\u00f3digo'],['SUMINISTRO','Rengl\u00f3n'],['GRUPO','Grupo'],['CLASE','Clase'],['STATUS','Status'],['INV_ACTUAL','Inv. Act'],['TRANSITO','Tr\u00e1nsito'],['INV_PROY','Inv. Proy'],['MESES_COB','Cob (m)'],['DEMANDA_MENSUAL','Demanda Mens.'],['ROP','ROP'],['INV_CRITICO','Inv. Cr\u00edt.'],['GAP_NETO','GAP neto']];
     var h='<thead><tr>';
     cols.forEach(function(c){ h+='<th data-tk="'+c[0]+'" style="cursor:pointer">'+c[1]+arr(c[0])+'</th>'; });
     h+='</tr></thead><tbody>';
     data.forEach(function(r){
+      var gap=Number(r.GAP_NETO||0);
+      var gapCell= gap>0
+        ? '<td class="ev-rt" style="color:#c0392b;font-weight:700">'+num(gap)+'</td>'
+        : '<td class="ev-rt" style="color:#2d7a2d">'+num(gap)+'</td>';
       h+='<tr><td><strong>'+r.__ana+'</strong> <span style="color:#555;font-weight:400">'+nombreDe(r.__ana)+'</span></td><td class="ev-mono">'+r.__cod+'</td><td>'+(r.SUMINISTRO||'')+'</td><td>'+(r.GRUPO||'')+'</td>'+
+        '<td>'+claseBadge(r.CLASE)+'</td>'+
         '<td><span class="ev-badge ev-b-'+r.STATUS+'">'+r.STATUS+'</span></td>'+
-        '<td class="ev-rt">'+num(r.INV_ACTUAL)+'</td><td class="ev-rt">'+num(r.RECEPCION_7D)+'</td><td class="ev-rt">'+num(r.TRANSITO)+'</td>'+
-        '<td class="ev-rt">'+num(r.RESERVA)+'</td><td class="ev-rt">'+num(r.INV_PROY)+'</td><td class="ev-rt">'+(r.MESES_COB||'')+'</td><td class="ev-rt">'+num(r.DEMANDA_MENSUAL)+'</td></tr>';
+        '<td class="ev-rt">'+num(r.INV_ACTUAL)+'</td><td class="ev-rt">'+num(r.TRANSITO)+'</td>'+
+        '<td class="ev-rt">'+num(r.INV_PROY)+'</td><td class="ev-rt">'+(r.MESES_COB||'')+'</td><td class="ev-rt">'+num(r.DEMANDA_MENSUAL)+'</td>'+
+        '<td class="ev-rt">'+num(r.ROP)+'</td><td class="ev-rt">'+num(r.INV_CRITICO)+'</td>'+gapCell+'</tr>';
     });
     h+='</tbody>'; var t=document.getElementById('evDetailTbl'); t.innerHTML=h;
     t.querySelectorAll('thead th[data-tk]').forEach(function(th){
@@ -3856,20 +3909,20 @@ window.addEventListener('load', ()=>{
       '<div style="font-size:12px;color:#222;line-height:1.6">'+
       'Este panel responde: <em>\u00bfc\u00f3mo se reparten los scores de desempe\u00f1o entre los analistas? \u00bfForman una campana sim\u00e9trica o hay un sesgo?</em><br><br>'+
       '<strong>Las tres capas del gr\u00e1fico:</strong>'+
-      '<table class="evm-tbl" style="margin-top:6px">'+
+      '<table class="evm-help">'+
         '<tr class="evm-h"><td>Elemento</td><td>Qu\u00e9 es</td></tr>'+
-        '<tr><td style="white-space:nowrap;color:#5a8fc7;font-weight:700">Barras</td><td style="text-align:left">Cada barra es un valor de score <strong>exacto</strong>; su altura cuenta cu\u00e1ntos analistas tienen ese score.</td></tr>'+
-        '<tr><td style="white-space:nowrap;color:#1a5fa8;font-weight:700">L\u00ednea azul (KDE)</td><td style="text-align:left">Densidad <strong>real</strong> de los datos: dibuja la forma verdadera de la distribuci\u00f3n, sea o no normal.</td></tr>'+
-        '<tr><td style="white-space:nowrap;color:#c0392b;font-weight:700">L\u00ednea roja punteada</td><td style="text-align:left">Campana normal te\u00f3rica, solo como <strong>referencia</strong>. Si la azul se separa de la roja, los datos NO son normales.</td></tr>'+
-      '</table><br>'+
+        '<tr><td style="color:#5a8fc7">Barras</td><td>Cada barra agrupa un rango de score; su altura cuenta cu\u00e1ntos analistas caen en ese rango.</td></tr>'+
+        '<tr><td style="color:#1a5fa8">L\u00ednea azul (KDE)</td><td>Densidad <strong>real</strong> de los datos: dibuja la forma verdadera de la distribuci\u00f3n, sea o no normal.</td></tr>'+
+        '<tr><td style="color:#c0392b">L\u00ednea roja punteada</td><td>Campana normal te\u00f3rica, solo como <strong>referencia</strong>. Si la azul se separa de la roja, los datos NO son normales.</td></tr>'+
+      '</table>'+
       '<strong>Qu\u00e9 mide cada estad\u00edstico:</strong>'+
-      '<table class="evm-tbl" style="margin-top:6px">'+
+      '<table class="evm-help">'+
         '<tr class="evm-h"><td>M\u00e9trica</td><td>Qu\u00e9 indica sobre la forma</td></tr>'+
-        '<tr><td style="white-space:nowrap">Media vs Mediana</td><td style="text-align:left">Si la media es menor que la mediana \u2192 sesgo negativo. Si es mayor \u2192 sesgo positivo. Iguales \u2192 sim\u00e9trica.</td></tr>'+
-        '<tr><td style="white-space:nowrap">Asimetr\u00eda (skew)</td><td style="text-align:left">Cu\u00e1l cola domina. &lt;0: cola hacia scores bajos. &gt;0: cola hacia scores altos. \u22480: sim\u00e9trica.</td></tr>'+
-        '<tr><td style="white-space:nowrap">Curtosis</td><td style="text-align:left">Forma del pico. &gt;0 leptoc\u00fartica (pico agudo, colas pesadas). &lt;0 platic\u00fartica (aplanada). \u22480 como la normal.</td></tr>'+
-        '<tr><td style="white-space:nowrap">Shapiro-Wilk</td><td style="text-align:left">Prueba formal de normalidad. p\u22650.05: compatible con normal. p&lt;0.05: NO es normal.</td></tr>'+
-      '</table><br>'+
+        '<tr><td>Media vs Mediana</td><td>Si la media es menor que la mediana \u2192 sesgo negativo. Si es mayor \u2192 sesgo positivo. Iguales \u2192 sim\u00e9trica.</td></tr>'+
+        '<tr><td>Asimetr\u00eda (skew)</td><td>Cu\u00e1l cola domina. &lt;0: cola hacia scores bajos. &gt;0: cola hacia scores altos. \u22480: sim\u00e9trica.</td></tr>'+
+        '<tr><td>Curtosis</td><td>Forma del pico. &gt;0 leptoc\u00fartica (pico agudo, colas pesadas). &lt;0 platic\u00fartica (aplanada). \u22480 como la normal.</td></tr>'+
+        '<tr><td>Shapiro-Wilk</td><td>Prueba formal de normalidad. p\u22650.05: compatible con normal. p&lt;0.05: NO es normal.</td></tr>'+
+      '</table>'+
       '<div class="evm-calc">La columna \u201cModelo al que apunta\u201d del panel traduce cada n\u00famero al tipo de distribuci\u00f3n que sugiere (normal, sesgo negativo/positivo, leptoc\u00fartica, etc.). El recuadro final resume a qu\u00e9 modelo se ajusta el conjunto.</div>'+
       '<div class="evm-note">El score se calcula sobre los valores <strong>reales</strong> (incluyendo negativos). Con pocos analistas el test de Shapiro-Wilk tiene poca potencia: la forma de la curva azul (KDE) suele ser m\u00e1s informativa que el p-valor por s\u00ed solo.</div>'+
       '</div>';
@@ -3977,6 +4030,77 @@ window.addEventListener('load', ()=>{
     document.getElementById('evmBody').innerHTML=html;
     document.getElementById('evmOverlay').style.display='flex';
   }
+
+  // ===== Matriz ABC-XYZ =====
+  var CLASES_ABC=['A','B','C'], CLASES_XYZ=['X','Y','Z'];
+  var TARGET_CELDA={AX:98,AY:95,AZ:90,BX:95,BY:90,BZ:80,CX:90,CY:80,CZ:70};
+  function renderAbcXyz(){
+    var cont=document.getElementById('abcMatrix'); if(!cont||!rows) return;
+    // Agrupar renglones por CLASE
+    var celdas={}; var sinClase=0;
+    rows.forEach(function(r){
+      var c=String(r.CLASE||'').toUpperCase();
+      if(!/^[ABC][XYZ]$/.test(c)){ sinClase++; return; }
+      if(!celdas[c]) celdas[c]={n:0,critico:0,items:[]};
+      celdas[c].n++;
+      var st=String(r.STATUS||'').toUpperCase();
+      if(st==='AGOTADO'||st==='CRITICO') celdas[c].critico++;
+      celdas[c].items.push(r);
+    });
+    var totalClasif=rows.length-sinClase;
+    // Construir tabla matriz: filas=ABC, columnas=XYZ
+    var h='<table style="border-collapse:collapse;width:100%;max-width:780px;font-size:12px">';
+    h+='<tr><td style="border:1px solid #c0c8d4;background:#1a4a7a;color:#fff;padding:6px 8px;font-weight:700;text-align:center" title="Valor \u00d7 Variabilidad">ABC \\ XYZ</td>';
+    CLASES_XYZ.forEach(function(x){
+      var lbl=x==='X'?'X &middot; estable':x==='Y'?'Y &middot; moderada':'Z &middot; err\u00e1tica';
+      h+='<td style="border:1px solid #c0c8d4;background:#e0e4ea;padding:6px 8px;font-weight:700;text-align:center">'+lbl+'</td>';
+    });
+    h+='</tr>';
+    CLASES_ABC.forEach(function(abc){
+      var rowLbl=abc==='A'?'A &middot; top 80%':abc==='B'?'B &middot; sig.15%':'C &middot; resto';
+      h+='<tr><td style="border:1px solid #c0c8d4;background:#e0e4ea;padding:6px 8px;font-weight:700">'+rowLbl+'</td>';
+      CLASES_XYZ.forEach(function(xyz){
+        var clase=abc+xyz, d=celdas[clase]||{n:0,critico:0,items:[]};
+        var pctCrit=d.n>0?Math.round(100*d.critico/d.n):0;
+        // intensidad de fondo por criticidad de la celda y % crítico
+        var bg = pctCrit>=60?'#f6d4d0' : pctCrit>=40?'#fce8c8' : pctCrit>=20?'#fbf3d6' : '#e6f2e6';
+        h+='<td onclick="window.__abcCell(\''+clase+'\')" style="border:1px solid #c0c8d4;background:'+bg+';padding:8px;text-align:center;cursor:pointer" title="Clic para ver renglones">'+
+           '<div style="font-family:Consolas,monospace;font-weight:700;font-size:13px;color:#0a2a5a">'+clase+'</div>'+
+           '<div style="font-size:17px;font-weight:700;font-family:Consolas,monospace">'+num(d.n)+'</div>'+
+           '<div style="font-size:10px;color:#666">renglones</div>'+
+           '<div style="font-size:10.5px;margin-top:3px;color:'+(pctCrit>=40?'#c0392b':'#555')+'">'+pctCrit+'% en quiebre</div>'+
+           '<div style="font-size:9.5px;color:#888">target '+(TARGET_CELDA[clase]||'')+'%</div>'+
+           '</td>';
+      });
+      h+='</tr>';
+    });
+    h+='</table>';
+    h+='<div style="font-size:11px;color:#666;margin-top:6px">'+num(totalClasif)+' renglones clasificados'+(sinClase>0?(' &middot; '+num(sinClase)+' sin clasificar (sin consumo)'):'')+'. El color indica el % de renglones en quiebre (agotado o cr\u00edtico) dentro de la celda. Clic en una celda para ver el detalle.</div>';
+    cont.innerHTML=h;
+    document.getElementById('abcDetail').innerHTML='';
+  }
+  // Detalle de una celda (clic)
+  window.__abcCell=function(clase){
+    if(!rows) return;
+    var items=rows.filter(function(r){ return String(r.CLASE||'').toUpperCase()===clase; })
+                  .sort(function(a,b){ return (Number(b.DEMANDA_MENSUAL)||0)-(Number(a.DEMANDA_MENSUAL)||0); });
+    var target=TARGET_CELDA[clase]||'';
+    var h='<div class="ev-ph"><span>\u9612 Renglones en '+clase+' \u00b7 target de servicio '+target+'%</span><span class="ev-cnt">'+items.length+' renglones</span></div>';
+    h+='<div style="overflow:auto;border:1px solid #a8a8a8;max-height:480px"><table class="ev-tbl"><thead><tr>'+
+       '<th>Analista</th><th>C\u00f3digo</th><th>Rengl\u00f3n</th><th>Status</th><th>CV</th><th>Inv. Act</th><th>Demanda Mens.</th><th>ROP</th><th>GAP neto</th></tr></thead><tbody>';
+    items.forEach(function(r){
+      var gap=Number(r.GAP_NETO||0);
+      var gapTd= gap>0?'<td class="ev-rt" style="color:#c0392b;font-weight:700">'+num(gap)+'</td>':'<td class="ev-rt" style="color:#2d7a2d">'+num(gap)+'</td>';
+      h+='<tr><td><strong>'+(r.__ana||'')+'</strong></td><td class="ev-mono">'+(r.__cod||'')+'</td><td>'+(r.SUMINISTRO||'')+'</td>'+
+         '<td><span class="ev-badge ev-b-'+r.STATUS+'">'+r.STATUS+'</span></td>'+
+         '<td class="ev-rt">'+(r.CV!=null?r.CV:'')+'</td>'+
+         '<td class="ev-rt">'+num(r.INV_ACTUAL)+'</td><td class="ev-rt">'+num(r.DEMANDA_MENSUAL)+'</td>'+
+         '<td class="ev-rt">'+num(r.ROP)+'</td>'+gapTd+'</tr>';
+    });
+    h+='</tbody></table></div>';
+    document.getElementById('abcDetail').innerHTML=h;
+    document.getElementById('abcDetail').scrollIntoView({behavior:'smooth',block:'nearest'});
+  };
 
   document.addEventListener('DOMContentLoaded',function(){
     injectTabs();
