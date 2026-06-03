@@ -3294,7 +3294,7 @@ window.addEventListener('load', ()=>{
   .ev-kb.r .ev-kv{color:var(--red)} .ev-kb.a .ev-kv{color:var(--amber)}
   .ev-kb.g .ev-kv{color:var(--green)} .ev-kb.b .ev-kv{color:var(--blue)} .ev-kb.p .ev-kv{color:var(--purple)}
   .ev-ks{font-size:10px;color:var(--muted);margin-top:1px}
-  .ev-kr{display:inline-block;font-size:10px;font-weight:700;font-family:'Consolas','Courier New',monospace;background:#eef2f7;border:1px solid #cdd6e2;color:#33475b;padding:0 5px;margin-top:3px;border-radius:2px}
+  .ev-kr{display:inline-block;font-size:10px;font-weight:700;font-family:'Consolas','Courier New',monospace;background:#eef2f7;border:1px solid #cdd6e2;color:#33475b;padding:0 5px;border-radius:2px;margin-right:3px}
   .ev-cg{display:grid;gap:8px;margin-bottom:10px;grid-template-columns:1fr 1fr 1fr}
   .ev-cc{background:var(--panel);border:1px solid var(--border);min-width:0;overflow:hidden}
   .ev-cct{font-size:12px;font-weight:700;padding:5px 10px;background:var(--panel3);border-bottom:1px solid var(--border2)}
@@ -3400,13 +3400,14 @@ window.addEventListener('load', ()=>{
   </div>
 
   <div class="ev-al" style="background:#f5f0fa;border-color:#c0a0d8;border-left-color:#5a2d82;color:#3a2050">
-    <strong>&#191;C&#243;mo se calcula el Score de Salud (0&ndash;100)?</strong><br>
+    <strong>&#191;C&#243;mo se calcula el Score de Ranking de Desempe&ntilde;o?</strong><br>
     Mide el estado del inventario de los renglones asignados a cada analista en el corte actual.<br>
     <span style="font-family:'Consolas',monospace;font-size:11px;background:#fff;border:1px solid #c0a0d8;padding:2px 8px;display:inline-block;margin:4px 0">
     score = ((sano &minus; penalizaci&#243;n) / total) &times; 100 + 50</span><br>
     <strong>Inventario sano</strong> = &Oacute;ptimos &times; 1.0 + Bajos &times; 0.6 &nbsp;|&nbsp;
     <strong>Penalizaci&#243;n</strong> = Agotados &times; 1.0 + Cr&#237;ticos &times; 0.7 + Vencidos &times; 0.5 + Excesos &times; 0.3.<br>
-    El +50 centra la escala (50 = neutro). <strong>Colores:</strong> Verde &#8805;45 &middot; &Aacute;mbar 30-44 &middot; Morado 15-29 &middot; Rojo &lt;15.<br>
+    <strong>M&aacute;s alto = mejor.</strong> El ideal es 100 (cartera totalmente sana). El +50 solo desplaza la escala para que el punto de equilibrio (donde lo sano iguala a lo penalizado) caiga en 50; <u>50 NO es la meta, es el empate</u>. Por debajo de 50 hay m&aacute;s problema que salud; puede ser negativo si predominan agotados/cr&iacute;ticos.<br>
+    <strong>Colores:</strong> Verde &#8805;45 &middot; &Aacute;mbar 30-44 &middot; Morado 15-29 &middot; Rojo &lt;15.<br>
     <span style="color:#7a5a9a;font-size:11px">Nota: el score compara analistas pero NO ajusta por la dificultad de la cartera (ver gr&#225;ficos de carga). Es un insumo de diagn&#243;stico, no una prueba de responsabilidad individual.</span>
   </div>
 
@@ -3586,8 +3587,8 @@ window.addEventListener('load', ()=>{
       ['Sin Analista',num(sinA),'a','renglones sin due\u00f1o','Renglones del inventario que no figuran en el cuadro maestro.',''],
     ];
     document.getElementById('evKpis').innerHTML=k.map(function(x){
-      var rango=x[6]?('<div class="ev-kr">'+x[6]+'</div>'):'';
-      return '<div class="ev-kb '+x[2]+'"><div class="ev-kl" title="'+x[4]+'">'+x[0]+'</div><div class="ev-kv">'+x[1]+'</div>'+rango+'<div class="ev-ks">'+x[3]+'</div></div>';
+      var sub=x[6]?('<span class="ev-kr">'+x[6]+'</span> '+x[3]):x[3];
+      return '<div class="ev-kb '+x[2]+'"><div class="ev-kl" title="'+x[4]+'">'+x[0]+'</div><div class="ev-kv">'+x[1]+'</div><div class="ev-ks">'+sub+'</div></div>';
     }).join('');
   }
 
@@ -3771,72 +3772,72 @@ window.addEventListener('load', ()=>{
     var statsBox=document.getElementById('evDistStats');
     if(!st || scores.length<3){ if(statsBox) statsBox.innerHTML='<div style="color:#888">Datos insuficientes para el análisis.</div>'; return; }
 
-    // Eje continuo (incluye negativos) con paso fino para curvas suaves.
-    var pad=Math.max(10,st.sd*0.8);
-    var xLo=Math.floor((st.min-pad)/5)*5, xHi=Math.ceil((st.max+pad)/5)*5;
-    var step=2, xs=[]; for(var x=xLo;x<=xHi;x+=step) xs.push(x);
+    // BARRAS POR VALOR EXACTO: un punto por cada score real, contando repeticiones.
+    // Sin agrupar en bins. Cada barra de ancho 1 sobre el eje de score.
+    var freq={};
+    scores.forEach(function(s){ freq[s]=(freq[s]||0)+1; });
+    var barData=Object.keys(freq).map(function(k){ return {x:Number(k),y:freq[k]}; }).sort(function(a,b){return a.x-b.x;});
 
-    // Histograma (barras) en bins de 10, mapeado al eje continuo.
-    var binW=10;
-    var bLo=Math.floor(st.min/binW)*binW, bHi=Math.ceil(st.max/binW)*binW; if(bHi===bLo)bHi=bLo+binW;
-    var binCenters=[], counts=[];
-    for(var bb=bLo;bb<bHi;bb+=binW){ binCenters.push(bb+binW/2); counts.push(0); }
-    scores.forEach(function(s){ var idx=Math.min(counts.length-1,Math.floor((s-bLo)/binW)); if(idx<0)idx=0; counts[idx]++; });
-    // Barras como puntos {x,y} para alinearlas al eje lineal.
-    var barData=binCenters.map(function(c,i){ return {x:c,y:counts[i]}; });
+    // Eje continuo con margen modesto a ambos lados.
+    var pad=Math.max(8,st.sd*0.6);
+    var xLo=Math.floor(st.min-pad), xHi=Math.ceil(st.max+pad);
 
-    // KDE gaussiano (densidad real). Ancho de banda: regla de Silverman.
-    var bw=1.06*st.sd*Math.pow(st.n,-0.2); if(!(bw>0)) bw=binW/2;
+    // KDE gaussiano (densidad real, continua). Ancho de banda: regla de Silverman.
+    var bw=1.06*st.sd*Math.pow(st.n,-0.2); if(!(bw>0)) bw=5;
     function kde(xv){ var s=0; for(var i=0;i<scores.length;i++){ s+=normPdf(xv,scores[i],bw); } return s/scores.length; }
-    // Escalar densidades a "n° de analistas" (× n × binW) para compartir eje con las barras.
-    var scale=scores.length*binW;
+    // Escala: la densidad (área=1) se lleva a "n° de analistas" multiplicando por n.
+    // (las barras de ancho 1 representan conteo; densidad×n×1 las hace comparables)
+    var scale=scores.length;
+    var xs=[]; for(var x=xLo;x<=xHi;x+=1) xs.push(x);
     var kdeData=xs.map(function(xv){ return {x:xv,y:kde(xv)*scale}; });
     var normData=xs.map(function(xv){ return {x:xv,y:normPdf(xv,st.mean,st.sd)*scale}; });
 
     if(window.__chDist) window.__chDist.destroy();
     window.__chDist=new Chart(document.getElementById('evChartDist'),{
       data:{datasets:[
-        {type:'bar',label:'Analistas (real)',data:barData,backgroundColor:'#9db8d6',borderColor:'#5a8fc7',borderWidth:1,order:3,
-         barThickness:'flex',categoryPercentage:1.0,barPercentage:0.92},
+        {type:'bar',label:'Analistas (valor exacto)',data:barData,backgroundColor:'#9db8d6',borderColor:'#5a8fc7',borderWidth:1,order:3,barThickness:8},
         {type:'line',label:'Densidad real (KDE)',data:kdeData,borderColor:'#1a5fa8',backgroundColor:'rgba(26,95,168,0.10)',fill:true,borderWidth:2.5,tension:0.4,pointRadius:0,order:1},
         {type:'line',label:'Normal teórica (referencia)',data:normData,borderColor:'#c0392b',backgroundColor:'transparent',borderWidth:1.5,borderDash:[5,4],tension:0.4,pointRadius:0,order:2}
       ]},
       options:{maintainAspectRatio:false,parsing:false,
         plugins:{legend:{position:'bottom',labels:{font:{size:11},boxWidth:14}},
-          tooltip:{callbacks:{title:function(it){return 'Score ≈ '+Math.round(it[0].parsed.x)}}}},
-        scales:{x:{type:'linear',min:xLo,max:xHi,title:{display:true,text:'Score'},
-                   ticks:{stepSize:10,font:{size:9}}},
+          tooltip:{callbacks:{title:function(it){return 'Score '+Math.round(it[0].parsed.x)}}}},
+        scales:{x:{type:'linear',min:xLo,max:xHi,title:{display:true,text:'Score'},ticks:{stepSize:10,font:{size:9}}},
                 y:{title:{display:true,text:'N° de analistas'},beginAtZero:true,ticks:{precision:0}}}}
     });
 
     var sw=shapiroWilk(scores);
-    var veredicto='', vcolor='#555';
-    if(sw){
-      if(sw.p>=0.05){ veredicto='Compatible con una campana de Gauss'; vcolor='#2d7a2d'; }
-      else { veredicto='Se aleja de la distribución normal'; vcolor='#c0392b'; }
-    }
-    var asimTxt=Math.abs(st.skew)<0.5?'aprox. simétrica':(st.skew<0?'sesgada a la izquierda (cola de scores bajos)':'sesgada a la derecha (cola de scores altos)');
     var f1=function(x){return (Math.round(x*10)/10).toLocaleString('en-US',{minimumFractionDigits:1,maximumFractionDigits:1})};
     var f2=function(x){return (Math.round(x*100)/100).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})};
-    // valor esperado de referencia para una normal perfecta
-    var tr=function(l,v,esp,t){
+
+    // Diagnóstico del MODELO al que se ajustan los datos (no "lo ideal", sino qué forma tienen).
+    var modeloSkew = Math.abs(st.skew)<0.5 ? 'Simétrica' : (st.skew<0 ? 'Sesgo negativo (cola a la izquierda)' : 'Sesgo positivo (cola a la derecha)');
+    var modeloKurt = Math.abs(st.kurt)<0.5 ? 'Mesocúrtica (como la normal)' : (st.kurt>0 ? 'Leptocúrtica (pico agudo, colas pesadas)' : 'Platicúrtica (aplanada)');
+    var modeloSW = sw ? (sw.p>=0.05 ? 'No se rechaza normalidad' : 'No es normal') : 'n/d';
+    var ajuste, ajusteColor;
+    if(sw && sw.p>=0.05 && Math.abs(st.skew)<0.5){ ajuste='Distribución NORMAL (campana de Gauss)'; ajusteColor='#2d7a2d'; }
+    else if(st.skew<=-0.5){ ajuste='Distribución con SESGO NEGATIVO (no normal)'; ajusteColor='#c0392b'; }
+    else if(st.skew>=0.5){ ajuste='Distribución con SESGO POSITIVO (no normal)'; ajusteColor='#c0392b'; }
+    else { ajuste='Aproximadamente simétrica, pero no concluyente'; ajusteColor='#c57a00'; }
+
+    var tr=function(l,v,modelo,t){
       return '<tr><td style="padding:3px 6px;border:1px solid #d4dae3"'+(t?' title="'+t+'"':'')+'>'+l+'</td>'+
         '<td style="padding:3px 6px;border:1px solid #d4dae3;text-align:right;font-family:Consolas,monospace">'+v+'</td>'+
-        '<td style="padding:3px 6px;border:1px solid #d4dae3;text-align:right;font-family:Consolas,monospace;color:#888">'+(esp==null?'':esp)+'</td></tr>'; };
+        '<td style="padding:3px 6px;border:1px solid #d4dae3;text-align:left;font-size:10.5px;color:#555">'+(modelo||'')+'</td></tr>'; };
     var html='<table style="width:100%;border-collapse:collapse;font-size:11.5px">'+
-        '<tr style="background:#e0e4ea;font-weight:700"><td style="padding:3px 6px;border:1px solid #d4dae3">Métrica</td><td style="padding:3px 6px;border:1px solid #d4dae3;text-align:right">Actual</td><td style="padding:3px 6px;border:1px solid #d4dae3;text-align:right">Normal ideal</td></tr>'+
+        '<tr style="background:#e0e4ea;font-weight:700"><td style="padding:3px 6px;border:1px solid #d4dae3">Métrica</td><td style="padding:3px 6px;border:1px solid #d4dae3;text-align:right">Valor</td><td style="padding:3px 6px;border:1px solid #d4dae3;text-align:left">Modelo al que apunta</td></tr>'+
         tr('Analistas (n)',st.n,'—')+
-        tr('Media',f1(st.mean),'= mediana')+
-        tr('Mediana',f1(st.median),'= media')+
-        tr('Desv. estándar',f1(st.sd),'—')+
-        tr('Asimetría (skew)',f2(st.skew),'0',' 0 = simétrica; negativa = cola izquierda')+
-        tr('Curtosis (exceso)',f2(st.kurt),'0',' 0 = como la normal')+
-        (sw?tr('Shapiro-Wilk W',f2(sw.W),'≈ 1.00')+tr('p-valor',f2(sw.p),'≥ 0.05'):'')+
+        tr('Media',f1(st.mean),'—')+
+        tr('Mediana',f1(st.median),(st.mean<st.median?'media &lt; mediana → sesgo negativo':(st.mean>st.median?'media &gt; mediana → sesgo positivo':'media = mediana → simétrica')))+
+        tr('Desv. estándar',f1(st.sd),'dispersión')+
+        tr('Asimetría (skew)',f2(st.skew),modeloSkew,'mide la cola dominante')+
+        tr('Curtosis (exceso)',f2(st.kurt),modeloKurt,'mide el pico/colas vs normal')+
+        (sw?tr('Shapiro-Wilk W',f2(sw.W),'1.00 = normal perfecta')+tr('p-valor',f2(sw.p),modeloSW):'')+
       '</table>'+
-      (sw?'<div style="margin-top:8px;padding:6px 8px;border:1px solid '+vcolor+';background:'+vcolor+'15;color:'+vcolor+';font-weight:700;font-size:12px">'+veredicto+'</div>':'')+
-      '<div style="margin-top:6px;font-size:11px;color:#555;line-height:1.5">La distribución es <strong>'+asimTxt+'</strong>.'+
-        (sw?(' Shapiro-Wilk p='+f2(sw.p)+(sw.p>=0.05?' (≥0.05): no se puede rechazar la normalidad.':' (&lt;0.05): los scores no siguen una normal.')):'')+
-        '<br><span style="color:#888">Con n≈'+st.n+' el test tiene poca potencia: orienta, no concluye.</span></div>';
+      '<div style="margin-top:8px;padding:6px 8px;border:1px solid '+ajusteColor+';background:'+ajusteColor+'15;color:'+ajusteColor+';font-weight:700;font-size:12px">Se ajusta a: '+ajuste+'</div>'+
+      '<div style="margin-top:6px;font-size:11px;color:#555;line-height:1.5">'+
+        (sw?('Shapiro-Wilk p='+f2(sw.p)+(sw.p>=0.05?' (≥0.05): los datos son compatibles con una normal.':' (&lt;0.05): los datos NO siguen una normal.')+' '):'')+
+        '<br><span style="color:#888">Con n='+st.n+' el test tiene poca potencia: la forma de la curva azul (KDE) es más informativa que el p-valor.</span></div>';
     if(statsBox) statsBox.innerHTML=html;
   }
 
