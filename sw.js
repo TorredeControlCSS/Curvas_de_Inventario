@@ -1,7 +1,7 @@
 // sw.js — Curvas_de_Inventario
 // =======================================================
 // CAMBIO CRÍTICO: Versión actualizada para forzar recarga
-const CACHE_VERSION = 'v19.0-new features curve and analist';
+const CACHE_VERSION = 'v20.0-new features curve analist';
 const STATIC_CACHE = `static-${CACHE_VERSION}`;
 
 const APP_SHELL = [
