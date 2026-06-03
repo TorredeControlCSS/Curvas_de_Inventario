@@ -282,7 +282,7 @@
     </div>
 
     <div class="kpis">
-      <div class="kpi"><div class="l">% Abastecimiento (4 meses)</div><div class="v" id="kpiCov">–</div></div>
+      <div class="kpi ev-cov-clk" id="kpiCovCard" style="cursor:pointer" title="Clic para ver cómo se calcula"><div class="l">% Abastecimiento (4 meses) &#9432;</div><div class="v" id="kpiCov">–</div></div>
       <div class="kpi" id="kpiInvCard"><div class="l">Inventario disponible</div><div class="v" id="kpiInv">–</div><span class="muted" id="kpiInvDate">–</span></div>
       <div class="kpi"><div class="l">Inventario en Reserva</div><div class="v" id="kpiReserva">–</div></div>
       <div class="kpi"><div class="l">Punto de Reorden (CTD + SS)</div><div class="v" id="kpiKb">–</div></div>
@@ -359,9 +359,13 @@
       </div>
 
       <div class="side">
+        <div class="card" id="anaCard" style="display:none">
+          <div class="muted">Analista responsable del renglón</div>
+          <div id="anaCardBody"></div>
+        </div>
         <div class="card">
           <div class="muted">Indicadores de la serie</div>
-          <div class="metric"><span>% Abastecimiento (4 meses)</span><span id="mCoverage">–</span></div>
+          <div class="metric ev-cov-clk" id="mCoverageRow" style="cursor:pointer" title="Ver cómo se calcula este %"><span>% Abastecimiento (4 meses) &#9432;</span><span id="mCoverage">–</span></div>
           <small id="mCoverageNote" class="muted"></small>
           <div class="metric"><span>Mínimo histórico</span><span id="mMin">–</span></div>
           <small id="mMinDate" class="muted"></small>
@@ -380,6 +384,16 @@
     </div>
   </div>
 
+<div id="covModalOverlay" style="display:none;position:fixed;inset:0;background:rgba(20,30,50,.55);z-index:9999;align-items:flex-start;justify-content:center;padding:40px 16px;overflow:auto">
+  <div style="background:#fff;border:1px solid #b0c8e8;max-width:560px;width:100%;box-shadow:0 8px 30px rgba(0,0,0,.3)">
+    <div style="background:#0b1f3a;color:#fff;padding:8px 14px;font-size:13px;font-weight:700;display:flex;justify-content:space-between;align-items:center">
+      <span>&#191;C&#243;mo se calcula el % de Abastecimiento (4 meses)?</span>
+      <button id="covModalClose" style="cursor:pointer;font-size:18px;line-height:1;background:none;border:none;color:#fff;font-weight:700">&times;</button>
+    </div>
+    <div id="covModalBody" style="padding:14px 16px;font-size:12.5px;color:#222"></div>
+  </div>
+</div>
+
 <script>
 // === Config ===
 // **** URL CORREGIDA: Apunta a tu despliegue actual ****
@@ -391,6 +405,65 @@ const horizon = (Q)=> Number(Q) > 0 ? LEAD + EXTRA_AFTER_ORDER : LEAD;
 
 let chartInstance=null, deferredPrompt=null;
 let codes=[], sups=[], groups=[];
+
+// Mapas para mostrar analista + score al buscar un renglón (cargados de coverage + analistas).
+let ANA_BY_COD = {};      // codigoNorm -> iniciales del analista
+let SCORE_BY_ANA = {};    // iniciales -> score_salud
+const ANA_NOMBRES = {
+  "SS":"Simón Sotillo","VD":"Vladimir De León","BS":"Braulio Serrano",
+  "JME":"José M. Espinosa","JE":"José M. Espinosa","FC":"Fernando Calderón",
+  "WP":"William Pui","NS":"Nohelia Sánchez","OC":"Orlando Cerrud","JL":"Jenny López",
+  "LM":"Lorena Montero","MF":"Marisol Flores","DC":"Dax Castro","YR":"Yaricell Rivera",
+  "ON":"Orlando Navarro","DH":"Daira Herrera","EB":"Edilma Batista","DD":"Desiluz Doviaza",
+  "EM":"Edwin Macías","FM":"Francisco Mora","RG":"Rubén González",
+  "SF":"Selene Fernández","YV":"Yarelis Vásquez","MAR":"MAR (por confirmar)"
+};
+function anaNorm(c){ c=String(c==null?'':c).trim(); return c.indexOf('.')>=0?c.replace(/\.0+$/,''):c; }
+function anaNombre(ini){ if(!ini||ini==='SIN ASIGNAR')return'Sin asignar'; return ANA_NOMBRES[ini]||ini; }
+function scoreCls(s){ if(s>=45)return['#2d7a2d','VERDE']; if(s>=30)return['#c57a00','ÁMBAR']; if(s>=15)return['#5a2d82','MORADO']; return['#c0392b','ROJO']; }
+
+async function loadAnalistaMaps(){
+  try{
+    const [cov,ana]=await Promise.all([
+      fetchJSON(API_BASE+'?report=coverage&ts='+Date.now()),
+      fetchJSON(API_BASE+'?report=analistas&ts='+Date.now())
+    ]);
+    // coverage: {header, rows} con CODIGO y (en maestro v2) ANALISTA
+    if(cov&&cov.header&&cov.rows){
+      const ixCod=cov.header.indexOf('CODIGO'), ixAna=cov.header.indexOf('ANALISTA');
+      if(ixCod>=0&&ixAna>=0){
+        cov.rows.forEach(r=>{ const c=anaNorm(r[ixCod]); const a=String(r[ixAna]||'').trim(); if(c) ANA_BY_COD[c]=a||'SIN ASIGNAR'; });
+      }
+    }
+    if(ana&&ana.analistas){ ana.analistas.forEach(a=>{ SCORE_BY_ANA[a.analista]=a.score_salud; }); }
+  }catch(e){ console.warn('No se pudieron cargar mapas de analista:',e); }
+}
+
+function renderAnalistaCard(codigo){
+  const card=$('anaCard'), body=$('anaCardBody');
+  if(!card||!body) return;
+  const cod=anaNorm(codigo);
+  const ini=cod?ANA_BY_COD[cod]:null;
+  if(!cod || ini===undefined || ini===null){ card.style.display='none'; return; }
+  const asignado=(ini && ini!=='SIN ASIGNAR');
+  const nombre=anaNombre(ini);
+  const score=asignado?SCORE_BY_ANA[ini]:undefined;
+  let scoreHtml='';
+  if(asignado && typeof score==='number'){
+    const sc=scoreCls(score);
+    scoreHtml='<div style="margin-top:6px;display:flex;align-items:center;gap:8px">'+
+      '<span style="font-family:Consolas,monospace;font-size:28px;font-weight:700;color:'+sc[0]+'">'+score+'</span>'+
+      '<span style="font-size:11px;font-weight:700;color:#fff;background:'+sc[0]+';padding:2px 8px;border-radius:3px">'+sc[1]+'</span>'+
+      '<span style="font-size:11px;color:#666">score de salud actual</span></div>';
+  } else if(asignado){
+    scoreHtml='<div style="margin-top:6px;font-size:11px;color:#888">Score no disponible en este corte.</div>';
+  }
+  body.innerHTML='<div style="font-size:16px;font-weight:700;color:#0b1f3a">'+nombre+
+    (asignado?' <span style="font-size:12px;font-weight:400;color:#666;font-family:Consolas,monospace">('+ini+')</span>':'')+'</div>'+
+    (asignado?'':'<div style="font-size:11px;color:#c0392b;margin-top:2px">Este renglón no figura en el cuadro maestro.</div>')+
+    scoreHtml;
+  card.style.display='';
+}
 let lastSerieForReports = null; 
 // { meta, graphTitle, serie, invHist, invExpired, invAvailable, lastDateStr }
 
@@ -672,6 +745,7 @@ async function init(){
   }
 
   codes = meta.codigos||[]; sups = meta.suministros||[]; groups=[''].concat(meta.grupos||[]);
+  loadAnalistaMaps();  // carga en segundo plano el mapa código->analista y score
   $('group').innerHTML = groups.map(g => `<option value="${g}">${g||'Todos'}</option>`).join('');
   from.value = meta.min_fecha||''; to.value = meta.max_fecha||'';
 
@@ -857,6 +931,17 @@ async function init(){
       const covPct = needFor4M ? Math.min((invActualAvailable / needFor4M) * 100, 999) : 0;
       const covNote = `Consumo semanal esperado ≈ ${fmtInt(Math.round(weeklyExpected))}. Requerido 4 meses ≈ ${fmtInt(Math.round(needFor4M))}.`;
 
+      // Guardar desglose para el modal explicativo del % de Abastecimiento
+      window.__covBreakdown = {
+        subject: (data.subject_code? (data.subject_code + (data.subject_name? ' — '+data.subject_name : '')) : (data.subject_label||'Selección actual')),
+        invDisp: invActualAvailable,
+        dailyExpected: dailyExpected,
+        weeklyExpected: weeklyExpected,
+        needFor4M: needFor4M,
+        covPct: covPct,
+        lastDate: meta.max_fecha || lastDateStr
+      };
+
       $('kpiCov').textContent = fmtPct(covPct);
       setSideMetrics(data.min_value||0, data.min_date||'', data.max_value||0, data.max_date||'', data.avg_30||0, covPct, covNote);
 
@@ -909,6 +994,9 @@ async function init(){
       if (data.subject_code && data.subject_name) graphTitle = `${data.subject_code} — ${data.subject_name}`;
       else if (data.subject_code) graphTitle = `Código: ${data.subject_code}`;
       else graphTitle = data.subject_label || 'Serie seleccionada';
+
+      // Mostrar analista responsable + score (solo cuando es un renglón individual)
+      renderAnalistaCard(data.subject_code || '');
       lastSerieForReports = {
         meta,
         graphTitle,
@@ -996,11 +1084,52 @@ async function init(){
     groupSel.value=''; $('qty').value=0; from.value=meta.min_fecha||''; to.value=meta.max_fecha||'';
     document.querySelector('#tbl tbody').innerHTML=''; document.querySelector('#projTbl tbody').innerHTML='';
     setKPIs(0,0,0,'',0); $('kpiCov').textContent='–'; setSideMetrics(0,'',0,'',0,0,''); setFormulas(0,0,0,0,0,LEAD,{});
+    if($('anaCard')) $('anaCard').style.display='none';
+    window.__covBreakdown=null;
     if(chartInstance){ chartInstance.destroy(); chartInstance=null; }
     setBtnState(btn,''); btn.disabled=false; $('projTitle').textContent = 'Dinámica de proyección (45 días)';
   });
 
   await run();
+
+  // ===== Modal explicativo: % de Abastecimiento (4 meses) =====
+  function openCovModal(){
+    const b=window.__covBreakdown;
+    const body=$('covModalBody'), ov=$('covModalOverlay');
+    if(!body||!ov) return;
+    if(!b){
+      body.innerHTML='<div style="color:#666">Seleccione un renglón y presione <strong>Mostrar</strong> para ver el cálculo.</div>';
+      ov.style.display='flex'; return;
+    }
+    const nf=(x)=>Number(Math.round(x||0)).toLocaleString('en-US');
+    const pctTxt=(Number.isFinite(b.covPct)?(Math.round(b.covPct*10)/10).toLocaleString('en-US',{maximumFractionDigits:1}):'–')+'%';
+    body.innerHTML=
+      '<div style="font-size:13px;margin-bottom:4px">'+b.subject+'</div>'+
+      '<div style="font-family:Consolas,monospace;font-size:34px;font-weight:700;line-height:1;color:#0b1f3a">'+pctTxt+'</div>'+
+      '<div style="color:#555;font-size:11.5px;margin:4px 0 12px">Mide cuántos meses de consumo cubre el inventario disponible actual, sobre una meta de 4 meses. Datos al '+(b.lastDate||'corte actual')+'.</div>'+
+      '<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:10px">'+
+        '<tr style="background:#e0e4ea;font-weight:700"><td style="padding:4px 8px;border:1px solid #d4dae3">Paso</td><td style="padding:4px 8px;border:1px solid #d4dae3;text-align:right">Valor</td></tr>'+
+        '<tr><td style="padding:4px 8px;border:1px solid #d4dae3">Inventario disponible (numerador)</td><td style="padding:4px 8px;border:1px solid #d4dae3;text-align:right;font-family:Consolas,monospace">'+nf(b.invDisp)+'</td></tr>'+
+        '<tr><td style="padding:4px 8px;border:1px solid #d4dae3">Consumo esperado diario</td><td style="padding:4px 8px;border:1px solid #d4dae3;text-align:right;font-family:Consolas,monospace">'+nf(b.dailyExpected)+'</td></tr>'+
+        '<tr><td style="padding:4px 8px;border:1px solid #d4dae3">Consumo esperado semanal (× 7)</td><td style="padding:4px 8px;border:1px solid #d4dae3;text-align:right;font-family:Consolas,monospace">'+nf(b.weeklyExpected)+'</td></tr>'+
+        '<tr style="background:#eef2f7;font-weight:700"><td style="padding:4px 8px;border:1px solid #d4dae3">Requerido 4 meses (denominador)</td><td style="padding:4px 8px;border:1px solid #d4dae3;text-align:right;font-family:Consolas,monospace">'+nf(b.needFor4M)+'</td></tr>'+
+      '</table>'+
+      '<div style="background:#eef4fb;border:1px solid #b0c8e8;padding:8px 10px;font-family:Consolas,monospace;font-size:11.5px;line-height:1.8;color:#0b2a4a;margin-bottom:8px">'+
+        'Requerido 4 meses = consumo semanal × 4 × 4.345<br>'+
+        'Requerido = '+nf(b.weeklyExpected)+' × 4 × 4.345 = '+nf(b.needFor4M)+'<br>'+
+        '% Abast. = (Inv. disponible ÷ Requerido) × 100<br>'+
+        '% Abast. = ('+nf(b.invDisp)+' ÷ '+nf(b.needFor4M)+') × 100 = <strong>'+pctTxt+'</strong>'+
+      '</div>'+
+      '<div style="font-size:11px;color:#666;line-height:1.5">El factor 4.345 son las semanas promedio por mes (52 ÷ 12). El valor se limita a 999% como tope. Si el consumo esperado es 0, el % no se calcula. <strong>0%</strong> indica que el inventario disponible no cubre la meta de 4 meses de consumo.</div>';
+    ov.style.display='flex';
+  }
+  ['kpiCovCard','mCoverageRow'].forEach(function(id){
+    const el=$(id); if(el) el.addEventListener('click',openCovModal);
+  });
+  const covClose=$('covModalClose'), covOv=$('covModalOverlay');
+  if(covClose) covClose.addEventListener('click',()=>{ covOv.style.display='none'; });
+  if(covOv) covOv.addEventListener('click',(e)=>{ if(e.target===covOv) covOv.style.display='none'; });
+  document.addEventListener('keydown',(e)=>{ if(e.key==='Escape'&&covOv) covOv.style.display='none'; });
 
 const btnVencimientosPdf = document.getElementById('btnVencimientosPdf');
 if (btnVencimientosPdf) {
@@ -3212,6 +3341,27 @@ window.addEventListener('load', ()=>{
   .ev-tab.active{background:#fff;color:#0a2a5a;border-color:#b0c8e8}
   .ev-tbl td:nth-child(3){max-width:280px;white-space:normal;word-break:break-word;font-size:11px;line-height:1.3}
   #evDetailTbl th:nth-child(3),#evDetailTbl td:nth-child(3){max-width:280px}
+  .ev-score-clk{cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px}
+  .ev-score-clk:hover{filter:brightness(0.9);outline:1px solid #888}
+  .evm-overlay{display:none;position:fixed;inset:0;background:rgba(20,30,50,.55);z-index:9999;align-items:flex-start;justify-content:center;padding:40px 16px;overflow:auto}
+  .evm-box{background:#fff;border:1px solid #b0c8e8;max-width:560px;width:100%;box-shadow:0 8px 30px rgba(0,0,0,.3);font-family:inherit}
+  .evm-head{background:linear-gradient(180deg,#1a5fa8,#0d4080);color:#fff;padding:8px 14px;font-size:13px;font-weight:700;display:flex;justify-content:space-between;align-items:center}
+  .evm-x{cursor:pointer;font-size:18px;line-height:1;background:none;border:none;color:#fff;font-weight:700}
+  .evm-body{padding:14px 16px;font-size:12.5px;color:#222}
+  .evm-ttl{font-size:13px;margin-bottom:4px}
+  .evm-big{font-family:'Consolas',monospace;font-size:34px;font-weight:700;line-height:1}
+  .evm-tag{font-size:11px;font-weight:700;padding:2px 8px;border:1px solid;border-radius:3px;vertical-align:middle;margin-left:6px}
+  .evm-sub{color:#555;font-size:11.5px;margin:4px 0 10px}
+  .evm-tbl{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:10px}
+  .evm-tbl td{padding:4px 8px;border:1px solid #d4dae3;font-family:'Consolas',monospace}
+  .evm-tbl td:first-child{font-family:inherit;text-align:left}
+  .evm-tbl td:not(:first-child){text-align:right}
+  .evm-h td{background:#e0e4ea;font-weight:700;font-family:inherit!important;text-align:center!important}
+  .evm-pos td{background:#f0f7f0;color:#2d7a2d}
+  .evm-neg td{background:#fdf0f0;color:#c0392b}
+  .evm-st td{background:#eef2f7;font-weight:700;font-family:inherit!important}
+  .evm-calc{background:#f5f0fa;border:1px solid #c0a0d8;padding:8px 10px;font-family:'Consolas',monospace;font-size:11.5px;line-height:1.7;color:#3a2050;margin-bottom:8px}
+  .evm-note{font-size:11px;color:#666;line-height:1.5}
   @media(max-width:980px){.ev-cg{grid-template-columns:1fr}}
 </style>
 
@@ -3224,6 +3374,12 @@ window.addEventListener('load', ()=>{
   <div class="ev-toolbar">
     <label class="ev-meta">Filtrar analista:</label>
     <select class="ev-sel" id="evFiltro"><option value="__ALL__">Todos los analistas</option></select>
+    <label class="ev-meta">Grupo:</label>
+    <select class="ev-sel" id="evFiltroGrupo"><option value="__ALL__">Todos los grupos</option></select>
+    <label class="ev-meta">Renglón:</label>
+    <input class="ev-sel" id="evFiltroRenglon" list="evRenglonOpts" placeholder="Código o nombre del renglón" autocomplete="off" style="min-width:240px">
+    <datalist id="evRenglonOpts"></datalist>
+    <button class="ev-sel" id="evFiltroClear" style="cursor:pointer;background:#fff;border:1px solid var(--border)">Limpiar filtros</button>
     <span class="ev-meta" id="evGen"></span>
   </div>
 
@@ -3247,7 +3403,7 @@ window.addEventListener('load', ()=>{
   </div>
 
   <div class="ev-panel">
-    <div class="ev-ph"><span id="evRankTitle">&#9612; RANKING DE DESEMPE&Ntilde;O</span><span class="ev-meta">clic en una fila &rarr; filtra la tabla inferior</span></div>
+    <div class="ev-ph"><span id="evRankTitle">&#9612; RANKING DE DESEMPE&Ntilde;O</span><span class="ev-meta">clic en una fila &rarr; filtra la tabla superior</span></div>
     <div class="ev-pb"><table class="ev-tbl" id="evRankTbl"></table></div>
   </div>
 
@@ -3260,6 +3416,13 @@ window.addEventListener('load', ()=>{
     <strong>Penalizaci&#243;n</strong> = Agotados &times; 1.0 + Cr&#237;ticos &times; 0.7 + Vencidos &times; 0.5 + Excesos &times; 0.3.<br>
     El +50 centra la escala (50 = neutro). <strong>Colores:</strong> Verde &#8805;45 &middot; &Aacute;mbar 30-44 &middot; Morado 15-29 &middot; Rojo &lt;15.<br>
     <span style="color:#7a5a9a;font-size:11px">Nota: el score compara analistas pero NO ajusta por la dificultad de la cartera (ver gr&#225;ficos de carga). Es un insumo de diagn&#243;stico, no una prueba de responsabilidad individual.</span>
+  </div>
+</div>
+
+<div class="evm-overlay" id="evmOverlay">
+  <div class="evm-box">
+    <div class="evm-head"><span>&#191;C&#243;mo se lleg&#243; a este Score?</span><button class="evm-x" id="evmClose">&times;</button></div>
+    <div class="evm-body" id="evmBody"></div>
   </div>
 </div>
 
@@ -3282,12 +3445,61 @@ window.addEventListener('load', ()=>{
   function nombreDe(ini){ if(ini==='SIN ASIGNAR')return'Sin asignar'; return NOMBRES[ini]||ini; }
   function nombreFull(ini){ if(ini==='SIN ASIGNAR')return'SIN ASIGNAR'; var n=NOMBRES[ini]; return n?(ini+' \u2014 '+n):ini; }
   var loaded=false, anaData=null, rows=null, chS=null,chX=null,chK=null, curFilter='__ALL__';
+  var curGrupo='__ALL__', curRenglon='';  // renglón = código normalizado o '' (todos)
+
+  // ¿Pasa una fila los filtros de grupo y renglón? (el de analista se aplica aparte)
+  function passGR(r){
+    if(curGrupo!=='__ALL__' && String(r.GRUPO||'')!==curGrupo) return false;
+    if(curRenglon!=='' && r.__cod!==curRenglon) return false;
+    return true;
+  }
+  // ¿Pasa una fila TODOS los filtros activos (analista + grupo + renglón)?
+  function passAll(r){
+    if(curFilter!=='__ALL__' && r.__ana!==curFilter) return false;
+    return passGR(r);
+  }
 
   function sClass(s){ if(s>=45)return'ev-s-hi'; if(s>=30)return'ev-s-md'; if(s>=15)return'ev-s-lo'; return'ev-s-cr'; }
   function sColor(s){ if(s>=45)return'#2d7a2d'; if(s>=30)return'#c57a00'; if(s>=15)return'#5a2d82'; return'#c0392b'; }
   function money(n){ return '$'+Number(n||0).toLocaleString('en-US',{maximumFractionDigits:0}); }
   function num(n){ return Number(n||0).toLocaleString('en-US'); }
   function normCod(c){ c=String(c==null?'':c).trim(); return c.indexOf('.')>=0?c.replace(/\.0+$/,''):c; }
+
+  // ¿Hay un filtro de grupo o renglón activo? (entonces hay que recalcular por analista)
+  function grActive(){ return curGrupo!=='__ALL__' || curRenglon!==''; }
+
+  // Score de salud (misma fórmula documentada en el panel):
+  // score = ((sano - penalización)/total)*100 + 50
+  // sano = óptimos*1.0 + bajos*0.6 ; penalización = agotados*1.0 + críticos*0.7 + excesos*0.3
+  // (vencidos no es recalculable por renglón desde coverage; se asume 0 en el recálculo filtrado)
+  function calcScore(b){
+    var total=Math.max(1,b.total);
+    var sano=b.optimos*1.0 + b.bajos*0.6;
+    var pen =b.agotados*1.0 + b.criticos*0.7 + b.excesos*0.3;
+    return Math.round(((sano-pen)/total)*100 + 50);
+  }
+
+  // Recalcula el desglose por analista a partir de las filas que pasan los filtros de grupo/renglón.
+  // Devuelve la misma forma que anaData.analistas[] para reutilizar render.
+  function analistasFiltrados(){
+    if(!grActive()) return (anaData.analistas||[]).slice();
+    var by={};
+    (rows||[]).forEach(function(r){
+      if(!passGR(r)) return;
+      var a=r.__ana; if(!by[a]) by[a]={analista:a,total:0,agotados:0,criticos:0,bajos:0,optimos:0,excesos:0,con_reserva:0,valor_riesgo:0,skus_vencidos:0};
+      var b=by[a]; b.total++;
+      switch(r.STATUS){ case 'AGOTADO':b.agotados++;break; case 'CRITICO':b.criticos++;break;
+        case 'BAJO':b.bajos++;break; case 'OPTIMO':b.optimos++;break; case 'EXCESO':b.excesos++;break; }
+      if(Number(r.RESERVA||0)>0) b.con_reserva++;
+    });
+    return Object.keys(by).map(function(k){
+      var b=by[k];
+      b.score_salud=calcScore(b);
+      b.pct_problema=b.total?Math.round(100*(b.agotados+b.criticos)/b.total):0;
+      b.pct_optimo=b.total?Math.round(100*b.optimos/b.total):0;
+      return b;
+    });
+  }
 
   function injectTabs(){
     var bar=document.createElement('div'); bar.className='ev-tabs';
@@ -3336,26 +3548,69 @@ window.addEventListener('load', ()=>{
     if(names.indexOf('SIN ASIGNAR')<0) names.push('SIN ASIGNAR');
     sel.innerHTML='<option value="__ALL__">Todos los analistas</option>'+names.map(function(n){return '<option value="'+n+'">'+nombreFull(n)+'</option>'}).join('');
     sel.onchange=function(){ curFilter=sel.value; renderAll(); };
+
+    // Filtro de grupo: grupos únicos presentes en los renglones
+    var gsel=document.getElementById('evFiltroGrupo');
+    var grupos={};
+    (rows||[]).forEach(function(r){ var g=String(r.GRUPO||'').trim(); if(g) grupos[g]=1; });
+    var glist=Object.keys(grupos).sort();
+    gsel.innerHTML='<option value="__ALL__">Todos los grupos</option>'+glist.map(function(g){return '<option value="'+g+'">'+g+'</option>'}).join('');
+    gsel.onchange=function(){ curGrupo=gsel.value; renderAll(); };
+
+    // Filtro de renglón (autocompletar por código — nombre)
+    var dl=document.getElementById('evRenglonOpts');
+    var seen={}, opts=[];
+    (rows||[]).forEach(function(r){ if(r.__cod && !seen[r.__cod]){ seen[r.__cod]=1; opts.push('<option value="'+r.__cod+' — '+(String(r.SUMINISTRO||'').replace(/"/g,'')+'')+'"></option>'); } });
+    dl.innerHTML=opts.join('');
+    var rinp=document.getElementById('evFiltroRenglon');
+    function applyRenglon(){
+      var v=String(rinp.value||'').trim();
+      if(v===''){ curRenglon=''; renderAll(); return; }
+      // aceptar "codigo — nombre" o solo codigo o nombre
+      var cod=normCod(v.split('—')[0]);
+      var match=(rows||[]).filter(function(r){ return r.__cod===cod; });
+      if(!match.length){
+        var low=v.toLowerCase();
+        match=(rows||[]).filter(function(r){ return String(r.SUMINISTRO||'').toLowerCase().indexOf(low)>=0 || r.__cod.indexOf(normCod(v))>=0; });
+      }
+      curRenglon=match.length?match[0].__cod:'';
+      renderAll();
+    }
+    rinp.onchange=applyRenglon;
+    rinp.onkeydown=function(e){ if(e.key==='Enter') applyRenglon(); };
+
+    document.getElementById('evFiltroClear').onclick=function(){
+      curFilter='__ALL__'; curGrupo='__ALL__'; curRenglon='';
+      sel.value='__ALL__'; gsel.value='__ALL__'; rinp.value='';
+      renderAll();
+    };
   }
 
   function renderKpis(){
-    var A=anaData.analistas||[]; var f=(curFilter==='__ALL__')?A:A.filter(function(a){return a.analista===curFilter});
+    var A=analistasFiltrados();
+    var f=(curFilter==='__ALL__')?A:A.filter(function(a){return a.analista===curFilter});
     var s=function(k){return f.reduce(function(t,a){return t+(a[k]||0)},0)};
-    var tot=(curFilter==='__ALL__')?(anaData.total_skus||1):Math.max(1,s('total'));
-    // Consumo en riesgo = DEMANDA_MENSUAL de renglones agotados+críticos (demanda mensual no atendida)
+    var tot;
+    if(grActive()){ tot=Math.max(1,s('total')); }
+    else { tot=(curFilter==='__ALL__')?(anaData.total_skus||1):Math.max(1,s('total')); }
+    // Consumo en riesgo = DEMANDA_MENSUAL de renglones agotados+críticos que pasan TODOS los filtros
     var consumoRiesgo=0;
     if(rows){ rows.forEach(function(r){
-      if((curFilter==='__ALL__'||r.__ana===curFilter) && (r.STATUS==='AGOTADO'||r.STATUS==='CRITICO')){
+      if(passAll(r) && (r.STATUS==='AGOTADO'||r.STATUS==='CRITICO')){
         consumoRiesgo+=Number(r.DEMANDA_MENSUAL||0);
       }
     }); }
-    var sinA=(curFilter==='__ALL__')?anaData.sin_analista_asignado:(curFilter==='SIN ASIGNAR'?s('total'):0);
+    // Valor en riesgo: si hay filtro GR, no es recalculable por renglón -> se omite (—)
+    var valorRiesgoTxt = grActive() ? '—' : money(s('valor_riesgo'));
+    var sinA;
+    if(grActive()){ sinA=(curFilter==='__ALL__'||curFilter==='SIN ASIGNAR')?(f.filter(function(a){return a.analista==='SIN ASIGNAR'}).reduce(function(t,a){return t+a.total},0)):0; }
+    else { sinA=(curFilter==='__ALL__')?anaData.sin_analista_asignado:(curFilter==='SIN ASIGNAR'?s('total'):0); }
     var k=[
       ['Renglones Agotados',num(s('agotados')),'r',(100*s('agotados')/tot).toFixed(1)+'% de su cartera','Renglones con inventario proyectado = 0.'],
       ['Renglones Críticos',num(s('criticos')),'a',(100*s('criticos')/tot).toFixed(1)+'% de su cartera','Cobertura menor a 1 mes.'],
       ['Renglones Óptimos',num(s('optimos')),'g',(100*s('optimos')/tot).toFixed(1)+'% de su cartera','Cobertura entre 4 y 12 meses.'],
       ['Capital Congelado',num(s('con_reserva')),'b','Renglones con reserva','Conteo de renglones con inventario reservado/comprometido (no disponible para despacho libre).'],
-      ['Valor en Riesgo',money(s('valor_riesgo')),'p','vencido + cr\u00edtico + riesgo','Valor (cantidad x costo) de los lotes en riesgo de vencimiento de esta cartera. Incluye vencidos y por vencer.'],
+      ['Valor en Riesgo',valorRiesgoTxt,'p','vencido + cr\u00edtico + riesgo','Valor (cantidad x costo) de los lotes en riesgo de vencimiento de esta cartera. Incluye vencidos y por vencer.'+(grActive()?' No disponible con filtro de grupo/rengl\u00f3n activo.':'')],
       ['Consumo en Riesgo',num(consumoRiesgo),'r','demanda mensual no atendida','Suma de la demanda mensual de los renglones agotados o cr\u00edticos de esta cartera. Es el consumo mensual que NO se est\u00e1 atendiendo por falta de stock.'],
       ['Sin Analista',num(sinA),'a','renglones sin due\u00f1o','Renglones del inventario que no figuran en el cuadro maestro.'],
     ];
@@ -3367,11 +3622,11 @@ window.addEventListener('load', ()=>{
   var rankSortKey='score_salud', rankSortDir=-1;
   function computeConsumo(ana){
     if(!rows)return 0; var sum=0;
-    rows.forEach(function(r){ if(r.__ana===ana && (r.STATUS==='AGOTADO'||r.STATUS==='CRITICO')) sum+=Number(r.DEMANDA_MENSUAL||0); });
+    rows.forEach(function(r){ if(r.__ana===ana && passGR(r) && (r.STATUS==='AGOTADO'||r.STATUS==='CRITICO')) sum+=Number(r.DEMANDA_MENSUAL||0); });
     return sum;
   }
   function renderRank(){
-    var A=(anaData.analistas||[]).slice();
+    var A=analistasFiltrados();
     A.forEach(function(a){ a.__consumo=computeConsumo(a.analista); });
     A.sort(function(a,b){
       var x=a[rankSortKey], y=b[rankSortKey];
@@ -3392,7 +3647,7 @@ window.addEventListener('load', ()=>{
       h+='<tr class="clk'+(a.analista===curFilter?' sel':'')+'" data-ana="'+a.analista+'">'+
         '<td class="ev-mono" style="text-align:center">'+(i+1)+'</td>'+
         '<td style="text-align:left"><strong>'+a.analista+'</strong> <span style="color:#555;font-weight:400">'+nombreDe(a.analista)+'</span></td>'+
-        '<td style="text-align:center"><span class="ev-score '+sClass(a.score_salud)+'">'+a.score_salud+'</span></td>'+
+        '<td style="text-align:center"><span class="ev-score '+sClass(a.score_salud)+' ev-score-clk" data-score-ana="'+a.analista+'" title="Ver c\u00f3mo se calcul\u00f3 este score">'+a.score_salud+'</span></td>'+
         '<td class="ev-rt" style="text-align:center">'+num(a.total)+'</td>'+
         '<td class="ev-rt" style="text-align:center">'+num(a.agotados)+'</td>'+
         '<td class="ev-rt" style="text-align:center">'+num(a.criticos)+'</td>'+
@@ -3414,11 +3669,13 @@ window.addEventListener('load', ()=>{
     t.querySelectorAll('tr.clk').forEach(function(tr){ tr.addEventListener('click',function(){
       curFilter=(curFilter===tr.dataset.ana)?'__ALL__':tr.dataset.ana;
       document.getElementById('evFiltro').value=curFilter; renderAll(); }); });
+    t.querySelectorAll('.ev-score-clk').forEach(function(sp){ sp.addEventListener('click',function(e){
+      e.stopPropagation(); openScoreModal(sp.dataset.scoreAna); }); });
   }
 
   var tblSortKey=null, tblSortDir=1;
   function renderTable(){
-    var data=(curFilter==='__ALL__')?rows:rows.filter(function(r){return r.__ana===curFilter;});
+    var data=(rows||[]).filter(function(r){return passAll(r);});
     var ord={AGOTADO:0,CRITICO:1,BAJO:2,OPTIMO:3,EXCESO:4};
     data=data.slice();
     if(tblSortKey){
@@ -3439,7 +3696,11 @@ window.addEventListener('load', ()=>{
         if(curFilter==='__ALL__'){ var an=(a.__ana==='SIN ASIGNAR'?'zzz':a.__ana),bn=(b.__ana==='SIN ASIGNAR'?'zzz':b.__ana); if(an!==bn)return an<bn?-1:1; }
         return (ord[a.STATUS]||9)-(ord[b.STATUS]||9) || (b.DEMANDA_MENSUAL||0)-(a.DEMANDA_MENSUAL||0); });
     }
-    document.getElementById('evDetailTitle').textContent='\u9612 DETALLE POR RENGL\u00d3N \u2014 '+(curFilter==='__ALL__'?'TODOS':curFilter);
+    var titleParts=[];
+    titleParts.push(curFilter==='__ALL__'?'TODOS':curFilter);
+    if(curGrupo!=='__ALL__') titleParts.push('Grupo: '+curGrupo);
+    if(curRenglon!=='') titleParts.push('Rengl\u00f3n: '+curRenglon);
+    document.getElementById('evDetailTitle').textContent='\u9612 DETALLE POR RENGL\u00d3N \u2014 '+titleParts.join(' \u00b7 ');
     document.getElementById('evDetailCount').textContent=num(data.length)+' renglones';
     function arr(k){ return tblSortKey===k?(tblSortDir<0?' \u25bc':' \u25b2'):''; }
     var cols=[['__ana','Analista'],['__cod','C\u00f3digo'],['SUMINISTRO','Rengl\u00f3n'],['GRUPO','Grupo'],['STATUS','Status'],['INV_ACTUAL','Inv. Act'],['RECEPCION_7D','Recep'],['TRANSITO','Tr\u00e1nsito'],['RESERVA','Reserva'],['INV_PROY','Inv. Proy'],['MESES_COB','Cob (m)'],['DEMANDA_MENSUAL','Demanda Mens.']];
@@ -3463,10 +3724,16 @@ window.addEventListener('load', ()=>{
   }
 
   function renderCharts(){
-    var A=(anaData.analistas||[]).slice().sort(function(a,b){return b.score_salud-a.score_salud});
+    var A=analistasFiltrados().slice().sort(function(a,b){return b.score_salud-a.score_salud});
+    // Resaltado: si hay analista filtrado, atenuar los demás
+    function colorFor(a){
+      var base=sColor(a.score_salud);
+      if(curFilter!=='__ALL__' && a.analista!==curFilter) return 'rgba(180,180,180,0.45)';
+      return base;
+    }
     if(chS)chS.destroy();
     chS=new Chart(document.getElementById('evChartScore'),{type:'bar',
-      data:{labels:A.map(function(a){return nombreDe(a.analista)}),datasets:[{data:A.map(function(a){return a.score_salud}),backgroundColor:A.map(function(a){return sColor(a.score_salud)})}]},
+      data:{labels:A.map(function(a){return nombreDe(a.analista)}),datasets:[{data:A.map(function(a){return a.score_salud}),backgroundColor:A.map(colorFor)}]},
       options:{indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{max:100},y:{ticks:{autoSkip:false,font:{size:10}}}},maintainAspectRatio:false}});
     var labelPlugin={id:'lbl',afterDatasetsDraw:function(c){
       var ct=c.ctx; ct.save(); ct.font='9px Consolas';
@@ -3485,7 +3752,7 @@ window.addEventListener('load', ()=>{
       ct.restore(); }};
     if(chX)chX.destroy();
     chX=new Chart(document.getElementById('evChartScatter'),{type:'scatter',
-      data:{datasets:[{data:A.map(function(a){return{x:a.total,y:a.score_salud,label:a.analista}}),backgroundColor:A.map(function(a){return sColor(a.score_salud)}),pointRadius:5}]},
+      data:{datasets:[{data:A.map(function(a){return{x:a.total,y:a.score_salud,label:a.analista}}),backgroundColor:A.map(colorFor),pointRadius:5}]},
       options:{plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return c.raw.label+': '+c.raw.x+' renglones, score '+c.raw.y}}}},
         scales:{x:{title:{display:true,text:'Renglones asignados'}},y:{title:{display:true,text:'Score'},min:0,max:100}},maintainAspectRatio:false},plugins:[labelPlugin]});
     var pts=A.map(function(a){ var t=Math.max(1,a.total);
@@ -3494,17 +3761,59 @@ window.addEventListener('load', ()=>{
       return {x:critPct,y:sanoPct,label:a.analista}; });
     if(chK)chK.destroy();
     chK=new Chart(document.getElementById('evChartStock'),{type:'scatter',
-      data:{datasets:[{data:pts,backgroundColor:A.map(function(a){return sColor(a.score_salud)}),pointRadius:6}]},
+      data:{datasets:[{data:pts,backgroundColor:A.map(colorFor),pointRadius:6}]},
       options:{plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return c.raw.label+': '+c.raw.x+'% crítico, '+c.raw.y+'% sano'}}}},
         scales:{x:{title:{display:true,text:'% cartera en agotado+crítico'},min:0,max:100},y:{title:{display:true,text:'% cartera óptimo+bajo'},min:0,max:100}},maintainAspectRatio:false},plugins:[labelPlugin]});
   }
 
-  function renderAll(){ renderKpis(); renderRank(); renderTable(); }
+  function renderAll(){ renderKpis(); renderRank(); renderTable(); if(window.Chart && loaded){ renderCharts(); } }
+
+  // ===== Modal: explicación del Score por analista =====
+  function openScoreModal(ana){
+    var A=analistasFiltrados();
+    var a=null; for(var i=0;i<A.length;i++){ if(A[i].analista===ana){ a=A[i]; break; } }
+    if(!a) return;
+    var total=Math.max(1,a.total);
+    var sanoOpt=a.optimos*1.0, sanoBajo=a.bajos*0.6, sano=sanoOpt+sanoBajo;
+    var pAg=a.agotados*1.0, pCr=a.criticos*0.7, pEx=a.excesos*0.3, pen=pAg+pCr+pEx;
+    var venc=(typeof a.skus_vencidos==='number')?a.skus_vencidos:0;
+    var pVe=grActive()?0:venc*0.5; pen+=pVe;
+    var bruto=((sano-pen)/total)*100, score=Math.round(bruto+50);
+    var nf=function(x){ return (Math.round(x*100)/100).toLocaleString('en-US'); };
+    var cl=sClass(score), col=sColor(score);
+    var html=''+
+      '<div class="evm-ttl">Score de Salud \u2014 <strong>'+ana+'</strong> <span style="font-weight:400;color:#555">'+nombreDe(ana)+'</span></div>'+
+      '<div class="evm-big" style="color:'+col+'">'+score+' <span class="evm-tag '+cl+'">'+(score>=45?'VERDE':score>=30?'\u00c1MBAR':score>=15?'MORADO':'ROJO')+'</span></div>'+
+      '<div class="evm-sub">Cartera de '+num(a.total)+' renglones en el corte actual'+(grActive()?' (filtrada)':'')+'.</div>'+
+      '<table class="evm-tbl">'+
+        '<tr class="evm-h"><td>Componente</td><td>Renglones</td><td>Peso</td><td>Aporte</td></tr>'+
+        '<tr class="evm-pos"><td>\u00d3ptimos</td><td>'+num(a.optimos)+'</td><td>\u00d7 1.0</td><td>+'+nf(sanoOpt)+'</td></tr>'+
+        '<tr class="evm-pos"><td>Bajos</td><td>'+num(a.bajos)+'</td><td>\u00d7 0.6</td><td>+'+nf(sanoBajo)+'</td></tr>'+
+        '<tr class="evm-st"><td colspan="3">Inventario sano</td><td>+'+nf(sano)+'</td></tr>'+
+        '<tr class="evm-neg"><td>Agotados</td><td>'+num(a.agotados)+'</td><td>\u00d7 1.0</td><td>\u2212'+nf(pAg)+'</td></tr>'+
+        '<tr class="evm-neg"><td>Cr\u00edticos</td><td>'+num(a.criticos)+'</td><td>\u00d7 0.7</td><td>\u2212'+nf(pCr)+'</td></tr>'+
+        '<tr class="evm-neg"><td>Vencidos</td><td>'+(grActive()?'n/d':num(venc))+'</td><td>\u00d7 0.5</td><td>\u2212'+nf(pVe)+'</td></tr>'+
+        '<tr class="evm-neg"><td>Excesos</td><td>'+num(a.excesos)+'</td><td>\u00d7 0.3</td><td>\u2212'+nf(pEx)+'</td></tr>'+
+        '<tr class="evm-st"><td colspan="3">Penalizaci\u00f3n</td><td>\u2212'+nf(pen)+'</td></tr>'+
+      '</table>'+
+      '<div class="evm-calc">'+
+        'score = ((sano \u2212 penalizaci\u00f3n) / total) \u00d7 100 + 50<br>'+
+        'score = (('+nf(sano)+' \u2212 '+nf(pen)+') / '+num(total)+') \u00d7 100 + 50 = <strong>'+nf(bruto)+' + 50 = '+score+'</strong>'+
+      '</div>'+
+      '<div class="evm-note">El +50 centra la escala (50 = neutro). <strong>Colores:</strong> Verde \u226545 \u00b7 \u00c1mbar 30\u201344 \u00b7 Morado 15\u201329 \u00b7 Rojo &lt;15.'+
+      (grActive()?'<br><strong>Nota:</strong> con filtro de grupo/rengl\u00f3n activo el score se recalcula sobre la cartera filtrada; los renglones vencidos no se contabilizan en ese recálculo.':'')+
+      '<br>El score compara analistas pero NO ajusta por la dificultad de la cartera (ver gr\u00e1ficos de carga). Es un insumo de diagn\u00f3stico, no una prueba de responsabilidad individual.</div>';
+    document.getElementById('evmBody').innerHTML=html;
+    document.getElementById('evmOverlay').style.display='flex';
+  }
 
   document.addEventListener('DOMContentLoaded',function(){
     injectTabs();
-    
-    
+    var ov=document.getElementById('evmOverlay');
+    var cl=document.getElementById('evmClose');
+    if(cl) cl.addEventListener('click',function(){ ov.style.display='none'; });
+    if(ov) ov.addEventListener('click',function(e){ if(e.target===ov) ov.style.display='none'; });
+    document.addEventListener('keydown',function(e){ if(e.key==='Escape'&&ov) ov.style.display='none'; });
   });
 })();
 </script>
