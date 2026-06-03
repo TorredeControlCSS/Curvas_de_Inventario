@@ -442,9 +442,9 @@ function renderAnalistaCard(codigo){
   if(!cod || ini===undefined || ini===null){ card.style.display='none'; return; }
   const asignado=(ini && ini!=='SIN ASIGNAR');
   const nombre=anaNombre(ini);
-  body.innerHTML='<div style="font-size:16px;font-weight:700;color:#0b1f3a">'+nombre+
-    (asignado?' <span style="font-size:12px;font-weight:400;color:#666;font-family:Consolas,monospace">('+ini+')</span>':'')+'</div>'+
-    (asignado?'':'<div style="font-size:11px;color:#c0392b;margin-top:2px">Este renglón no figura en el cuadro maestro.</div>');
+  body.innerHTML='<div style="font-size:16px;font-weight:700;color:var(--text)">'+nombre+
+    (asignado?' <span style="font-size:12px;font-weight:400;color:var(--muted);font-family:Consolas,monospace">('+ini+')</span>':'')+'</div>'+
+    (asignado?'':'<div style="font-size:11px;color:#e06666;margin-top:2px">Este renglón no figura en el cuadro maestro.</div>');
   card.style.display='';
 }
 let lastSerieForReports = null; 
@@ -3378,7 +3378,7 @@ window.addEventListener('load', ()=>{
   <div class="ev-kg" id="evKpis"></div>
 
   <div class="ev-cg">
-    <div class="ev-cc"><div class="ev-cct">Score de Salud del Inventario por Analista</div>
+    <div class="ev-cc"><div class="ev-cct">Score de Ranking de Desempe&ntilde;o por Analista</div>
       <div class="ev-ccd">Verde &#8805;45 &middot; &Aacute;mbar 30-44 &middot; Morado 15-29 &middot; Rojo &lt;15</div>
       <div class="ev-cw"><canvas id="evChartScore"></canvas></div></div>
     <div class="ev-cc"><div class="ev-cct">Score vs. tama&ntilde;o de cartera</div>
@@ -3576,10 +3576,11 @@ window.addEventListener('load', ()=>{
     }); }
     var sinA=(curFilter==='__ALL__')?anaData.sin_analista_asignado:(curFilter==='SIN ASIGNAR'?s('total'):0);
     var k=[
-      ['Renglones Agotados',num(s('agotados')),'r',(100*s('agotados')/tot).toFixed(1)+'% de su cartera','Inv. proyectado = 0 (quiebre de stock).','0 meses de cobertura'],
+      ['Renglones Agotados',num(s('agotados')),'r',(100*s('agotados')/tot).toFixed(1)+'% de su cartera','Inv. proyectado = 0 (quiebre de stock).','0 meses'],
       ['Renglones Críticos',num(s('criticos')),'a',(100*s('criticos')/tot).toFixed(1)+'% de su cartera','Cobertura menor a 1 mes.','< 1 mes'],
+      ['Renglones Bajos',num(s('bajos')),'a',(100*s('bajos')/tot).toFixed(1)+'% de su cartera','Cobertura entre 1 y 4 meses.','1 a 4 meses'],
       ['Renglones Óptimos',num(s('optimos')),'g',(100*s('optimos')/tot).toFixed(1)+'% de su cartera','Cobertura entre 4 y 12 meses.','4 a 12 meses'],
-      ['Capital Congelado',num(s('con_reserva')),'b','Renglones con reserva','Conteo de renglones con inventario reservado/comprometido (no disponible para despacho libre).',''],
+      ['Renglones en Exceso',num(s('excesos')),'b',(100*s('excesos')/tot).toFixed(1)+'% de su cartera','Cobertura mayor a 12 meses (sobre-stock).','> 12 meses'],
       ['Valor en Riesgo',money(s('valor_riesgo')),'p','vencido + cr\u00edtico + riesgo','Valor (cantidad x costo) de los lotes en riesgo de vencimiento de esta cartera. Incluye vencidos y por vencer.',''],
       ['Consumo en Riesgo',num(consumoRiesgo),'r','demanda mensual no atendida','Suma de la demanda mensual de los renglones agotados o cr\u00edticos de esta cartera. Es el consumo mensual que NO se est\u00e1 atendiendo por falta de stock.',''],
       ['Sin Analista',num(sinA),'a','renglones sin due\u00f1o','Renglones del inventario que no figuran en el cuadro maestro.',''],
@@ -3804,7 +3805,7 @@ window.addEventListener('load', ()=>{
         plugins:{legend:{position:'bottom',labels:{font:{size:11},boxWidth:14}},
           tooltip:{callbacks:{title:function(it){return 'Score ≈ '+Math.round(it[0].parsed.x)}}}},
         scales:{x:{type:'linear',min:xLo,max:xHi,title:{display:true,text:'Score'},
-                   grid:{color:function(c){return c.tick.value===0?'#888':'rgba(0,0,0,.08)'}},ticks:{stepSize:10,font:{size:9}}},
+                   ticks:{stepSize:10,font:{size:9}}},
                 y:{title:{display:true,text:'N° de analistas'},beginAtZero:true,ticks:{precision:0}}}}
     });
 
@@ -3869,24 +3870,21 @@ window.addEventListener('load', ()=>{
 
   function renderCharts(){
     var A=(anaData.analistas||[]).slice().sort(function(a,b){return b.score_real-a.score_real});
-    // Resaltado: si hay analista filtrado, atenuar los demás
     function colorFor(a){
       if(curFilter!=='__ALL__' && a.analista!==curFilter) return 'rgba(180,180,180,0.45)';
       return sColor(a.score_real);
     }
-    // Rango dinámico del eje de score: permitir negativos sin capar.
     var scores=A.map(function(a){return Number(a.score_real)||0});
-    var sMin=Math.min.apply(null,scores.concat([0]));
-    var sMax=Math.max.apply(null,scores.concat([100]));
-    var scoreAxisMin=Math.floor((sMin-10)/10)*10;   // margen inferior
-    var scoreAxisMax=Math.ceil((sMax+10)/10)*10;     // margen superior
+    // Eje de score: 0..100 normalmente, pero si hay negativos baja lo justo para mostrarlos.
+    var sMin=Math.min.apply(null,scores);
+    var loScore=sMin<0?(Math.floor(sMin/10)*10):0;
 
     if(chS)chS.destroy();
     chS=new Chart(document.getElementById('evChartScore'),{type:'bar',
       data:{labels:A.map(function(a){return nombreDe(a.analista)}),datasets:[{data:scores,backgroundColor:A.map(colorFor)}]},
       options:{indexAxis:'y',plugins:{legend:{display:false}},
-        scales:{x:{min:scoreAxisMin,max:scoreAxisMax,grid:{color:function(c){return c.tick.value===0?'#888':'rgba(0,0,0,.08)'}}},
-                y:{ticks:{autoSkip:false,font:{size:10}}}},maintainAspectRatio:false}});
+        scales:{x:{min:loScore,max:100},y:{ticks:{autoSkip:false,font:{size:10}}}},maintainAspectRatio:false}});
+
     var labelPlugin={id:'lbl',afterDatasetsDraw:function(c){
       var ct=c.ctx; ct.save(); ct.font='9px Consolas';
       var meta=c.getDatasetMeta(0);
@@ -3902,19 +3900,18 @@ window.addEventListener('load', ()=>{
       });
       ct.restore(); }};
 
-    // Scatter score vs tamaño: márgenes en ambos ejes para que los puntos no caigan en el borde.
+    // Scatter score vs tamaño: pequeño margen para que los puntos no toquen el borde.
     var totales=A.map(function(a){return Number(a.total)||0});
     var tMax=Math.max.apply(null,totales.concat([1]));
-    var xPad=Math.max(5,Math.ceil(tMax*0.08));
     if(chX)chX.destroy();
     chX=new Chart(document.getElementById('evChartScatter'),{type:'scatter',
       data:{datasets:[{data:A.map(function(a){return{x:a.total,y:a.score_real,label:a.analista}}),backgroundColor:A.map(colorFor),pointRadius:5}]},
       options:{plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return c.raw.label+': '+c.raw.x+' renglones, score '+c.raw.y}}}},
-        scales:{x:{title:{display:true,text:'Renglones asignados'},min:-xPad,suggestedMax:tMax+xPad},
-                y:{title:{display:true,text:'Score'},min:scoreAxisMin,max:scoreAxisMax,grid:{color:function(c){return c.tick.value===0?'#888':'rgba(0,0,0,.08)'}}}},
+        scales:{x:{title:{display:true,text:'Renglones asignados'},min:0,suggestedMax:tMax+5},
+                y:{title:{display:true,text:'Score'},min:loScore,suggestedMax:100}},
         maintainAspectRatio:false},plugins:[labelPlugin]});
 
-    // Scatter cartera sana vs crítica: margen alrededor del 0-100 para no pegar al borde.
+    // Scatter cartera sana vs crítica: pequeño margen alrededor de 0-100.
     var pts=A.map(function(a){ var t=Math.max(1,a.total);
       var critPct=Math.round(100*(a.agotados+a.criticos)/t);
       var sanoPct=Math.round(100*(a.optimos+a.bajos)/t);
@@ -3923,8 +3920,8 @@ window.addEventListener('load', ()=>{
     chK=new Chart(document.getElementById('evChartStock'),{type:'scatter',
       data:{datasets:[{data:pts,backgroundColor:A.map(colorFor),pointRadius:6}]},
       options:{plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return c.raw.label+': '+c.raw.x+'% crítico, '+c.raw.y+'% sano'}}}},
-        scales:{x:{title:{display:true,text:'% cartera en agotado+crítico'},min:-5,max:105},
-                y:{title:{display:true,text:'% cartera óptimo+bajo'},min:-5,max:105}},maintainAspectRatio:false},plugins:[labelPlugin]});
+        scales:{x:{title:{display:true,text:'% cartera en agotado+crítico'},min:0,max:100},
+                y:{title:{display:true,text:'% cartera óptimo+bajo'},min:0,max:100}},maintainAspectRatio:false},plugins:[labelPlugin]});
 
     renderDistribution();
   }
