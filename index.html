@@ -3346,15 +3346,16 @@ window.addEventListener('load', ()=>{
   .evm-big{font-family:'Consolas',monospace;font-size:34px;font-weight:700;line-height:1}
   .evm-tag{font-size:11px;font-weight:700;padding:2px 8px;border:1px solid;border-radius:3px;vertical-align:middle;margin-left:6px}
   .evm-sub{color:#555;font-size:11.5px;margin:4px 0 10px}
-  .evm-tbl{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:10px}
-  .evm-tbl td{padding:4px 8px;border:1px solid #d4dae3;font-family:'Consolas',monospace}
-  .evm-tbl td:first-child{font-family:inherit;text-align:left}
+  .evm-tbl{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:10px;table-layout:fixed}
+  .evm-tbl td{padding:4px 8px;border:1px solid #d4dae3;font-family:'Consolas',monospace;word-wrap:break-word;overflow-wrap:break-word;vertical-align:top}
+  .evm-tbl td:first-child{font-family:inherit;text-align:left;width:34%}
   .evm-tbl td:not(:first-child){text-align:right}
+  .evm-tbl td.evm-desc,.evm-tbl td[style*="text-align:left"]{font-family:inherit;text-align:left}
   .evm-h td{background:#e0e4ea;font-weight:700;font-family:inherit!important;text-align:center!important}
   .evm-pos td{background:#f0f7f0;color:#2d7a2d}
   .evm-neg td{background:#fdf0f0;color:#c0392b}
   .evm-st td{background:#eef2f7;font-weight:700;font-family:inherit!important}
-  .evm-calc{background:#f5f0fa;border:1px solid #c0a0d8;padding:8px 10px;font-family:'Consolas',monospace;font-size:11.5px;line-height:1.7;color:#3a2050;margin-bottom:8px}
+  .evm-calc{background:#f5f0fa;border:1px solid #c0a0d8;padding:8px 10px;font-size:11.5px;line-height:1.6;color:#3a2050;margin-bottom:8px}
   .evm-note{font-size:11px;color:#666;line-height:1.5}
   @media(max-width:980px){.ev-cg{grid-template-columns:1fr}#evDistGrid{grid-template-columns:1fr!important}}
 </style>
@@ -3587,7 +3588,7 @@ window.addEventListener('load', ()=>{
       ['Sin Analista',num(sinA),'a','renglones sin due\u00f1o','Renglones del inventario que no figuran en el cuadro maestro.',''],
     ];
     document.getElementById('evKpis').innerHTML=k.map(function(x){
-      var sub=x[6]?('<span class="ev-kr">'+x[6]+'</span> '+x[3]):x[3];
+      var sub=x[5]?('<span class="ev-kr">'+x[5]+'</span> '+x[3]):x[3];
       return '<div class="ev-kb '+x[2]+'"><div class="ev-kl" title="'+x[4]+'">'+x[0]+'</div><div class="ev-kv">'+x[1]+'</div><div class="ev-ks">'+sub+'</div></div>';
     }).join('');
   }
@@ -3845,25 +3846,24 @@ window.addEventListener('load', ()=>{
     var html=''+
       '<div class="evm-ttl"><strong>C\u00f3mo leer la distribuci\u00f3n del score</strong></div>'+
       '<div style="font-size:12px;color:#222;line-height:1.6">'+
-      'Este panel responde: <em>\u00bflos scores de los analistas se reparten como una campana de Gauss, o hay un sesgo?</em><br><br>'+
+      'Este panel responde: <em>\u00bfc\u00f3mo se reparten los scores de desempe\u00f1o entre los analistas? \u00bfForman una campana sim\u00e9trica o hay un sesgo?</em><br><br>'+
       '<strong>Las tres capas del gr\u00e1fico:</strong>'+
       '<table class="evm-tbl" style="margin-top:6px">'+
         '<tr class="evm-h"><td>Elemento</td><td>Qu\u00e9 es</td></tr>'+
-        '<tr><td style="white-space:nowrap;color:#5a8fc7;font-weight:700">Barras</td><td style="text-align:left">Conteo real de analistas en cada rango de score.</td></tr>'+
-        '<tr><td style="white-space:nowrap;color:#1a5fa8;font-weight:700">L\u00ednea azul (KDE)</td><td style="text-align:left">Densidad <strong>real</strong> de los datos: dibuja la forma verdadera, sea o no normal. Es la que \u201cmejor define\u201d la distribuci\u00f3n.</td></tr>'+
-        '<tr><td style="white-space:nowrap;color:#c0392b;font-weight:700">L\u00ednea roja punteada</td><td style="text-align:left">Campana normal te\u00f3rica de referencia. Si la azul se separa de la roja hacia un lado, hay sesgo.</td></tr>'+
+        '<tr><td style="white-space:nowrap;color:#5a8fc7;font-weight:700">Barras</td><td style="text-align:left">Cada barra es un valor de score <strong>exacto</strong>; su altura cuenta cu\u00e1ntos analistas tienen ese score.</td></tr>'+
+        '<tr><td style="white-space:nowrap;color:#1a5fa8;font-weight:700">L\u00ednea azul (KDE)</td><td style="text-align:left">Densidad <strong>real</strong> de los datos: dibuja la forma verdadera de la distribuci\u00f3n, sea o no normal.</td></tr>'+
+        '<tr><td style="white-space:nowrap;color:#c0392b;font-weight:700">L\u00ednea roja punteada</td><td style="text-align:left">Campana normal te\u00f3rica, solo como <strong>referencia</strong>. Si la azul se separa de la roja, los datos NO son normales.</td></tr>'+
       '</table><br>'+
-      '<strong>Valores esperados si fuera una normal perfecta:</strong>'+
+      '<strong>Qu\u00e9 mide cada estad\u00edstico:</strong>'+
       '<table class="evm-tbl" style="margin-top:6px">'+
-        '<tr class="evm-h"><td>M\u00e9trica</td><td>Ideal normal</td><td>Significado</td></tr>'+
-        '<tr><td>Media vs Mediana</td><td>iguales</td><td style="text-align:left">Si difieren, hay sesgo.</td></tr>'+
-        '<tr><td>Asimetr\u00eda (skew)</td><td>0</td><td style="text-align:left">&lt;0 = cola a la izquierda (scores bajos); &gt;0 = cola a la derecha.</td></tr>'+
-        '<tr><td>Curtosis (exceso)</td><td>0</td><td style="text-align:left">&gt;0 = pico m\u00e1s agudo y colas pesadas; &lt;0 = m\u00e1s plana.</td></tr>'+
-        '<tr><td>Shapiro-Wilk W</td><td>\u2248 1.00</td><td style="text-align:left">Mide cu\u00e1nto se parece a una normal (1 = id\u00e9ntica).</td></tr>'+
-        '<tr><td>p-valor</td><td>&ge; 0.05</td><td style="text-align:left">p &ge; 0.05: no se rechaza normalidad. p &lt; 0.05: NO es normal.</td></tr>'+
+        '<tr class="evm-h"><td>M\u00e9trica</td><td>Qu\u00e9 indica sobre la forma</td></tr>'+
+        '<tr><td style="white-space:nowrap">Media vs Mediana</td><td style="text-align:left">Si la media es menor que la mediana \u2192 sesgo negativo. Si es mayor \u2192 sesgo positivo. Iguales \u2192 sim\u00e9trica.</td></tr>'+
+        '<tr><td style="white-space:nowrap">Asimetr\u00eda (skew)</td><td style="text-align:left">Cu\u00e1l cola domina. &lt;0: cola hacia scores bajos. &gt;0: cola hacia scores altos. \u22480: sim\u00e9trica.</td></tr>'+
+        '<tr><td style="white-space:nowrap">Curtosis</td><td style="text-align:left">Forma del pico. &gt;0 leptoc\u00fartica (pico agudo, colas pesadas). &lt;0 platic\u00fartica (aplanada). \u22480 como la normal.</td></tr>'+
+        '<tr><td style="white-space:nowrap">Shapiro-Wilk</td><td style="text-align:left">Prueba formal de normalidad. p\u22650.05: compatible con normal. p&lt;0.05: NO es normal.</td></tr>'+
       '</table><br>'+
-      '<div class="evm-calc">El test de Shapiro-Wilk es el est\u00e1ndar para muestras peque\u00f1as. Aqu\u00ed se calcula sobre los <strong>scores reales</strong> (incluyendo negativos) del corte actual.</div>'+
-      '<div class="evm-note">Con pocos analistas (n peque\u00f1o) el test tiene poca potencia estad\u00edstica: sirve para orientar, no para concluir de forma definitiva. La forma de la curva azul (KDE) suele ser m\u00e1s informativa que el p-valor solo.</div>'+
+      '<div class="evm-calc">La columna \u201cModelo al que apunta\u201d del panel traduce cada n\u00famero al tipo de distribuci\u00f3n que sugiere (normal, sesgo negativo/positivo, leptoc\u00fartica, etc.). El recuadro final resume a qu\u00e9 modelo se ajusta el conjunto.</div>'+
+      '<div class="evm-note">El score se calcula sobre los valores <strong>reales</strong> (incluyendo negativos). Con pocos analistas el test de Shapiro-Wilk tiene poca potencia: la forma de la curva azul (KDE) suele ser m\u00e1s informativa que el p-valor por s\u00ed solo.</div>'+
       '</div>';
     document.getElementById('evmBody').innerHTML=html;
     document.getElementById('evmOverlay').style.display='flex';
