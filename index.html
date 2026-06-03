@@ -3346,7 +3346,7 @@ window.addEventListener('load', ()=>{
   .evm-st td{background:#eef2f7;font-weight:700;font-family:inherit!important}
   .evm-calc{background:#f5f0fa;border:1px solid #c0a0d8;padding:8px 10px;font-family:'Consolas',monospace;font-size:11.5px;line-height:1.7;color:#3a2050;margin-bottom:8px}
   .evm-note{font-size:11px;color:#666;line-height:1.5}
-  @media(max-width:980px){.ev-cg{grid-template-columns:1fr}}
+  @media(max-width:980px){.ev-cg{grid-template-columns:1fr}#evDistGrid{grid-template-columns:1fr!important}}
 </style>
 
 <div id="evalAnalistas" class="ev-root container ev-hide">
@@ -3377,6 +3377,21 @@ window.addEventListener('load', ()=>{
     <div class="ev-cc"><div class="ev-cct">Cartera sana vs. cartera crítica</div>
       <div class="ev-ccd">Eje X: % en agotado+crítico. Eje Y: % óptimo+bajo. Arriba-izquierda = cartera sana; abajo-derecha = cartera en crisis.</div>
       <div class="ev-cw"><canvas id="evChartStock"></canvas></div></div>
+  </div>
+
+  <div class="ev-panel" id="evDistPanel">
+    <div class="ev-ph"><span>&#9612; DISTRIBUCI&Oacute;N DEL SCORE &mdash; &#191;Sigue una campana de Gauss?</span>
+      <span class="ev-meta">histograma + curva normal te&oacute;rica sobre los scores del corte actual</span></div>
+    <div style="padding:10px 12px">
+      <div style="display:grid;grid-template-columns:2fr 1fr;gap:12px" id="evDistGrid">
+        <div style="min-height:260px;position:relative"><canvas id="evChartDist"></canvas></div>
+        <div id="evDistStats" style="font-size:12px"></div>
+      </div>
+      <div style="font-size:11px;color:#666;margin-top:8px;line-height:1.5">
+        Las barras son el conteo real de analistas por rango de score. La l&iacute;nea es la curva normal te&oacute;rica con la misma media y desviaci&oacute;n.
+        Si las barras siguen aproximadamente la l&iacute;nea, la distribuci&oacute;n se parece a una campana de Gauss.
+      </div>
+    </div>
   </div>
 
   <div class="ev-panel">
@@ -3649,6 +3664,121 @@ window.addEventListener('load', ()=>{
     });
   }
 
+  // ===== Estadística de distribución (campana de Gauss) =====
+  function statBasics(arr){
+    var n=arr.length; if(!n) return null;
+    var mean=arr.reduce(function(s,x){return s+x},0)/n;
+    var v=arr.reduce(function(s,x){return s+(x-mean)*(x-mean)},0)/(n>1?(n-1):1);
+    var sd=Math.sqrt(v);
+    var m2=arr.reduce(function(s,x){return s+Math.pow(x-mean,2)},0)/n;
+    var m3=arr.reduce(function(s,x){return s+Math.pow(x-mean,3)},0)/n;
+    var m4=arr.reduce(function(s,x){return s+Math.pow(x-mean,4)},0)/n;
+    var skew=m2>0?m3/Math.pow(m2,1.5):0;
+    var kurt=m2>0?(m4/(m2*m2))-3:0;
+    var sorted=arr.slice().sort(function(a,b){return a-b});
+    var median=n%2?sorted[(n-1)/2]:(sorted[n/2-1]+sorted[n/2])/2;
+    return {n:n,mean:mean,sd:sd,skew:skew,kurt:kurt,median:median,min:sorted[0],max:sorted[n-1]};
+  }
+  function normPdf(x,mu,sd){ if(sd<=0)return 0; var z=(x-mu)/sd; return Math.exp(-0.5*z*z)/(sd*Math.sqrt(2*Math.PI)); }
+  function normInv(p){
+    var a=[-3.969683028665376e+01,2.209460984245205e+02,-2.759285104469687e+02,1.383577518672690e+02,-3.066479806614716e+01,2.506628277459239e+00];
+    var b=[-5.447609879822406e+01,1.615858368580409e+02,-1.556989798598866e+02,6.680131188771972e+01,-1.328068155288572e+01];
+    var c=[-7.784894002430293e-03,-3.223964580411365e-01,-2.400758277161838e+00,-2.549732539343734e+00,4.374664141464968e+00,2.938163982698783e+00];
+    var d=[7.784695709041462e-03,3.224671290700398e-01,2.445134137142996e+00,3.754408661907416e+00];
+    var pl=0.02425,ph=1-pl,q,r;
+    if(p<pl){ q=Math.sqrt(-2*Math.log(p)); return (((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5])/((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1); }
+    if(p<=ph){ q=p-0.5; r=q*q; return (((((a[0]*r+a[1])*r+a[2])*r+a[3])*r+a[4])*r+a[5])*q/(((((b[0]*r+b[1])*r+b[2])*r+b[3])*r+b[4])*r+1); }
+    q=Math.sqrt(-2*Math.log(1-p)); return -(((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5])/((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1);
+  }
+  function normCdf(z){ return 0.5*(1+erf(z/Math.sqrt(2))); }
+  function erf(x){ var t=1/(1+0.3275911*Math.abs(x));
+    var y=1-(((((1.061405429*t-1.453152027)*t)+1.421413741)*t-0.284496736)*t+0.254829592)*t*Math.exp(-x*x);
+    return x>=0?y:-y; }
+  // Test de Shapiro-Wilk (aprox. de Royston). Devuelve {W,p} o null.
+  function shapiroWilk(x){
+    var n=x.length; if(n<3||n>5000) return null;
+    var a=x.slice().sort(function(p,q){return p-q});
+    var mean=a.reduce(function(s,v){return s+v},0)/n;
+    var m=[]; for(var i=1;i<=n;i++){ m.push(normInv((i-0.375)/(n+0.25))); }
+    var mm=m.reduce(function(s,v){return s+v*v},0);
+    var rsn=1/Math.sqrt(n);
+    var c=m.map(function(v){return v/Math.sqrt(mm)});
+    var aw=new Array(n).fill(0);
+    var an=-2.706056*Math.pow(rsn,5)+4.434685*Math.pow(rsn,4)-2.071190*Math.pow(rsn,3)-0.147981*Math.pow(rsn,2)+0.221157*rsn+c[n-1];
+    var an1=-3.582633*Math.pow(rsn,5)+5.682633*Math.pow(rsn,4)-1.752461*Math.pow(rsn,3)-0.293762*Math.pow(rsn,2)+0.042981*rsn+c[n-2];
+    var phi;
+    if(n>5){
+      aw[n-1]=an; aw[0]=-an; aw[n-2]=an1; aw[1]=-an1;
+      phi=(mm-2*m[n-1]*m[n-1]-2*m[n-2]*m[n-2])/(1-2*an*an-2*an1*an1);
+      for(var k=2;k<n-2;k++){ aw[k]=m[k]/Math.sqrt(phi); }
+    } else {
+      aw[n-1]=an; aw[0]=-an;
+      phi=(mm-2*m[n-1]*m[n-1])/(1-2*an*an);
+      for(var k2=1;k2<n-1;k2++){ aw[k2]=m[k2]/Math.sqrt(phi); }
+    }
+    var nume=0; for(var j=0;j<n;j++){ nume+=aw[j]*a[j]; } nume=nume*nume;
+    var den=a.reduce(function(s,v){return s+(v-mean)*(v-mean)},0);
+    if(den<=0) return null;
+    var W=nume/den;
+    var p;
+    if(n===3){ var pi6=6/Math.PI, stqr=Math.asin(Math.sqrt(0.75)); var g3=Math.asin(Math.sqrt(W)); p=pi6*(g3-stqr); p=1-p; }
+    else {
+      var ln=Math.log(n), w1=Math.log(1-W), mu_, sig_;
+      if(n<=11){ var gamma=-2.273+0.459*n; mu_=0.5440-0.39978*n+0.025054*n*n-0.0006714*n*n*n; sig_=Math.exp(1.3822-0.77857*n+0.062767*n*n-0.0020322*n*n*n); var w2=-Math.log(gamma-Math.log(1-W)); var z=(w2-mu_)/sig_; p=1-normCdf(z); }
+      else { mu_=-1.5861-0.31082*ln-0.083751*ln*ln+0.0038915*ln*ln*ln; sig_=Math.exp(-0.4803-0.082676*ln+0.0030302*ln*ln); var z2=(w1-mu_)/sig_; p=1-normCdf(z2); }
+    }
+    return {W:W,p:Math.max(0,Math.min(1,p))};
+  }
+
+  function renderDistribution(){
+    var A=anaData.analistas||[];
+    var scores=A.map(function(a){return Number(a.score_salud)||0});
+    var st=statBasics(scores);
+    var statsBox=document.getElementById('evDistStats');
+    if(!st || scores.length<3){ if(statsBox) statsBox.innerHTML='<div style="color:#888">Datos insuficientes para el análisis.</div>'; return; }
+    var binW=10;
+    var lo=Math.floor(st.min/binW)*binW, hi=Math.ceil(st.max/binW)*binW;
+    if(hi===lo) hi=lo+binW;
+    var bins=[], labels=[], counts=[];
+    for(var b=lo;b<hi;b+=binW){ bins.push(b); labels.push(b+' a '+(b+binW)); counts.push(0); }
+    scores.forEach(function(s){ var idx=Math.min(bins.length-1,Math.floor((s-lo)/binW)); if(idx<0)idx=0; counts[idx]++; });
+    var curve=bins.map(function(bb){ var center=bb+binW/2; return normPdf(center,st.mean,st.sd)*scores.length*binW; });
+
+    if(window.__chDist) window.__chDist.destroy();
+    window.__chDist=new Chart(document.getElementById('evChartDist'),{
+      data:{labels:labels,datasets:[
+        {type:'bar',label:'Analistas (real)',data:counts,backgroundColor:'#5a8fc7',borderColor:'#37659e',borderWidth:1,order:2},
+        {type:'line',label:'Curva normal teórica',data:curve,borderColor:'#c0392b',backgroundColor:'transparent',borderWidth:2,tension:0.4,pointRadius:0,order:1}
+      ]},
+      options:{maintainAspectRatio:false,
+        plugins:{legend:{position:'bottom',labels:{font:{size:11},boxWidth:14}}},
+        scales:{x:{title:{display:true,text:'Rango de score'},ticks:{font:{size:9},maxRotation:45,minRotation:0}},
+                y:{title:{display:true,text:'N° de analistas'},beginAtZero:true,ticks:{precision:0}}}}
+    });
+
+    var sw=shapiroWilk(scores);
+    var veredicto='', vcolor='#555';
+    if(sw){
+      if(sw.p>=0.05){ veredicto='Compatible con una campana de Gauss'; vcolor='#2d7a2d'; }
+      else { veredicto='Se aleja de la distribución normal'; vcolor='#c0392b'; }
+    }
+    var asimTxt=Math.abs(st.skew)<0.5?'aprox. simétrica':(st.skew<0?'sesgada a la izquierda (cola de scores bajos)':'sesgada a la derecha (cola de scores altos)');
+    var f1=function(x){return (Math.round(x*10)/10).toLocaleString('en-US',{minimumFractionDigits:1,maximumFractionDigits:1})};
+    var f2=function(x){return (Math.round(x*100)/100).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})};
+    var tr=function(l,v,t){ return '<tr><td style="padding:3px 6px;border:1px solid #d4dae3"'+(t?' title="'+t+'"':'')+'>'+l+'</td><td style="padding:3px 6px;border:1px solid #d4dae3;text-align:right;font-family:Consolas,monospace">'+v+'</td></tr>'; };
+    var html='<table style="width:100%;border-collapse:collapse;font-size:12px">'+
+        tr('Analistas (n)',st.n)+tr('Media',f1(st.mean))+tr('Mediana',f1(st.median))+tr('Desviación estándar',f1(st.sd))+
+        tr('Asimetría (skew)',f2(st.skew),'0 = simétrica; negativa = cola izquierda')+
+        tr('Curtosis (exceso)',f2(st.kurt),'0 = como la normal')+
+        (sw?tr('Shapiro-Wilk W',f2(sw.W))+tr('p-valor',f2(sw.p)):'')+
+      '</table>'+
+      (sw?'<div style="margin-top:8px;padding:6px 8px;border:1px solid '+vcolor+';background:'+vcolor+'15;color:'+vcolor+';font-weight:700;font-size:12px">'+veredicto+'</div>':'')+
+      '<div style="margin-top:6px;font-size:11px;color:#555;line-height:1.5">La distribución es <strong>'+asimTxt+'</strong>.'+
+        (sw?(' Shapiro-Wilk p='+f2(sw.p)+(sw.p>=0.05?' (≥0.05): no se puede rechazar la normalidad.':' (&lt;0.05): los scores no siguen una normal.')):'')+
+        '<br><span style="color:#888">Con n≈'+st.n+' el test tiene poca potencia: orienta, no concluye.</span></div>';
+    if(statsBox) statsBox.innerHTML=html;
+  }
+
   function renderCharts(){
     var A=(anaData.analistas||[]).slice().sort(function(a,b){return b.score_salud-a.score_salud});
     // Resaltado: si hay analista filtrado, atenuar los demás
@@ -3707,6 +3837,8 @@ window.addEventListener('load', ()=>{
       options:{plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return c.raw.label+': '+c.raw.x+'% crítico, '+c.raw.y+'% sano'}}}},
         scales:{x:{title:{display:true,text:'% cartera en agotado+crítico'},min:-5,max:105},
                 y:{title:{display:true,text:'% cartera óptimo+bajo'},min:-5,max:105}},maintainAspectRatio:false},plugins:[labelPlugin]});
+
+    renderDistribution();
   }
 
   function renderAll(){ renderKpis(); renderRank(); renderTable(); if(window.Chart && loaded){ renderCharts(); } }
