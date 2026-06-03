@@ -236,7 +236,7 @@
     <img src="icons/icon-512.png" alt="Logo" width="40" height="40" />
     <div class="title">
       <div class="title-main">Curvas de Inventario — CEDIS PANAMÁ CSS</div>
-      <div class="title-sub">v2.8 · Torre de Control</div>
+      <div class="title-sub">v1.0 · Torre de Control</div>
     </div>
     <div class="top-actions">
       <select id="theme" class="theme-select" title="Tema">
@@ -3324,6 +3324,10 @@ window.addEventListener('load', ()=>{
   .ev-tbl tr.sel td{background:#deeeff;font-weight:600}
   .ev-mono{font-family:'Consolas','Courier New',monospace;font-size:11.5px}
   .ev-rt{text-align:right;font-family:'Consolas','Courier New',monospace}
+  /* Detalle por Renglón: valores numéricos centrados y alineados con sus headers */
+  #evDetailTbl td.ev-rt{text-align:center}
+  #evDetailTbl th{text-align:center}
+  #evDetailTbl th:nth-child(1),#evDetailTbl th:nth-child(2),#evDetailTbl th:nth-child(3),#evDetailTbl th:nth-child(4){text-align:left}
   .ev-badge{font-family:'Consolas','Courier New',monospace;font-size:9px;padding:1px 6px;font-weight:700;border:1px solid;display:inline-block}
   .ev-b-AGOTADO{background:var(--rbg);color:var(--red);border-color:var(--rbrd)}
   .ev-b-CRITICO{background:var(--abg);color:var(--amber);border-color:var(--abrd)}
@@ -3353,6 +3357,7 @@ window.addEventListener('load', ()=>{
   .ev-score-clk:hover{filter:brightness(0.9);outline:1px solid #888}
   .evm-overlay{display:none;position:fixed;inset:0;background:rgba(20,30,50,.55);z-index:9999;align-items:flex-start;justify-content:center;padding:5vh 16px;overflow:auto}
   .evm-box{background:#fff;border:1px solid #b0c8e8;max-width:620px;width:100%;box-shadow:0 8px 30px rgba(0,0,0,.3);font-family:inherit;margin:auto;border-radius:4px;overflow:hidden}
+  .evm-box.evm-wide{max-width:900px}
   .evm-head{background:linear-gradient(180deg,#1a5fa8,#0d4080);color:#fff;padding:10px 14px;font-size:13px;font-weight:700;display:flex;justify-content:space-between;align-items:center;gap:10px}
   .evm-head span{flex:1 1 auto;min-width:0;line-height:1.3}
   .evm-x{cursor:pointer;font-size:20px;line-height:1;background:none;border:none;color:#fff;font-weight:700;flex:0 0 auto;width:24px;height:24px;display:flex;align-items:center;justify-content:center}
@@ -3420,16 +3425,8 @@ window.addEventListener('load', ()=>{
     <div class="ev-pb"><table class="ev-tbl" id="evRankTbl"></table></div>
   </div>
 
-  <div class="ev-al" style="background:#f5f0fa;border-color:#c0a0d8;border-left-color:#5a2d82;color:#3a2050">
-    <strong>&#191;C&#243;mo se calcula el Score de Ranking de Desempe&ntilde;o?</strong><br>
-    Mide el estado del inventario de los renglones asignados a cada analista en el corte actual.<br>
-    <span style="font-family:'Consolas',monospace;font-size:11px;background:#fff;border:1px solid #c0a0d8;padding:2px 8px;display:inline-block;margin:4px 0">
-    score = ((sano &minus; penalizaci&#243;n) / total) &times; 100 + 50</span><br>
-    <strong>Inventario sano</strong> = &Oacute;ptimos &times; 1.0 + Bajos &times; 0.6 &nbsp;|&nbsp;
-    <strong>Penalizaci&#243;n</strong> = Agotados &times; 1.0 + Cr&#237;ticos &times; 0.7 + Vencidos &times; 0.5 + Excesos &times; 0.3.<br>
-    <strong>M&aacute;s alto = mejor.</strong> El ideal es 100 (cartera totalmente sana). El +50 solo desplaza la escala para que el punto de equilibrio (donde lo sano iguala a lo penalizado) caiga en 50; <u>50 NO es la meta, es el empate</u>. Por debajo de 50 hay m&aacute;s problema que salud; puede ser negativo si predominan agotados/cr&iacute;ticos.<br>
-    <strong>Colores:</strong> Verde &#8805;45 &middot; &Aacute;mbar 30-44 &middot; Morado 15-29 &middot; Rojo &lt;15.<br>
-    <span style="color:#7a5a9a;font-size:11px">Nota: el score compara analistas pero NO ajusta por la dificultad de la cartera (ver gr&#225;ficos de carga). Es un insumo de diagn&#243;stico, no una prueba de responsabilidad individual.</span>
+  <div class="ev-al" style="background:#f5f0fa;border-color:#c0a0d8;border-left-color:#5a2d82;color:#3a2050;font-size:11.5px">
+    <strong>Score</strong> = salud del inventario de la cartera del analista, <strong>ponderado por la criticidad ABC-XYZ</strong> de cada renglón (un fallo en un renglón A/X pesa m&aacute;s que en un C/Z). M&aacute;s alto = mejor; 50 = empate. <strong>Haz clic en cualquier score</strong> para ver su c&aacute;lculo detallado.
   </div>
 
   <div class="ev-panel" id="evDistPanel">
@@ -3461,7 +3458,7 @@ window.addEventListener('load', ()=>{
 </div>
 
 <div class="evm-overlay" id="evmOverlay">
-  <div class="evm-box">
+  <div class="evm-box" id="evmBox">
     <div class="evm-head"><span id="evmTitle">&#191;C&#243;mo se lleg&#243; a este Score?</span><button class="evm-x" id="evmClose">&times;</button></div>
     <div class="evm-body" id="evmBody"></div>
   </div>
@@ -3520,14 +3517,19 @@ window.addEventListener('load', ()=>{
     var pen=(Number(a.agotados)||0)*1.0 + (Number(a.criticos)||0)*0.7 + venc*0.5 + (Number(a.excesos)||0)*0.3;
     return Math.round(Math.min(100,((sano-pen)/total)*100 + 50));
   }
-  // Inyecta score_real en cada analista (una sola vez tras cargar).
+  // score_real = score ÚNICO de desempeño, YA ponderado por criticidad ABC-XYZ.
+  // Fuente de verdad: el backend (analistas.gs → score_ponderado). Si por alguna razón
+  // no viniera (backend viejo), cae al score plano calculado localmente como respaldo.
   function injectScoreReal(){
     (anaData.analistas||[]).forEach(function(a){
-      var calc=scoreFormula(a);
+      var plano=scoreFormula(a);                       // respaldo plano
+      var sp=Number(a.score_ponderado);                // score ponderado del backend
       var be=Number(a.score_salud);
-      // Si el backend ya manda el valor real (coincide con la fórmula), úsalo tal cual.
-      // Si el backend capó a 0 pero la fórmula da negativo, usa la fórmula (respaldo).
-      a.score_real=(be===0 && calc<0)?calc:(isFinite(be)?be:calc);
+      var planoBE=(be===0 && plano<0)?plano:(isFinite(be)?be:plano);
+      // El score real ES el ponderado. Si no hay ponderado, usa el plano como respaldo.
+      a.score_real=isFinite(sp)?sp:planoBE;
+      // score_plano queda disponible internamente por si se quiere auditar, pero NO se muestra.
+      a.score_plano=planoBE;
     });
   }
 
@@ -3928,6 +3930,7 @@ window.addEventListener('load', ()=>{
       '</div>';
     document.getElementById('evmTitle').innerHTML='C\u00f3mo leer la distribuci\u00f3n del score';
     document.getElementById('evmBody').innerHTML=html;
+    document.getElementById('evmBox').classList.add('evm-wide');
     document.getElementById('evmOverlay').style.display='flex';
   }
 
@@ -3992,42 +3995,51 @@ window.addEventListener('load', ()=>{
   function renderAll(){ renderKpis(); renderRank(); renderTable(); if(window.Chart && loaded){ renderCharts(); } }
 
   // ===== Modal: explicación del Score por analista =====
-  function openScoreModal(ana){
+  function openScoreModal(ana, pond){
     var A=anaData.analistas||[];
     var a=null; for(var i=0;i<A.length;i++){ if(A[i].analista===ana){ a=A[i]; break; } }
     if(!a) return;
     var total=Math.max(1,a.total);
-    var sanoOpt=a.optimos*1.0, sanoBajo=a.bajos*0.6, sano=sanoOpt+sanoBajo;
-    var venc=(typeof a.skus_vencidos==='number')?a.skus_vencidos:0;
-    var pAg=a.agotados*1.0, pCr=a.criticos*0.7, pVe=venc*0.5, pEx=a.excesos*0.3;
-    var pen=pAg+pCr+pVe+pEx;
-    var bruto=((sano-pen)/total)*100, score=Math.round(bruto+50);
     var nf=function(x){ return (Math.round(x*100)/100).toLocaleString('en-US'); };
+
+    // Score ÚNICO mostrado = el ponderado por criticidad ABC-XYZ (a.score_real ya es el ponderado).
+    var score=a.score_real;
+    var planoRef=a.score_plano;
     var cl=sClass(score), col=sColor(score);
+    // Desglose de estados (conteos reales). El aporte exacto al score depende del peso de
+    // clase de cada renglón, así que mostramos los conteos por estado y los pesos base,
+    // y explicamos que cada renglón se ajusta por su clase ABC-XYZ.
+    var venc=(typeof a.skus_vencidos==='number')?a.skus_vencidos:0;
     var html=''+
-      '<div class="evm-ttl">Score de Salud \u2014 <strong>'+ana+'</strong> <span style="font-weight:400;color:#555">'+nombreDe(ana)+'</span></div>'+
+      '<div class="evm-ttl">Score de Desempe\u00f1o (ponderado ABC-XYZ) \u2014 <strong>'+ana+'</strong> <span style="font-weight:400;color:#555">'+nombreDe(ana)+'</span></div>'+
       '<div class="evm-big" style="color:'+col+'">'+score+' <span class="evm-tag '+cl+'">'+(score>=45?'VERDE':score>=30?'\u00c1MBAR':score>=15?'MORADO':'ROJO')+'</span></div>'+
-      '<div class="evm-sub">Nota global del manejo de toda su cartera: '+num(a.total)+' renglones en el corte actual. No depende de un renglón ni grupo en particular.</div>'+
+      '<div class="evm-sub">Nota global del manejo de toda su cartera ('+num(a.total)+' renglones en el corte). Cada renglón pesa seg\u00fan su <strong>criticidad ABC-XYZ</strong>: un fallo en un renglón A/X (alto valor, demanda estable) cuenta m\u00e1s que el mismo fallo en un C/Z (bajo valor, err\u00e1tico). As\u00ed la evaluaci\u00f3n es justa con quien maneja carteras m\u00e1s exigentes.</div>'+
       '<table class="evm-tbl">'+
-        '<tr class="evm-h"><td>Componente</td><td>Renglones</td><td>Peso</td><td>Aporte</td></tr>'+
-        '<tr class="evm-pos"><td>\u00d3ptimos</td><td>'+num(a.optimos)+'</td><td>\u00d7 1.0</td><td>+'+nf(sanoOpt)+'</td></tr>'+
-        '<tr class="evm-pos"><td>Bajos</td><td>'+num(a.bajos)+'</td><td>\u00d7 0.6</td><td>+'+nf(sanoBajo)+'</td></tr>'+
-        '<tr class="evm-st"><td colspan="3">Inventario sano</td><td>+'+nf(sano)+'</td></tr>'+
-        '<tr class="evm-neg"><td>Agotados</td><td>'+num(a.agotados)+'</td><td>\u00d7 1.0</td><td>\u2212'+nf(pAg)+'</td></tr>'+
-        '<tr class="evm-neg"><td>Cr\u00edticos</td><td>'+num(a.criticos)+'</td><td>\u00d7 0.7</td><td>\u2212'+nf(pCr)+'</td></tr>'+
-        '<tr class="evm-neg"><td>Vencidos</td><td>'+num(venc)+'</td><td>\u00d7 0.5</td><td>\u2212'+nf(pVe)+'</td></tr>'+
-        '<tr class="evm-neg"><td>Excesos</td><td>'+num(a.excesos)+'</td><td>\u00d7 0.3</td><td>\u2212'+nf(pEx)+'</td></tr>'+
-        '<tr class="evm-st"><td colspan="3">Penalizaci\u00f3n</td><td>\u2212'+nf(pen)+'</td></tr>'+
+        '<tr class="evm-h"><td>Estado del renglón</td><td>Renglones</td><td>Peso base</td></tr>'+
+        '<tr class="evm-pos"><td>\u00d3ptimos</td><td>'+num(a.optimos)+'</td><td>+1.0</td></tr>'+
+        '<tr class="evm-pos"><td>Bajos</td><td>'+num(a.bajos)+'</td><td>+0.6</td></tr>'+
+        '<tr class="evm-neg"><td>Agotados</td><td>'+num(a.agotados)+'</td><td>\u22121.0</td></tr>'+
+        '<tr class="evm-neg"><td>Cr\u00edticos</td><td>'+num(a.criticos)+'</td><td>\u22120.7</td></tr>'+
+        '<tr class="evm-neg"><td>Vencidos</td><td>'+num(venc)+'</td><td>\u22120.5</td></tr>'+
+        '<tr class="evm-neg"><td>Excesos</td><td>'+num(a.excesos)+'</td><td>\u22120.3</td></tr>'+
+      '</table>'+
+      '<div class="evm-sub" style="margin-top:8px">El peso base de cada renglón se <strong>multiplica por el peso de su clase ABC-XYZ</strong> antes de sumar:</div>'+
+      '<table class="evm-tbl">'+
+        '<tr class="evm-h"><td>Clase</td><td>\u00d7 Peso</td><td>Clase</td><td>\u00d7 Peso</td><td>Clase</td><td>\u00d7 Peso</td></tr>'+
+        '<tr><td>AX</td><td>1.6</td><td>BX</td><td>1.2</td><td>CX</td><td>0.9</td></tr>'+
+        '<tr><td>AY</td><td>1.45</td><td>BY</td><td>1.05</td><td>CY</td><td>0.75</td></tr>'+
+        '<tr><td>AZ</td><td>1.3</td><td>BZ</td><td>0.9</td><td>CZ</td><td>0.6</td></tr>'+
       '</table>'+
       '<div class="evm-calc">'+
-        'score = ((sano \u2212 penalizaci\u00f3n) / total) \u00d7 100 + 50<br>'+
-        'score = (('+nf(sano)+' \u2212 '+nf(pen)+') / '+num(total)+') \u00d7 100 + 50 = <strong>'+nf(bruto)+' + 50 = '+score+'</strong>'+
+        'score = ((sano_ponderado \u2212 penalizaci\u00f3n_ponderada) / total) \u00d7 100 + 50 = <strong>'+score+'</strong>'+
+        '<br><span style="color:#888;font-size:11px">Sin ponderar (referencia, no usado para clasificar): '+planoRef+'</span>'+
       '</div>'+
       '<div class="evm-note"><strong>Rangos de estado</strong> (cobertura = inv. proyectado \u00f7 despacho mensual): Agotado = 0 \u00b7 Cr\u00edtico &lt;1 mes \u00b7 Bajo 1\u20134 meses \u00b7 \u00d3ptimo 4\u201312 meses \u00b7 Exceso &gt;12 meses.<br>'+
-      '<strong>M\u00e1s alto = mejor</strong> (ideal 100). El +50 solo desplaza la escala; 50 es el empate, no la meta. <strong>Colores:</strong> Verde \u226545 \u00b7 \u00c1mbar 30\u201344 \u00b7 Morado 15\u201329 \u00b7 Rojo &lt;15. El score puede ser negativo si la cartera tiene muchos agotados/cr\u00edticos.<br>'+
-      'El score compara analistas pero NO ajusta por la dificultad de la cartera (ver gr\u00e1ficos de carga). Es un insumo de diagn\u00f3stico, no una prueba de responsabilidad individual.</div>';
+      '<strong>M\u00e1s alto = mejor</strong> (ideal 100). El +50 desplaza la escala; 50 es el empate, no la meta. <strong>Colores:</strong> Verde \u226545 \u00b7 \u00c1mbar 30\u201344 \u00b7 Morado 15\u201329 \u00b7 Rojo &lt;15. Puede ser negativo si predominan agotados/cr\u00edticos.<br>'+
+      'Los pesos de clase derivan de los targets de servicio (AX=98% \u2026 CZ=70%) y promedian \u2248 1, as\u00ed solo redistribuyen por criticidad sin inflar la escala. El score compara analistas pero NO ajusta por el tama\u00f1o/dificultad total de la cartera (ver gr\u00e1ficos de carga); es un insumo de diagn\u00f3stico, no una prueba de responsabilidad individual.</div>';
     document.getElementById('evmTitle').innerHTML='&#191;C\u00f3mo se lleg\u00f3 a este Score?';
     document.getElementById('evmBody').innerHTML=html;
+    document.getElementById('evmBox').classList.remove('evm-wide');
     document.getElementById('evmOverlay').style.display='flex';
   }
 
