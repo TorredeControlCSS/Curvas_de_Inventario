@@ -53,6 +53,18 @@
     .theme-select{padding:6px 8px;border:1px solid rgba(255,255,255,.25);border-radius:10px;background:transparent;color:#fff; min-width:110px}
     .net{font-size:12px;opacity:.85;margin-left:4px}
 
+    /* Menú desplegable de acciones */
+    .actions-menu{position:relative;flex:0 0 auto}
+    .actions-menu>.btn.menu-toggle{display:flex;align-items:center;gap:6px;white-space:nowrap}
+    .actions-menu .menu-panel{
+      position:absolute;right:0;top:calc(100% + 6px);z-index:50;min-width:220px;
+      background:var(--card);border:1px solid var(--border);border-radius:12px;
+      box-shadow:0 8px 24px rgba(0,0,0,.18);padding:6px;display:none;flex-direction:column;gap:4px;
+    }
+    .actions-menu.open .menu-panel{display:flex}
+    .actions-menu .menu-panel .btn{width:100%;text-align:left;border-radius:8px}
+    .actions-menu .menu-panel .btn.hidden{display:none}
+
     /* Móvil: header en columnas */
     @media (max-width: 720px){
       .topbar{ display:flex !important; flex-direction:column !important; align-items:center !important; justify-content:center !important; gap:8px !important; padding:10px !important; }
@@ -245,15 +257,18 @@
         <option value="dark">Oscuro</option>
       </select>
       <span id="net" class="net"></span>
-      
-      <!-- BOTÓN REPORTE PDF (Nuevo nombre) -->
-      <button id="btnPdfReport" class="btn" style="border-color:#0b5fff; color:#0b5fff;"> Abastecimiento (PDF) </button>
-      <button id="btnVencimientosPdf" class="btn" aria-label="Tablero de vencimientos" style="border-color:#f97316; color:#f97316;">
-        Vencimientos (PDF)
-      </button>
-      <button id="refreshBtn" class="btn ghost">Actualizar</button>
-      <button id="exportPdfBtn" class="btn">Capturar Pantalla</button>
-      <button id="installBtn" class="btn install hidden">Instalar app</button>
+
+      <!-- Menú desplegable de acciones (agrupa los botones para evitar hacinamiento) -->
+      <div class="actions-menu" id="actionsMenu">
+        <button type="button" class="btn menu-toggle" id="actionsToggle" aria-haspopup="true" aria-expanded="false">Acciones ▾</button>
+        <div class="menu-panel" id="actionsPanel" role="menu">
+          <button id="btnPdfReport" class="btn" style="border-color:#0b5fff; color:#0b5fff;">Abastecimiento (PDF)</button>
+          <button id="btnVencimientosPdf" class="btn" aria-label="Tablero de vencimientos" style="border-color:#f97316; color:#f97316;">Vencimientos (PDF)</button>
+          <button id="refreshBtn" class="btn ghost" style="color:var(--text);border-color:var(--border)">Actualizar</button>
+          <button id="exportPdfBtn" class="btn">Capturar Pantalla</button>
+          <button id="installBtn" class="btn install hidden">Instalar app</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -487,6 +502,24 @@ function setBtnState(el, state){ el.classList.remove('is-loading','is-ok','is-er
 window.addEventListener('beforeinstallprompt', e=>{ e.preventDefault(); deferredPrompt=e; $('installBtn').classList.remove('hidden'); });
 $('installBtn').addEventListener('click', async ()=>{ if (!deferredPrompt) return; deferredPrompt.prompt(); await deferredPrompt.userChoice; $('installBtn').classList.add('hidden'); deferredPrompt=null; });
 window.addEventListener('appinstalled', ()=> $('installBtn').classList.add('hidden'));
+
+// Menú desplegable de acciones
+(function(){
+  const menu = $('actionsMenu'), toggle = $('actionsToggle'), panel = $('actionsPanel');
+  if (!menu || !toggle || !panel) return;
+  const close = ()=>{ menu.classList.remove('open'); toggle.setAttribute('aria-expanded','false'); };
+  toggle.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    const willOpen = !menu.classList.contains('open');
+    menu.classList.toggle('open', willOpen);
+    toggle.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+  });
+  // Cerrar al elegir una acción
+  panel.addEventListener('click', (e)=>{ if (e.target.closest('.btn')) close(); });
+  // Cerrar al hacer clic fuera o con Escape
+  document.addEventListener('click', (e)=>{ if (!menu.contains(e.target)) close(); });
+  document.addEventListener('keydown', (e)=>{ if (e.key === 'Escape') close(); });
+})();
 
 // Red
 const setNet = (s)=> $('net').textContent = s || '';
@@ -799,7 +832,9 @@ async function init(){
 
       const globalMaxDate = (meta && meta.max_fecha) ? String(meta.max_fecha) : '';
       const mapByDate = new Map(serie.map(p => [p.fecha, p]));
-      const pointAtGlobal = mapByDate.get(globalMaxDate);
+      // Punto de corte: primero intenta la fecha global; si no calza (índice
+      // desfasado o formato distinto), usa SIEMPRE el último punto real de la serie.
+      const pointAtGlobal = mapByDate.get(globalMaxDate) || serie[serie.length - 1] || null;
       let invActualAvailable = 0;
       let reservaActual = 0;
       if (pointAtGlobal) {
