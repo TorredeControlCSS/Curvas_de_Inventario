@@ -53,17 +53,37 @@
     .theme-select{padding:6px 8px;border:1px solid rgba(255,255,255,.25);border-radius:10px;background:transparent;color:#fff; min-width:110px}
     .net{font-size:12px;opacity:.85;margin-left:4px}
 
+    /* Toggle de tema (ícono discreto) */
+    .theme-toggle{
+      width:40px;height:40px;flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;
+      border:1px solid rgba(255,255,255,.25);border-radius:10px;background:transparent;color:#fff;cursor:pointer;padding:0;
+    }
+    .theme-toggle:hover{background:rgba(255,255,255,.10)}
+    .theme-toggle svg{width:20px;height:20px}
+    .theme-toggle .icon-sun{display:none}
+    .theme-toggle .icon-moon{display:block}
+    [data-theme="dark"] .theme-toggle .icon-sun{display:block}
+    [data-theme="dark"] .theme-toggle .icon-moon{display:none}
+
     /* Menú desplegable de acciones */
     .actions-menu{position:relative;flex:0 0 auto}
     .actions-menu>.btn.menu-toggle{display:flex;align-items:center;gap:6px;white-space:nowrap}
     .actions-menu .menu-panel{
-      position:absolute;right:0;top:calc(100% + 6px);z-index:50;min-width:220px;
+      position:absolute;right:0;top:calc(100% + 6px);z-index:50;min-width:250px;
       background:var(--card);border:1px solid var(--border);border-radius:12px;
-      box-shadow:0 8px 24px rgba(0,0,0,.18);padding:6px;display:none;flex-direction:column;gap:4px;
+      box-shadow:0 8px 24px rgba(0,0,0,.18);padding:8px;display:none;flex-direction:column;gap:4px;
     }
     .actions-menu.open .menu-panel{display:flex}
     .actions-menu .menu-panel .btn{width:100%;text-align:left;border-radius:8px}
     .actions-menu .menu-panel .btn.hidden{display:none}
+    /* Encabezado de sección dentro del panel */
+    .menu-section{font-size:10.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--muted);padding:6px 8px 2px}
+    .menu-divider{height:1px;background:var(--border);margin:6px 2px}
+    /* Slot de Familia dentro del panel de reportes */
+    #reportesFamiliaSlot{padding:2px 4px 6px}
+    #reportesFamiliaSlot #famWrap{display:flex !important;flex-direction:column;align-items:stretch !important;gap:4px;margin:0 !important}
+    #reportesFamiliaSlot #famSel{width:100% !important;min-width:0 !important}
+    #reportesFamiliaSlot .fam-note{font-size:10.5px;color:var(--muted);line-height:1.35;padding:0 2px}
 
     /* Móvil: header en columnas */
     @media (max-width: 720px){
@@ -235,13 +255,10 @@
   </style>
 <style id="ev-btn-order">
   .topbar .top-actions{align-items:center}
-  #btnPdfReport{order:1} #btnVencimientosPdf{order:2}
-  #btnAbastExcel{order:3} #btnVencExcel{order:4} #btnAnalistaExcel{order:5}
-  #exportPdfBtn{order:8} #installBtn{order:9}
-  #famWrap{order:0}
-  .ev-grp-sep{order:2; width:1px; background:rgba(255,255,255,.25); align-self:stretch; margin:2px 2px}
+  /* Los botones de reportes/acciones ahora viven dentro de paneles desplegables;
+     el ordenamiento por 'order' de la topbar ya no aplica y se retira. */
 </style>
-<style id="ev-header-fix">.topbar .top-actions{display:flex !important;flex-wrap:wrap !important;gap:6px !important;align-items:center !important;justify-content:flex-end !important;flex:1 1 auto !important;}.topbar .top-actions .btn,.topbar .top-actions .theme-select{flex:0 0 auto !important;width:auto !important;max-width:none !important;}#famWrap{flex:0 0 auto !important;}@media (max-width:720px){.topbar .top-actions{justify-content:center !important;}.topbar .top-actions .btn,.topbar .top-actions .theme-select{width:100% !important;max-width:360px !important;}}</style>
+<style id="ev-header-fix">.topbar .top-actions{display:flex !important;flex-wrap:wrap !important;gap:6px !important;align-items:center !important;justify-content:flex-end !important;flex:1 1 auto !important;}@media (max-width:720px){.topbar .top-actions{justify-content:center !important;}}</style>
 </head>
 <body>
   <div class="topbar">
@@ -251,19 +268,30 @@
       <div class="title-sub">v2.8 · Torre de Control</div>
     </div>
     <div class="top-actions">
-      <select id="theme" class="theme-select" title="Tema">
-        <option value="system">Sistema</option>
-        <option value="light">Claro</option>
-        <option value="dark">Oscuro</option>
-      </select>
+      <button type="button" class="theme-toggle" id="themeToggle" title="Cambiar tema claro/oscuro" aria-label="Cambiar tema">
+        <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+      </button>
       <span id="net" class="net"></span>
 
-      <!-- Menú desplegable de acciones (agrupa los botones para evitar hacinamiento) -->
-      <div class="actions-menu" id="actionsMenu">
-        <button type="button" class="btn menu-toggle" id="actionsToggle" aria-haspopup="true" aria-expanded="false">Reportes ▾</button>
-        <div class="menu-panel" id="actionsPanel" role="menu">
+      <!-- Menú REPORTES: filtro de Familia arriba + reportes agrupados (PDF/XLS) -->
+      <div class="actions-menu" id="reportsMenu">
+        <button type="button" class="btn menu-toggle" id="reportsToggle" aria-haspopup="true" aria-expanded="false">Reportes ▾</button>
+        <div class="menu-panel" id="reportsPanel" role="menu">
+          <div class="menu-section">Filtrar por familia</div>
+          <div id="reportesFamiliaSlot"><span class="fam-note">Los reportes se descargarán solo para la familia seleccionada.</span></div>
+          <div class="menu-divider"></div>
+          <div class="menu-section">Reportes PDF</div>
           <button id="btnPdfReport" class="btn" style="border-color:#0b5fff; color:#0b5fff;">Abastecimiento (PDF)</button>
           <button id="btnVencimientosPdf" class="btn" aria-label="Tablero de vencimientos" style="border-color:#f97316; color:#f97316;">Vencimientos (PDF)</button>
+          <!-- Los botones XLS (Abastecimiento/Vencimientos/Performance) se insertan aquí automáticamente tras btnPdfReport -->
+        </div>
+      </div>
+
+      <!-- Menú de ACCIONES de la app (no son reportes) -->
+      <div class="actions-menu" id="actionsMenu">
+        <button type="button" class="btn menu-toggle" id="actionsToggle" aria-haspopup="true" aria-expanded="false" title="Más acciones" aria-label="Más acciones">⋯</button>
+        <div class="menu-panel" id="actionsPanel" role="menu">
           <button id="refreshBtn" class="btn ghost" style="color:var(--text);border-color:var(--border)">Actualizar</button>
           <button id="exportPdfBtn" class="btn">Capturar Pantalla</button>
           <button id="installBtn" class="btn install hidden">Instalar app</button>
@@ -487,15 +515,22 @@ if (window['chartjs-plugin-annotation']) { Chart.register(window['chartjs-plugin
 
 function setBtnState(el, state){ el.classList.remove('is-loading','is-ok','is-error'); if(state) el.classList.add(state); }
 
-// Tema
+// Tema (toggle claro/oscuro). Resuelve 'system' a la preferencia real del SO.
 (function(){
-  const saved = localStorage.getItem('theme') || 'system';
-  document.documentElement.setAttribute('data-theme', saved);
-  $('theme').value = saved;
-  $('theme').addEventListener('change', e=>{
-    const val = e.target.value; localStorage.setItem('theme', val);
-    document.documentElement.setAttribute('data-theme', val);
-  });
+  const root = document.documentElement;
+  const toggle = $('themeToggle');
+  const stored = localStorage.getItem('theme');
+  function systemPref(){ return (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light'; }
+  // Estado inicial: usa lo guardado; si era 'system' o no había, resuelve a la preferencia del SO.
+  let current = (stored === 'light' || stored === 'dark') ? stored : systemPref();
+  root.setAttribute('data-theme', current);
+  if (toggle){
+    toggle.addEventListener('click', ()=>{
+      current = (root.getAttribute('data-theme') === 'dark') ? 'light' : 'dark';
+      root.setAttribute('data-theme', current);
+      localStorage.setItem('theme', current);
+    });
+  }
 })();
 
 // PWA install
@@ -503,22 +538,38 @@ window.addEventListener('beforeinstallprompt', e=>{ e.preventDefault(); deferred
 $('installBtn').addEventListener('click', async ()=>{ if (!deferredPrompt) return; deferredPrompt.prompt(); await deferredPrompt.userChoice; $('installBtn').classList.add('hidden'); deferredPrompt=null; });
 window.addEventListener('appinstalled', ()=> $('installBtn').classList.add('hidden'));
 
-// Menú desplegable de acciones
+// Menús desplegables (Reportes y Acciones). Cierra el uno al abrir el otro.
 (function(){
-  const menu = $('actionsMenu'), toggle = $('actionsToggle'), panel = $('actionsPanel');
-  if (!menu || !toggle || !panel) return;
-  const close = ()=>{ menu.classList.remove('open'); toggle.setAttribute('aria-expanded','false'); };
-  toggle.addEventListener('click', (e)=>{
-    e.stopPropagation();
-    const willOpen = !menu.classList.contains('open');
-    menu.classList.toggle('open', willOpen);
-    toggle.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+  const menus = [
+    { menu: $('reportsMenu'), toggle: $('reportsToggle'), panel: $('reportsPanel') },
+    { menu: $('actionsMenu'), toggle: $('actionsToggle'), panel: $('actionsPanel') }
+  ].filter(m => m.menu && m.toggle && m.panel);
+
+  function closeAll(except){
+    menus.forEach(m => {
+      if (m.menu === except) return;
+      m.menu.classList.remove('open');
+      m.toggle.setAttribute('aria-expanded','false');
+    });
+  }
+  menus.forEach(m => {
+    m.toggle.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      const willOpen = !m.menu.classList.contains('open');
+      closeAll(m.menu);
+      m.menu.classList.toggle('open', willOpen);
+      m.toggle.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+    });
+    // Cerrar al elegir una acción/botón (no al usar el selector de familia)
+    m.panel.addEventListener('click', (e)=>{
+      if (e.target.closest('#reportesFamiliaSlot')) return;
+      if (e.target.closest('.btn')) { m.menu.classList.remove('open'); m.toggle.setAttribute('aria-expanded','false'); }
+    });
   });
-  // Cerrar al elegir una acción
-  panel.addEventListener('click', (e)=>{ if (e.target.closest('.btn')) close(); });
-  // Cerrar al hacer clic fuera o con Escape
-  document.addEventListener('click', (e)=>{ if (!menu.contains(e.target)) close(); });
-  document.addEventListener('keydown', (e)=>{ if (e.key === 'Escape') close(); });
+  document.addEventListener('click', (e)=>{
+    menus.forEach(m => { if (!m.menu.contains(e.target)) { m.menu.classList.remove('open'); m.toggle.setAttribute('aria-expanded','false'); } });
+  });
+  document.addEventListener('keydown', (e)=>{ if (e.key === 'Escape') closeAll(null); });
 })();
 
 // Red
@@ -2833,6 +2884,15 @@ window.addEventListener('load', ()=>{
   function injectButtons() {
     var ref = document.getElementById('btnPdfReport');
     if (!ref || !ref.parentNode) return;
+    var panel = ref.parentNode; // #reportsPanel
+
+    // Separador + encabezado de sección XLS (se añaden al final del panel)
+    if (!document.getElementById('xlsSectionHead')) {
+      var div = document.createElement('div'); div.className = 'menu-divider';
+      var head = document.createElement('div'); head.className = 'menu-section'; head.id = 'xlsSectionHead'; head.textContent = 'Reportes XLS';
+      panel.appendChild(div);
+      panel.appendChild(head);
+    }
 
     var bAbast = document.createElement('button');
     bAbast.id = 'btnAbastExcel';
@@ -2852,9 +2912,10 @@ window.addEventListener('load', ()=>{
     bAna.style.cssText = 'border-color:#7c3aed;color:#7c3aed;';
     bAna.innerHTML = 'Performance (XLS)';
 
-    ref.parentNode.insertBefore(bAbast, ref.nextSibling);
-    bAbast.parentNode.insertBefore(bVenc, bAbast.nextSibling);
-    bVenc.parentNode.insertBefore(bAna, bVenc.nextSibling);
+    // Añadir al final del panel (debajo del encabezado XLS)
+    panel.appendChild(bAbast);
+    panel.appendChild(bVenc);
+    panel.appendChild(bAna);
 
     bAbast.addEventListener('click', exportAbastecimientoExcel);
     bVenc.addEventListener('click', exportVencimientosExcel);
@@ -3099,6 +3160,7 @@ window.addEventListener('load', ()=>{
 <style>
   #famWrap{display:inline-flex;align-items:center;gap:6px;margin-left:8px}
   #famSel{font-family:inherit;font-size:12px;padding:7px 8px;border:1px solid #b45309;border-radius:6px;background:#fff;color:#b45309;font-weight:700;cursor:pointer;min-width:185px}
+  [data-theme="dark"] #famSel{background:#0b1324;color:#f59e0b;border-color:#b45309}
   #famWrap label{font-size:11px;color:#666;font-weight:600}
   #famBadge{font-size:10px;color:#b45309;background:#fef3c7;border:1px solid #fcd34d;border-radius:10px;padding:1px 8px;font-weight:700}
 </style>
@@ -3128,14 +3190,13 @@ window.addEventListener('load', ()=>{
     return gs.indexOf(grupoBase(grupoTxt))>=0;
   }
 
-  // Inserta el dropdown junto a los botones de abastecimiento
+  // Inserta el dropdown de Familia dentro del slot fijo del panel de Reportes.
   function injectFamilia(){
-    var ref=document.getElementById('btnAbastExcel')||document.getElementById('btnPdfReport');
-    if(!ref||!ref.parentNode){ return setTimeout(injectFamilia,400); }
+    var slot=document.getElementById('reportesFamiliaSlot');
+    if(!slot){ return setTimeout(injectFamilia,400); }
     if(document.getElementById('famWrap'))return;
     var w=document.createElement('span'); w.id='famWrap';
-    w.innerHTML='<label>Familia</label>'+
-      '<select id="famSel">'+
+    w.innerHTML='<select id="famSel">'+
       '<option value="__TODAS__">Todas las familias</option>'+
       '<option value="MEDICAMENTOS">Medicamentos (G1-G5)</option>'+
       '<option value="MATERIAL QUIRURGICO">Material Quir\u00fargico (G9,G10)</option>'+
@@ -3143,11 +3204,11 @@ window.addEventListener('load', ()=>{
       '<option value="RADIOLOGIA">Radiolog\u00eda (G12)</option>'+
       '<option value="ODONTOLOGIA">Odontolog\u00eda (G11)</option>'+
       '</select>';
-    ref.parentNode.insertBefore(w, ref);
+    // Insertar el selector antes de la nota explicativa
+    slot.insertBefore(w, slot.firstChild);
     var sel=document.getElementById('famSel');
     sel.addEventListener('change',function(){
       famActual=sel.value;
-      
     });
   }
 
