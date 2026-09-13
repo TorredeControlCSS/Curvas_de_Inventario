@@ -98,7 +98,9 @@
     .topbar{ border-radius: 0 !important; width: 100% !important; }
 
     .container{padding:14px;max-width:1400px;margin:0 auto}
-    .filters{display:grid;grid-template-columns:120px 1fr 1fr 1fr 140px 140px 130px 120px;gap:8px;align-items:end;margin-bottom:12px}
+    /* Siete columnas: el selector "Buscar por" ya no existe. La primera es la
+       más ancha porque ahora el campo muestra código y nombre juntos. */
+    .filters{display:grid;grid-template-columns:minmax(300px,2.4fr) 1fr 130px 150px 150px 130px 120px;gap:8px;align-items:end;margin-bottom:12px}
     @media (max-width:1024px){.filters{grid-template-columns:1fr 1fr}}
     @media (max-width:640px){.filters{grid-template-columns:1fr}}
 
@@ -301,12 +303,14 @@
   </div>
 
   <div class="container" id="reportArea">
+    <!-- Fuera de la rejilla de filtros a propósito: es un vestigio que otros
+         bloques del tablero todavía consultan, pero si vive dentro de .filters
+         ocupa una columna aunque esté oculto y desplaza todo lo demás. -->
+    <div style="display:none">
+      <select id="mode"><option>Código</option><option selected>Suministro</option><option>Grupo</option></select>
+    </div>
     <div class="card filters">
-      <div style="display:none">
-        <label>Buscar por</label>
-        <select id="mode"><option>Código</option><option selected>Suministro</option><option>Grupo</option></select>
-      </div>
-      <div id="termWrap" style="min-width:340px">
+      <div id="termWrap">
         <label id="lbl-term">Renglón · código o nombre</label>
         <div class="input-clear">
           <input id="term" list="termOptions" placeholder="Cargando..." autocomplete="off">
@@ -908,6 +912,12 @@ async function init(){
 
   fillTerms();
 
+  /* El tablero arranca solo. Antes preseleccionaba el primer suministro de la
+     lista; ahora hace lo mismo con el catálogo, o el aviso "Sin datos" salta
+     al abrir la página sin que nadie haya buscado nada. */
+  if (CAT.length) termInp.value = catEtiqueta(CAT[0]);
+  else if (sups.length) termInp.value = sups[0];
+
   qty.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); qty.blur(); run(); } });
   qty.addEventListener('change', ()=>{ run(); });
 
@@ -932,6 +942,11 @@ async function init(){
         params.grupo = group; modeSel.value='Grupo';
       }
       if(group && params.codigo) params.grupo = group;
+      /* Sin renglón ni grupo no hay nada que pedir. Salir en silencio en vez de
+         consultar y soltar un "Sin datos" que el usuario no provocó. */
+      if(!params.codigo && !params.suministro && !params.grupo){
+        setBtnState(btn,''); btn.disabled=false; __running=false; return;
+      }
       if(fromV) params.from=fromV; if(toV) params.to=toV;
 
       const data = await safeFetchSerie(params, forceRefresh);
