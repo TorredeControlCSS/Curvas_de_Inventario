@@ -606,7 +606,135 @@ async function safeFetchList(force=false){
   }
   catch(e){ const c = localStorage.getItem('metaCache'); if (c){ console.warn('Usando metaCache', e); setNet('Sin conexión (caché)'); return JSON.parse(c).data; } throw e; }
 }
+/* ════════════════════════════════════════════════════════════════════
+ *  LA CURVA SE DIBUJA DESDE LOS JSON PUBLICADOS
+ *  Antes cada búsqueda iba a Apps Script: 2-3 s la buena, 30 s la mala, y a
+ *  veces un 404 del propio Google al servir su respuesta. La serie no cambia
+ *  entre consultas ni entre usuarios, así que no tiene por qué recalcularse
+ *  30 veces al día contra una hoja de 119 mil filas.
+ *
+ *  Tres archivos, una sola descarga al abrir:
+ *    curvas_inventario.json  serie completa (~470 KB servidos)
+ *    catalogo_inventario.json  buscador
+ *    f8_estado.json  reserva, recepción y tránsito — lo único vivo
+ *
+ *  Las métricas (punto de reorden, inv. crítico, mu, sigma, mín/máx, promedio
+ *  30d) son matemática pura sobre la serie con lead/z/window, que viajan en
+ *  _meta. metricasLocal es el port exacto de metricasSerie_ del backend: el
+ *  contrato de datos es idéntico y el resto del tablero no se entera.
+ *  Si algún JSON falla, safeFetchSerie cae al backend como antes.
+ * ════════════════════════════════════════════════════════════════════ */
+const CURVAS_URL = 'https://torredecontrolcss.github.io/Curvas_de_Inventario/curvas_inventario.json';
+const F8_URL     = 'https://torredecontrolcss.github.io/Curvas_de_Inventario/f8_estado.json';
+let CURVAS = null, F8EST = null;
+
+async function cargarSeries(){
+  const [c, f] = await Promise.allSettled([
+    fetch(CURVAS_URL + '?t=' + Date.now(), {cache:'no-store'}).then(r=>r.ok?r.json():Promise.reject(r.status)),
+    fetch(F8_URL     + '?t=' + Date.now(), {cache:'no-store'}).then(r=>r.ok?r.json():Promise.reject(r.status))
+  ]);
+  CURVAS = (c.status==='fulfilled' && c.value && c.value.cod) ? c.value : null;
+  F8EST  = (f.status==='fulfilled' && f.value && f.value.cod) ? f.value : null;
+  if(!CURVAS) console.warn('curvas_inventario.json no disponible: se consultará el backend', c.reason);
+  if(!F8EST)  console.warn('f8_estado.json no disponible: reserva y tránsito saldrán en 0', f.reason);
+}
+
+/* Port exacto de metricasSerie_ del backend. Mediana y MAD, no media y
+   desviación: una entrada grande no debe inflar el consumo diario. */
+function metricasLocal(label,type,code,name,serie,reservaActual,recepcion7,transito,cfg){
+  const tISO=s=>{const p=s.split('-');return new Date(+p[0],+p[1]-1,+p[2]).getTime();};
+  const inv=serie.map(p=>p.inventario), fechas=serie.map(p=>p.fecha);
+  const rates=[];
+  for(let i=1;i<inv.length;i++){
+    const drop=inv[i-1]-inv[i];
+    const dd=Math.max(1,Math.round((tISO(fechas[i])-tISO(fechas[i-1]))/86400000));
+    rates.push(Math.max(drop,0)/dd);
+  }
+  const tail=rates.slice(-cfg.window);
+  const med=a=>{if(!a.length)return 0;const s=a.slice().sort((x,y)=>x-y);const m=Math.floor(s.length/2);return s.length%2?s[m]:(s[m-1]+s[m])/2;};
+  const mad=a=>{if(!a.length)return 0;const m=med(a);return med(a.map(x=>Math.abs(x-m)));};
+  let mu=0,sigma=0;
+  if(tail.length){
+    const medAll=med(tail);
+    if(medAll>0){ mu=medAll; sigma=1.4826*mad(tail); }
+    else{ const pos=tail.filter(x=>x>0); if(pos.length){ mu=med(pos); sigma=pos.length>=3?1.4826*mad(pos):0; } }
+  }
+  const kb=Math.round(mu*cfg.lead);
+  const sfty=Math.round(cfg.z*sigma*Math.sqrt(cfg.lead));
+  let minVal=null,maxVal=null,minDate='',maxDate='';
+  serie.forEach(p=>{
+    if(minVal===null||p.inventario<minVal){minVal=p.inventario;minDate=p.fecha;}
+    if(maxVal===null||p.inventario>maxVal){maxVal=p.inventario;maxDate=p.fecha;}
+  });
+  const last30=inv.slice(-30);
+  const avg30=Math.round(last30.reduce((a,b)=>a+b,0)/Math.max(last30.length,1));
+  const lp=serie.length?serie[serie.length-1]:null;
+  const dispReal=lp?Number(lp.disponible_real||0):0;
+  return {
+    serie, kb_min:kb, inventario_critico:sfty,
+    lead:cfg.lead, z:cfg.z, window:cfg.window,
+    subject_label:label, subject_type:type, subject_code:code, subject_name:name,
+    min_value:Math.round(minVal||0), min_date:minDate,
+    max_value:Math.round(maxVal||0), max_date:maxDate,
+    avg_30:avg30, mu_d:mu, sigma_d:sigma,
+    reserva_actual:reservaActual, recepcion_7d:recepcion7, transito:transito,
+    inventario_proyectado:Math.max(dispReal+recepcion7+transito,0),
+    last_inventory:lp?lp.inventario:0, last_date:lp?lp.fecha:''
+  };
+}
+
+const SERIE_VACIA = {serie:[],kb_min:0,inventario_critico:0,subject_label:'',subject_code:'',
+  subject_name:'',last_inventory:0,last_date:'',recepcion_7d:0,transito:0,inventario_proyectado:0};
+
+function serieLocal(params){
+  const F=CURVAS.fechas, m=CURVAS._meta;
+  const cfg={lead:m.lead||45, z:m.z||1.65, window:m.window||90};
+  const from=params.from||'', to=params.to||'';
+  const dentro=f=>!((from&&f<from)||(to&&f>to));
+
+  // Grupo puro: se suman las series de todos sus renglones
+  if(params.grupo && !params.codigo && !params.suministro){
+    const agg={};
+    for(const c in CURVAS.cod){
+      const e=CURVAS.cod[c];
+      if(e[1]!==params.grupo) continue;
+      for(const p of e[2]){
+        const f=F[p[0]]; if(!dentro(f)) continue;
+        if(!agg[f]) agg[f]={inv:0,venc:0};
+        agg[f].inv+=p[1]; agg[f].venc+=p[2];
+      }
+    }
+    const sg=Object.keys(agg).sort().map(f=>({fecha:f,inventario:agg[f].inv,vencido:agg[f].venc,
+      reserva:0,disponible_real:Math.max(agg[f].inv-agg[f].venc,0)}));
+    return metricasLocal('Grupo: '+params.grupo,'grupo','','',sg,0,0,0,cfg);
+  }
+
+  let cod=params.codigo||'';
+  if(!cod && params.suministro){
+    const t=catNorm(params.suministro);
+    const x=CAT.find(o=>catNorm(o.sum)===t)||CAT.find(o=>catNorm(catEtiqueta(o))===t);
+    if(x) cod=x.cod;
+  }
+  const e=cod?CURVAS.cod[cod]:null;
+  if(!e) return Object.assign({},SERIE_VACIA);
+
+  const st=(F8EST&&F8EST.cod&&F8EST.cod[cod])||[0,0,0];
+  const raw=e[2].filter(p=>dentro(F[p[0]]));
+  /* La reserva es un estado de HOY, no una serie: se aplica solo al último
+     punto, igual que hacía el backend. */
+  const serie=raw.map((p,k)=>{
+    const reserva=(k===raw.length-1)?st[0]:0;
+    return {fecha:F[p[0]],inventario:p[1],vencido:p[2],reserva,
+            disponible_real:Math.max(p[1]-p[2]-reserva,0)};
+  });
+  return metricasLocal('Código: '+cod+(e[0]?' — '+e[0]:''),'codigo',cod,e[0],serie,st[0],st[1],st[2],cfg);
+}
+
 async function safeFetchSerie(params, force=false){
+  if(CURVAS && CURVAS.cod){
+    try { return serieLocal(params); }
+    catch(e){ console.warn('Serie local falló, se consulta el backend', e); }
+  }
   const p = new URLSearchParams(params);
   if (force) p.set('ts', Date.now());
   return fetchJSON(API_BASE + '?' + p.toString());
@@ -889,8 +1017,12 @@ async function init(){
   }
 
   codes = meta.codigos||[]; sups = meta.suministros||[]; groups=[''].concat(meta.grupos||[]);
-  try { CAT = await cargarCatalogo(); }
-  catch(eCat){ CAT = []; console.warn('Catálogo no disponible, se usa ?list=true', eCat); }
+  /* Catálogo y series en paralelo: son tres descargas independientes y
+     esperarlas en fila sumaría sus tiempos sin ninguna razón. */
+  await Promise.all([
+    cargarCatalogo().then(d=>{CAT=d;}).catch(e=>{CAT=[];console.warn('Catálogo no disponible, se usa ?list=true',e);}),
+    cargarSeries()
+  ]);
   loadAnalistaMaps();  // carga en segundo plano el mapa código->analista y score
   $('group').innerHTML = groups.map(g => `<option value="${g}">${g||'Todos'}</option>`).join('');
   from.value = meta.min_fecha||''; to.value = meta.max_fecha||'';
