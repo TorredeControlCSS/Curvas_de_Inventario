@@ -277,7 +277,7 @@
        y dos menús a ancho completo se lee como un menú vertical y el usuario
        pierde de vista en qué pestaña está. En móvil la barra se compacta y se
        desliza en horizontal, que es lo normal en una fila de pestañas. */
-    .ev-tabs{padding:6px 8px 0;gap:3px;-webkit-overflow-scrolling:touch}
+    .ev-tabs{padding:6px 8px 0;gap:3px}
     .ev-tab{font-size:11.5px;padding:6px 9px}
     .ev-tabs .top-actions{gap:6px;padding-bottom:5px}
     .ev-tabs .top-actions .btn{padding:6px 8px !important;font-size:11.5px}
@@ -3798,7 +3798,13 @@ window.addEventListener('load', ()=>{
   .ev-cnt{font-size:11px;color:var(--muted);font-family:'Consolas',monospace;font-weight:400}
   .ev-hide{display:none!important}
   .ev-tabs{display:flex;gap:4px;padding:6px 16px 0;background:linear-gradient(180deg,#1a5fa8,#0d4080);
-    align-items:flex-end;flex-wrap:nowrap;overflow-x:auto}
+    align-items:flex-end;flex-wrap:nowrap}
+  /* El desplazamiento va SOLO en las pestañas. Si se pone en .ev-tabs, ese
+     contenedor recorta a sus hijos posicionados en absoluto y los desplegables
+     de Reportes y Opciones salen cortados con una barra de scroll propia. */
+  .ev-tabs-scroll{display:flex;gap:4px;align-items:flex-end;min-width:0;
+    overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .ev-tabs-scroll::-webkit-scrollbar{display:none}
   /* Hay una regla global `select,input,button{width:100%}` en esta hoja. Con
      nowrap las pestañas se comprimen en una línea; en cuanto se permite envolver,
      cada botón reclama su 100% y ocupa una fila entera. De ahí el width:auto
@@ -3997,9 +4003,11 @@ window.addEventListener('load', ()=>{
 
   function injectTabs(){
     var bar=document.createElement('div'); bar.className='ev-tabs';
-    bar.innerHTML='<button class="ev-tab active" data-v="curvas">\uD83D\uDCC8 Curvas de Inventario</button>'+
+    bar.innerHTML='<div class="ev-tabs-scroll">'+
+                  '<button class="ev-tab active" data-v="curvas">\uD83D\uDCC8 Curvas de Inventario</button>'+
                   '<button class="ev-tab" data-v="eval">\uD83D\uDC65 Evaluaci\u00f3n de Analistas</button>'+
-                  '<button class="ev-tab" data-v="abcxyz">\uD83D\uDD22 ABC-XYZ</button>';
+                  '<button class="ev-tab" data-v="abcxyz">\uD83D\uDD22 ABC-XYZ</button>'+
+                  '</div>';
     var curvas=document.getElementById('reportArea');
     if(curvas&&curvas.parentNode){ curvas.parentNode.insertBefore(bar,curvas); }
     else { document.body.insertBefore(bar,document.body.firstChild); }
