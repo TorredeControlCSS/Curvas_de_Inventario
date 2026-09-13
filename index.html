@@ -3050,7 +3050,23 @@ window.addEventListener('load', ()=>{
       });
     });
 
-    btn?.addEventListener('click', () => { reg.waiting?.postMessage('SKIP_WAITING'); });
+    /* El botón enviaba el mensaje solo a reg.waiting, que a veces es null en el
+       momento del clic —cuando el aviso salió por statechange el trabajador está
+       en `installed` pero aún no listado como waiting—, y entonces el clic no
+       hacía nada. Se avisa a cualquiera de los dos y en las dos formas de
+       mensaje, cadena y objeto, porque el sw puede escuchar una u otra. Si en
+       2.5 s no hubo relevo, se recarga: peor que recargar es un botón muerto. */
+    let pendiente = null;
+    reg.addEventListener('updatefound', () => { pendiente = reg.installing || pendiente; });
+    btn?.addEventListener('click', () => {
+      btn.disabled = true; btn.textContent = 'Actualizando…';
+      const sw = reg.waiting || pendiente || reg.installing;
+      if (sw) {
+        try { sw.postMessage('SKIP_WAITING'); } catch (e) {}
+        try { sw.postMessage({ type: 'SKIP_WAITING' }); } catch (e) {}
+      }
+      setTimeout(() => { if (!refreshing) location.reload(); }, 2500);
+    });
 
     let refreshing = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
@@ -3769,11 +3785,17 @@ window.addEventListener('load', ()=>{
   .ev-cnt{font-size:11px;color:var(--muted);font-family:'Consolas',monospace;font-weight:400}
   .ev-hide{display:none!important}
   .ev-tabs{display:flex;gap:4px;padding:6px 16px 0;background:linear-gradient(180deg,#1a5fa8,#0d4080);
-    align-items:flex-end;flex-wrap:wrap}
+    align-items:flex-end;flex-wrap:nowrap;overflow-x:auto}
+  /* Hay una regla global `select,input,button{width:100%}` en esta hoja. Con
+     nowrap las pestañas se comprimen en una línea; en cuanto se permite envolver,
+     cada botón reclama su 100% y ocupa una fila entera. De ahí el width:auto
+     explícito: la fila no depende de una regla heredada que está lejos de aquí. */
+  .ev-tab{width:auto !important;flex:0 0 auto;white-space:nowrap}
   /* Las acciones bajan aquí desde la barra superior: arriba queda la identidad
      y la procedencia; aquí, la navegación y lo que se puede hacer. Es lo que
      esperas de cualquier sitio web, y libera la esquina derecha para la marca. */
-  .ev-tabs .top-actions{margin-left:auto;padding-bottom:6px}
+  .ev-tabs .top-actions{margin-left:auto;padding-bottom:6px;flex:0 0 auto}
+  .ev-tabs .top-actions .btn{width:auto !important;white-space:nowrap}
   .ev-tab{font-family:inherit;font-size:12.5px;padding:7px 16px;border:1px solid transparent;border-bottom:none;
     border-radius:4px 4px 0 0;color:#e0ecff;background:#1e5a9e;cursor:pointer;font-weight:600}
   .ev-tab:hover{background:#2a6ab8;color:#fff}
