@@ -858,10 +858,19 @@ async function init(){
     });
     // Disparo en 'change' SOLO si el valor coincide EXACTO con un item de la lista
     // (evita la cascada de peticiones al navegar el typeahead).
+    /* Solo dispara con coincidencia EXACTA contra una etiqueta del catálogo o
+       un código completo. catResolver también acepta parciales que dejan una
+       sola coincidencia, y eso aquí es veneno: al navegar el typeahead con las
+       flechas, cada opción lanzaría su propia consulta al backend. */
     termInp.addEventListener('change', ()=>{
       const v = (termInp.value||'').trim();
       if (!v) return;
-      if (CAT.length){ if (catResolver(v, $('group').value)) run(); return; }
+      if (CAT.length){
+        const t = catNorm(v);
+        const exacto = CAT.some(o => o.cod === t || catNorm(catEtiqueta(o)) === t);
+        if (exacto) run();
+        return;
+      }
       const arr = (modeSel.value==='Código') ? codes : sups;
       if (arr.some(x => String(x).toLowerCase() === v.toLowerCase())) run();
     });
