@@ -48,7 +48,7 @@
        cuánto hace. Sin esto no hay forma de saber si la curva es de hoy o de la
        semana pasada, y eso no se puede dejar a la memoria de nadie. */
     .proc-meta{font-size:11px;line-height:1.5;text-align:right;opacity:.9;
-               margin-left:auto;padding-right:10px;white-space:nowrap}
+               margin-left:auto;white-space:nowrap}
     .proc-meta b{font-weight:600}
     .proc-meta .viejo{color:#ffe08a}
     .proc-meta .malo{color:#ffc9c4}
@@ -3768,7 +3768,12 @@ window.addEventListener('load', ()=>{
     background:var(--abg);border-color:var(--abrd);border-left-color:var(--amber);color:#4a3000}
   .ev-cnt{font-size:11px;color:var(--muted);font-family:'Consolas',monospace;font-weight:400}
   .ev-hide{display:none!important}
-  .ev-tabs{display:flex;gap:4px;padding:6px 16px 0;background:linear-gradient(180deg,#1a5fa8,#0d4080)}
+  .ev-tabs{display:flex;gap:4px;padding:6px 16px 0;background:linear-gradient(180deg,#1a5fa8,#0d4080);
+    align-items:flex-end;flex-wrap:wrap}
+  /* Las acciones bajan aquí desde la barra superior: arriba queda la identidad
+     y la procedencia; aquí, la navegación y lo que se puede hacer. Es lo que
+     esperas de cualquier sitio web, y libera la esquina derecha para la marca. */
+  .ev-tabs .top-actions{margin-left:auto;padding-bottom:6px}
   .ev-tab{font-family:inherit;font-size:12.5px;padding:7px 16px;border:1px solid transparent;border-bottom:none;
     border-radius:4px 4px 0 0;color:#e0ecff;background:#1e5a9e;cursor:pointer;font-weight:600}
   .ev-tab:hover{background:#2a6ab8;color:#fff}
@@ -3963,6 +3968,11 @@ window.addEventListener('load', ()=>{
     var curvas=document.getElementById('reportArea');
     if(curvas&&curvas.parentNode){ curvas.parentNode.insertBefore(bar,curvas); }
     else { document.body.insertBefore(bar,document.body.firstChild); }
+    /* Se MUEVE el nodo, no se reconstruye: así los escuchadores ya enganchados
+       y los desplegables (position:absolute dentro de .actions-menu) siguen
+       funcionando sin tocar una línea de su lógica. */
+    var acciones=document.querySelector('.topbar .top-actions');
+    if(acciones) bar.appendChild(acciones);
     bar.addEventListener('click',function(e){ var b=e.target.closest('.ev-tab'); if(!b)return;
       bar.querySelectorAll('.ev-tab').forEach(function(t){t.classList.remove('active')}); b.classList.add('active');
       var v=b.dataset.v, ev=document.getElementById('evalAnalistas'), abc=document.getElementById('abcxyzView');
