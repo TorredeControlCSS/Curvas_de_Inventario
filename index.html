@@ -44,6 +44,15 @@
       justify-content:space-between; transition:transform .18s ease-in-out;
     }
     .topbar.topbar--hidden{ transform:translateY(-110%); }
+    /* Marca de procedencia. De qué corte son los datos, cuándo se publicaron y
+       cuánto hace. Sin esto no hay forma de saber si la curva es de hoy o de la
+       semana pasada, y eso no se puede dejar a la memoria de nadie. */
+    .proc-meta{font-size:11px;line-height:1.5;text-align:right;opacity:.9;
+               margin-left:auto;padding-right:10px;white-space:nowrap}
+    .proc-meta b{font-weight:600}
+    .proc-meta .viejo{color:#ffe08a}
+    .proc-meta .malo{color:#ffc9c4}
+    @media(max-width:1100px){.proc-meta{display:none}}
     .topbar img{width: clamp(40px, 6vw, 56px); height: clamp(40px, 6vw, 56px); border-radius:12px; flex:0 0 auto;}
     .title{font-size:16px;font-weight:700;letter-spacing:.3px;flex:1 1 auto;min-width:200px;}
     .top-actions{display:flex;gap:8px;align-items:center;flex:0 0 auto;}
@@ -269,6 +278,7 @@
       <div class="title-main">Curvas de Inventario — CEDIS PANAMÁ CSS</div>
       <div class="title-sub">v2.8 · Torre de Control</div>
     </div>
+    <div class="proc-meta" id="procMeta"></div>
     <div class="top-actions">
       <button type="button" class="theme-toggle" id="themeToggle" title="Cambiar tema claro/oscuro" aria-label="Cambiar tema">
         <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
@@ -662,6 +672,35 @@ async function fetchConRespaldo(url, etiqueta){
     }catch(_){}
     throw e;
   }finally{ clearTimeout(corte); }
+}
+
+/* Marca de procedencia en la esquina, igual que en el panel de entradas: de
+   qué corte son los datos, cuándo se publicaron, cuánto hace y cuántos
+   renglones. Se pinta en cuanto los JSON están, antes de la primera búsqueda. */
+function pintarProcMeta(){
+  const el2 = document.getElementById('procMeta');
+  if(!el2) return;
+  if(!CURVAS || !CURVAS._meta){ el2.innerHTML=''; return; }
+  const m = CURVAS._meta, g = m.generado || '';
+  let horas = null;
+  if(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(g)){
+    const d = new Date(g.replace(' ','T') + '-05:00');
+    if(!isNaN(d)) horas = (Date.now() - d.getTime())/3600000;
+  }
+  let hace = '';
+  if(horas !== null){
+    if(horas < 1)       hace = 'hace ' + Math.max(1, Math.round(horas*60)) + ' min';
+    else if(horas < 48) hace = 'hace ' + Math.round(horas) + ' h';
+    else                hace = 'hace ' + Math.round(horas/24) + ' días';
+  }
+  /* Ámbar a partir de 30 horas: si nadie cargó el corte de ayer, se ve. */
+  const cls = DATOS_VIEJOS ? 'malo' : (horas !== null && horas > 30 ? 'viejo' : '');
+  const n = (x)=> Number(x||0).toLocaleString('en-US');
+  el2.innerHTML =
+    'Corte: <b>' + (m.corte||'—') + '</b>' +
+    '<br><span class="'+cls+'">Publicado ' + (g||'—') + (hace ? ' · ' + hace : '') +
+      (DATOS_VIEJOS ? ' · desde caché' : '') + '</span>' +
+    '<br>' + n(m.codigos) + ' renglones · ' + n(m.puntos) + ' puntos';
 }
 
 function avisarDatosViejos(){
@@ -1082,6 +1121,7 @@ async function init(){
   }
 
   codes = meta.codigos||[]; sups = meta.suministros||[]; groups=[''].concat(meta.grupos||[]);
+  pintarProcMeta();
   avisarDatosViejos();
   loadAnalistaMaps();  // carga en segundo plano el mapa código->analista y score
   $('group').innerHTML = groups.map(g => `<option value="${g}">${g||'Todos'}</option>`).join('');
