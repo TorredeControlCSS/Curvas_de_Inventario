@@ -628,10 +628,59 @@ const CURVAS_URL = 'https://torredecontrolcss.github.io/Curvas_de_Inventario/cur
 const F8_URL     = 'https://torredecontrolcss.github.io/Curvas_de_Inventario/f8_estado.json';
 let CURVAS = null, F8EST = null;
 
+/* Descarga con respaldo. En el almacén la conexión se cae a mitad de bajada, y
+   entonces no importa que GitHub esté impecable. Se intenta la red con un tope
+   de 12 s; si responde, la copia queda guardada en la caché del navegador; si
+   no responde, se usa esa copia y se avisa en pantalla que el dato no es de
+   ahora. Un tablero con la curva de ayer sirve; uno en blanco, no. */
+const CACHE_DATOS = 'curvas-datos-v1';
+let DATOS_VIEJOS = null;   // fecha del dato servido desde caché, si aplica
+
+async function fetchConRespaldo(url, etiqueta){
+  const ctrl = new AbortController();
+  const corte = setTimeout(()=>ctrl.abort(), 12000);
+  try{
+    const r = await fetch(url + (url.includes('?')?'&':'?') + 't=' + Date.now(),
+                          {cache:'no-store', signal:ctrl.signal});
+    if(!r.ok) throw new Error('HTTP ' + r.status);
+    const txt = await r.text();
+    try{
+      const c = await caches.open(CACHE_DATOS);
+      await c.put(url, new Response(txt, {headers:{'Content-Type':'application/json'}}));
+    }catch(_){}
+    return JSON.parse(txt);
+  }catch(e){
+    try{
+      const c = await caches.open(CACHE_DATOS);
+      const hit = await c.match(url);
+      if(hit){
+        const j = await hit.json();
+        if(j && j._meta && j._meta.generado) DATOS_VIEJOS = j._meta.generado;
+        console.warn(etiqueta + ': sin red, se usa la última copia guardada', e);
+        return j;
+      }
+    }catch(_){}
+    throw e;
+  }finally{ clearTimeout(corte); }
+}
+
+function avisarDatosViejos(){
+  if(!DATOS_VIEJOS) return;
+  const bar = document.querySelector('.topbar');
+  if(!bar) return;
+  const d = document.createElement('div');
+  d.style.cssText='background:#f6edd6;color:#78621b;font-size:12px;padding:7px 16px;'+
+                  'border-bottom:1px solid #d8c68a;font-weight:600';
+  d.textContent='Sin conexión: mostrando la última copia descargada ('+DATOS_VIEJOS+'). '+
+                'Los datos pueden no estar al día.';
+  bar.parentNode.insertBefore(d, bar.nextSibling);
+  try{ setNet('Sin conexión (caché)'); }catch(_){}
+}
+
 async function cargarSeries(){
   const [c, f] = await Promise.allSettled([
-    fetch(CURVAS_URL + '?t=' + Date.now(), {cache:'no-store'}).then(r=>r.ok?r.json():Promise.reject(r.status)),
-    fetch(F8_URL     + '?t=' + Date.now(), {cache:'no-store'}).then(r=>r.ok?r.json():Promise.reject(r.status))
+    fetchConRespaldo(CURVAS_URL, 'curvas_inventario'),
+    fetchConRespaldo(F8_URL, 'f8_estado')
   ]);
   CURVAS = (c.status==='fulfilled' && c.value && c.value.cod) ? c.value : null;
   F8EST  = (f.status==='fulfilled' && f.value && f.value.cod) ? f.value : null;
@@ -766,9 +815,7 @@ async function cargarCatalogo(){
     const c = sessionStorage.getItem('catCache');
     if (c){ const {t,data} = JSON.parse(c); if (Date.now()-t < CAT_TTL_MS) return data; }
   }catch(_){}
-  const r = await fetch(CATALOGO_URL + '?t=' + Date.now(), {cache:'no-store'});
-  if(!r.ok) throw new Error('catálogo ' + r.status);
-  const j = await r.json();
+  const j = await fetchConRespaldo(CATALOGO_URL, 'catalogo_inventario');
   const data = (j.items||[]).map(it => ({cod:String(it[0]), sum:String(it[1]||''), grp:String(it[2]||'')}));
   try{ sessionStorage.setItem('catCache', JSON.stringify({t:Date.now(), data})); }catch(_){}
   return data;
@@ -1007,22 +1054,35 @@ async function init(){
   // **** CAMBIO CLAVE: Cargar lista y ejecutar automáticamente ****
   setBtnState(btn, 'is-loading');
   let meta = {};
-  try {
-    meta = await safeFetchList();
-  } catch (e) {
-    console.error(e);
-    setBtnState(btn, 'is-error');
-    alert("Error de conexión. Revisa tu internet.");
-    return;
+  /* Los tres JSON primero. Todo lo que ?list=true devolvía ya está aquí, y
+     mejor: los códigos con su suministro y su grupo relacionados, no en tres
+     listas sueltas. Esa llamada tardaba 1.8 s contra los 0.5 s de los tres
+     archivos juntos, así que solo se pide si algún JSON falló. */
+  await Promise.all([
+    cargarCatalogo().then(d=>{CAT=d;}).catch(e=>{CAT=[];console.warn('Catálogo no disponible', e);}),
+    cargarSeries()
+  ]);
+
+  if (CAT.length && CURVAS && CURVAS.fechas && CURVAS.fechas.length) {
+    const F = CURVAS.fechas;
+    meta = {
+      codigos: CAT.map(o=>o.cod),
+      suministros: [...new Set(CAT.map(o=>o.sum).filter(Boolean))].sort(),
+      grupos: [...new Set(CAT.map(o=>o.grp).filter(Boolean))].sort(),
+      min_fecha: F[0], max_fecha: F[F.length-1]
+    };
+  } else {
+    try { meta = await safeFetchList(); }
+    catch (e) {
+      console.error(e);
+      setBtnState(btn, 'is-error');
+      alert("Error de conexión. Revisa tu internet.");
+      return;
+    }
   }
 
   codes = meta.codigos||[]; sups = meta.suministros||[]; groups=[''].concat(meta.grupos||[]);
-  /* Catálogo y series en paralelo: son tres descargas independientes y
-     esperarlas en fila sumaría sus tiempos sin ninguna razón. */
-  await Promise.all([
-    cargarCatalogo().then(d=>{CAT=d;}).catch(e=>{CAT=[];console.warn('Catálogo no disponible, se usa ?list=true',e);}),
-    cargarSeries()
-  ]);
+  avisarDatosViejos();
   loadAnalistaMaps();  // carga en segundo plano el mapa código->analista y score
   $('group').innerHTML = groups.map(g => `<option value="${g}">${g||'Todos'}</option>`).join('');
   from.value = meta.min_fecha||''; to.value = meta.max_fecha||'';
