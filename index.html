@@ -1120,8 +1120,14 @@ async function init(){
       if (!v) return;
       if (CAT.length){
         const t = catNorm(v);
-        const exacto = CAT.some(o => o.cod === t || catNorm(catEtiqueta(o)) === t);
-        if (exacto) run();
+        const hit = CAT.find(o => o.cod === t || catNorm(catEtiqueta(o)) === t);
+        if (hit){
+          /* Si escribió el código pelado, se completa a la etiqueta: el campo
+             debe quedar diciendo lo mismo que el gráfico. */
+          termInp.value = catEtiqueta(hit);
+          AC_ULTIMO = termInp.value;
+          run();
+        }
         return;
       }
       const arr = (modeSel.value==='Código') ? codes : sups;
@@ -1187,12 +1193,24 @@ async function init(){
       if(k===AC_SEL) el2.scrollIntoView({block:'nearest'});
     });
   }
+  let AC_ULTIMO = '';     // última etiqueta válida mostrada
+
+  function acRestaurar(){
+    /* Si el campo quedó con texto que no corresponde a ningún renglón, vuelve a
+       decir lo que la curva está mostrando. Un campo vacío o con basura sobre
+       un gráfico dibujado es peor que no tener campo. */
+    const v = (termInp.value||'').trim();
+    if(!v){ if(AC_ULTIMO) termInp.value = AC_ULTIMO; return; }
+    if(catResolver(v, groupSel.value)) return;
+    if(AC_ULTIMO) termInp.value = AC_ULTIMO;
+  }
   function acElegir(o){
     /* run() es la función de este tablero. No render() ni F.renglon, que son de
        otro panel: con esos nombres acElegir lanzaba ReferenceError, el clic no
        hacía nada y la curva aparecía sola después, cuando el blur disparaba el
        change. */
     termInp.value = catEtiqueta(o);
+    AC_ULTIMO = termInp.value;
     acCerrar();
     run();
   }
@@ -1207,7 +1225,7 @@ async function init(){
        teclea un código espera verlo arriba, no sepultado entre coincidencias
        parciales de las descripciones. */
     const empieza = pool.filter(o => o.cod.startsWith(t) || catNorm(o.sum).startsWith(t));
-    const dentro  = pool.filter(o => !empieza.includes(o) && catNorm(o.cod+' '+o.sum).includes(t));
+    const dentro  = pool.filter(o => !empieza.includes(o) && catNorm(catEtiqueta(o)).includes(t));
     AC_HITS = empieza.concat(dentro).slice(0, 40);
     AC_SEL = -1;
     const esc = x => String(x==null?'':x).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -1231,14 +1249,13 @@ async function init(){
     if(e.key==='ArrowDown'){ e.preventDefault(); AC_SEL=(AC_SEL+1)%AC_HITS.length; acPintarSel(); }
     else if(e.key==='ArrowUp'){ e.preventDefault(); AC_SEL=(AC_SEL<=0?AC_HITS.length:AC_SEL)-1; acPintarSel(); }
     else if(e.key==='Enter' && AC_SEL>=0){ e.preventDefault(); acElegir(AC_HITS[AC_SEL]); }
-    else if(e.key==='Escape'){ acCerrar(); }
+    else if(e.key==='Escape'){ acCerrar(); acRestaurar(); }
   });
-  termInp.addEventListener('blur', ()=> setTimeout(acCerrar, 120));
+  termInp.addEventListener('blur', ()=> setTimeout(()=>{ acCerrar(); acRestaurar(); }, 140));
 
   function fillTerms(){ termWrap.classList.remove('hidden'); }
   modeSel.addEventListener('change', fillTerms);
   termInp.addEventListener('input', e => sugerir(e.target.value||''));
-  termInp.addEventListener('focus', e => sugerir(e.target.value||''));
   groupSel.addEventListener('change', () => { if(document.activeElement===termInp) sugerir(termInp.value||''); });
 
   fillTerms();
@@ -1248,6 +1265,7 @@ async function init(){
      al abrir la página sin que nadie haya buscado nada. */
   if (CAT.length) termInp.value = catEtiqueta(CAT[0]);
   else if (sups.length) termInp.value = sups[0];
+  AC_ULTIMO = termInp.value;
 
   qty.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); qty.blur(); run(); } });
   qty.addEventListener('change', ()=>{ run(); });
