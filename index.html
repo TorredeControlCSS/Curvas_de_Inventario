@@ -302,12 +302,12 @@
 
   <div class="container" id="reportArea">
     <div class="card filters">
-      <div>
+      <div style="display:none">
         <label>Buscar por</label>
         <select id="mode"><option>Código</option><option selected>Suministro</option><option>Grupo</option></select>
       </div>
-      <div id="termWrap">
-        <label id="lbl-term">Suministro</label>
+      <div id="termWrap" style="min-width:340px">
+        <label id="lbl-term">Renglón · código o nombre</label>
         <div class="input-clear">
           <input id="term" list="termOptions" placeholder="Cargando..." autocomplete="off">
         </div>
@@ -608,6 +608,56 @@ async function safeFetchSerie(params, force=false){
   return fetchJSON(API_BASE + '?' + p.toString());
 }
 
+/* ════════════════════════════════════════════════════════════════════
+ *  BUSCADOR UNIFICADO
+ *  El selector "Buscar por" existía porque ?list=true devuelve tres listas
+ *  sueltas —códigos, suministros, grupos— sin relación entre sí: el front no
+ *  sabía qué nombre correspondía a qué código y había que elegir de antemano
+ *  por cuál buscar. El catálogo publicado sí trae las tres cosas juntas, así
+ *  que ahora un solo campo acepta código o nombre indistintamente.
+ *  Grupo se queda como filtro aparte a propósito: no es otra forma de nombrar
+ *  un renglón, es un eje de análisis que SUMA las series de todo el grupo.
+ *  Ahora además acota las sugerencias, así que se puede buscar un renglón
+ *  dentro de un grupo, que antes no se podía.
+ * ════════════════════════════════════════════════════════════════════ */
+const CATALOGO_URL = 'https://torredecontrolcss.github.io/Curvas_de_Inventario/catalogo_inventario.json';
+let CAT = [];              // [{cod, sum, grp, busca}]
+const CAT_TTL_MS = 60 * 60 * 1000;
+
+function catNorm(s){
+  return String(s==null?'':s).toUpperCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .replace(/(\d)\.0+\b/g,'$1').replace(/\s+/g,' ').trim();
+}
+async function cargarCatalogo(){
+  try{
+    const c = sessionStorage.getItem('catCache');
+    if (c){ const {t,data} = JSON.parse(c); if (Date.now()-t < CAT_TTL_MS) return data; }
+  }catch(_){}
+  const r = await fetch(CATALOGO_URL + '?t=' + Date.now(), {cache:'no-store'});
+  if(!r.ok) throw new Error('catálogo ' + r.status);
+  const j = await r.json();
+  const data = (j.items||[]).map(it => ({cod:String(it[0]), sum:String(it[1]||''), grp:String(it[2]||'')}));
+  try{ sessionStorage.setItem('catCache', JSON.stringify({t:Date.now(), data})); }catch(_){}
+  return data;
+}
+/* Lo que se muestra y lo que queda escrito en el campo tras elegir: el código
+   solo no dice nada al volver al tablero, y el nombre solo es ambiguo. */
+function catEtiqueta(o){ return o.cod + ' · ' + o.sum; }
+/* Del texto del campo saca el código, venga como etiqueta completa, como
+   código pelado o como nombre exacto. */
+function catResolver(txt, grupo){
+  const t = catNorm(txt);
+  if(!t) return null;
+  const m = t.match(/^(\d{6,12})\b/);
+  if(m){ const x = CAT.find(o => o.cod === m[1]); if(x) return x; }
+  let pool = grupo ? CAT.filter(o => o.grp === grupo) : CAT;
+  let x = pool.find(o => catNorm(o.sum) === t) || pool.find(o => catNorm(catEtiqueta(o)) === t);
+  if(x) return x;
+  const hits = pool.filter(o => catNorm(catEtiqueta(o)).includes(t));
+  return hits.length === 1 ? hits[0] : null;
+}
+
 // Typeahead
 function fillDatalist(arr, q=''){
   const dl = $('termOptions'); const norm = (q||'').trim().toLowerCase();
@@ -807,9 +857,9 @@ async function init(){
     termInp.addEventListener('change', ()=>{
       const v = (termInp.value||'').trim();
       if (!v) return;
+      if (CAT.length){ if (catResolver(v, $('group').value)) run(); return; }
       const arr = (modeSel.value==='Código') ? codes : sups;
-      const exact = arr.some(x => String(x).toLowerCase() === v.toLowerCase());
-      if (exact) run();
+      if (arr.some(x => String(x).toLowerCase() === v.toLowerCase())) run();
     });
   }
 
@@ -826,25 +876,37 @@ async function init(){
   }
 
   codes = meta.codigos||[]; sups = meta.suministros||[]; groups=[''].concat(meta.grupos||[]);
+  try { CAT = await cargarCatalogo(); }
+  catch(eCat){ CAT = []; console.warn('Catálogo no disponible, se usa ?list=true', eCat); }
   loadAnalistaMaps();  // carga en segundo plano el mapa código->analista y score
   $('group').innerHTML = groups.map(g => `<option value="${g}">${g||'Todos'}</option>`).join('');
   from.value = meta.min_fecha||''; to.value = meta.max_fecha||'';
 
-  function fillTerms(){
-    const mode=modeSel.value;
-    if(mode==='Código'){ lbl.textContent='Código'; termWrap.classList.remove('hidden'); termInp.value=''; fillDatalist(codes); }
-    else if(mode==='Suministro'){ lbl.textContent='Suministro'; termWrap.classList.remove('hidden'); termInp.value=''; fillDatalist(sups); }
-    else { termWrap.classList.add('hidden'); termInp.value=''; }
+  /* Sugerencias del catálogo, acotadas por el grupo activo. Si el catálogo no
+     cargó, se cae a las listas sueltas de ?list=true y el campo sigue sirviendo
+     para buscar por nombre: se pierde lo predictivo, no la función. */
+  function sugerir(q){
+    const dl = $('termOptions'); if(!dl) return;
+    if(!CAT.length){ fillDatalist(sups, q); return; }
+    const g = groupSel.value;
+    const pool = g ? CAT.filter(o => o.grp === g) : CAT;
+    const t = catNorm(q);
+    let hits;
+    if(!t) hits = pool.slice(0, 20);
+    else {
+      const empieza = pool.filter(o => o.cod.startsWith(t) || catNorm(o.sum).startsWith(t));
+      const dentro  = pool.filter(o => !empieza.includes(o) && catNorm(catEtiqueta(o)).includes(t));
+      hits = empieza.concat(dentro).slice(0, 20);
+    }
+    dl.innerHTML = hits.map(o =>
+      `<option value="${catEtiqueta(o).replace(/"/g,'')}">${o.grp}</option>`).join('');
   }
+  function fillTerms(){ termWrap.classList.remove('hidden'); sugerir(termInp.value||''); }
   modeSel.addEventListener('change', fillTerms);
-  termInp.addEventListener('input', e=>{ const arr = (modeSel.value==='Código')? codes : sups; fillDatalist(arr, e.target.value||''); });
+  termInp.addEventListener('input', e => sugerir(e.target.value||''));
+  groupSel.addEventListener('change', () => sugerir(termInp.value||''));
 
-  modeSel.value='Suministro'; fillTerms(); 
-  
-  // Si hay suministros, seleccionar el primero
-  if(sups.length>0) {
-    termInp.value = sups[0];
-  }
+  fillTerms();
 
   qty.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); qty.blur(); run(); } });
   qty.addEventListener('change', ()=>{ run(); });
@@ -858,10 +920,18 @@ async function init(){
       const mode=modeSel.value, group=groupSel.value, Q=Number(qty.value||0);
       const H = horizon(Q);
       const params={}; const fromV=from.value, toV=to.value;
-      if(mode==='Código') params.codigo=termInp.value;
-      if(mode==='Suministro') params.suministro=termInp.value;
-      if(group && mode!=='Grupo') params.grupo=group;
-      if(mode==='Grupo') params.grupo=group;
+      /* Se consulta SIEMPRE por código, nunca por nombre: el nombre lo resuelve
+         el catálogo aquí, contra el código exacto. Antes se mandaba el texto al
+         backend y dos renglones de nombre parecido podían cruzarse. */
+      const elegido = catResolver(termInp.value, group);
+      if(elegido){ params.codigo = elegido.cod; modeSel.value='Código'; }
+      else if(String(termInp.value||'').trim()){
+        // el catálogo no lo resolvió: se manda tal cual, como antes
+        params.suministro = termInp.value; modeSel.value='Suministro';
+      } else if(group){
+        params.grupo = group; modeSel.value='Grupo';
+      }
+      if(group && params.codigo) params.grupo = group;
       if(fromV) params.from=fromV; if(toV) params.to=toV;
 
       const data = await safeFetchSerie(params, forceRefresh);
