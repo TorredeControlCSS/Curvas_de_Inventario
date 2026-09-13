@@ -1097,7 +1097,10 @@ async function init(){
   // limpiar campo al foco y ejecutar enter/cambio
   if (termInp){
     termInp.addEventListener('focus', ()=>{
-      termInp.value='';
+      /* Antes se vaciaba el campo al enfocarlo, y el tablero quedaba mostrando
+         una curva sin decir de qué renglón era. Se selecciona todo en su lugar:
+         escribir la reemplaza igual, pero la referencia no se pierde. */
+      termInp.select();
     });
     termInp.addEventListener('keydown', (e)=>{
       /* Si hay una opción resaltada en el desplegable, manda ese Enter: este
@@ -1185,10 +1188,13 @@ async function init(){
     });
   }
   function acElegir(o){
+    /* run() es la función de este tablero. No render() ni F.renglon, que son de
+       otro panel: con esos nombres acElegir lanzaba ReferenceError, el clic no
+       hacía nada y la curva aparecía sola después, cuando el blur disparaba el
+       change. */
     termInp.value = catEtiqueta(o);
-    F.renglon = termInp.value;
     acCerrar();
-    render();
+    run();
   }
   function sugerir(q){
     const p = acPanel(); if(!p) return;
