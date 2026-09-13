@@ -99,8 +99,8 @@
       .topbar{ display:flex !important; flex-direction:column !important; align-items:center !important; justify-content:center !important; gap:8px !important; padding:10px !important; }
       .topbar img{ width: clamp(56px, 18vw, 80px) !important; height: clamp(56px, 18vw, 80px) !important; margin:0 !important; }
       .topbar .title{ display:block !important; text-align:center !important; margin:0 !important; }
-      .topbar .top-actions{ width:100% !important; display:grid !important; grid-template-columns:1fr !important; gap:8px !important; justify-items:center !important; }
-      .topbar .theme-select, .topbar .btn{ width:100% !important; max-width:360px !important; }
+      /* Las acciones se movieron a la barra de navegación: su versión móvil
+         está más abajo, en el bloque de .ev-tabs. Aquí ya no hay nada que tocar. */
       .net{ display:none !important; }
       .topbar{ position: static !important; box-shadow: none; overflow-anchor: none; }
     }
@@ -269,7 +269,20 @@
   /* Los botones de reportes/acciones ahora viven dentro de paneles desplegables;
      el ordenamiento por 'order' de la topbar ya no aplica y se retira. */
 </style>
-<style id="ev-header-fix">.topbar .top-actions{display:flex !important;flex-wrap:wrap !important;gap:6px !important;align-items:center !important;justify-content:flex-end !important;flex:1 1 auto !important;}@media (max-width:720px){.topbar .top-actions{justify-content:center !important;}}</style>
+<style id="ev-header-fix">.topbar .top-actions{display:flex !important;flex-wrap:wrap !important;gap:6px !important;align-items:center !important;justify-content:flex-end !important;flex:1 1 auto !important;}@media (max-width:720px){
+    /* Las acciones ya no viven en .topbar sino en la barra de navegación, así
+       que las reglas móviles que apuntaban a `.topbar .top-actions` y a
+       `.topbar .btn` quedaron sin efecto al moverlas. Se reescriben aquí.
+       Y a propósito NO se apilan a una columna como antes: apilar tres pestañas
+       y dos menús a ancho completo se lee como un menú vertical y el usuario
+       pierde de vista en qué pestaña está. En móvil la barra se compacta y se
+       desliza en horizontal, que es lo normal en una fila de pestañas. */
+    .ev-tabs{padding:6px 8px 0;gap:3px;-webkit-overflow-scrolling:touch}
+    .ev-tab{font-size:11.5px;padding:6px 9px}
+    .ev-tabs .top-actions{gap:6px;padding-bottom:5px}
+    .ev-tabs .top-actions .btn{padding:6px 8px !important;font-size:11.5px}
+    .ev-tabs .theme-toggle{transform:scale(.9)}
+  }</style>
 </head>
 <body>
   <div class="topbar">
