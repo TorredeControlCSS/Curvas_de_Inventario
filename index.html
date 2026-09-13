@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Curvas de Inventarios</title>
+  <title>Curvas de Inventario</title>
   <link rel="icon" href="icons/icon-512.png">
   <link rel="manifest" href="manifest.json">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
@@ -217,6 +217,21 @@
     .chart-wrap{ width:100%; }
     canvas#chart{ display:block; width:100% !important; height:100% !important; }
     .input-clear{ position:relative; }
+    /* Desplegable propio del buscador. El <datalist> nativo lo dibuja el sistema
+       operativo —de ahí el panel negro que no cuadraba con nada— y no acepta
+       estilo. Este sí: mismo lenguaje visual que el Tablero de Cobertura. */
+    .ac-panel{position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:60;
+      background:#fff;border:1px solid #b0c8e8;border-radius:6px;
+      box-shadow:0 10px 28px rgba(10,42,90,.18);
+      max-height:330px;overflow-y:auto;display:none}
+    .ac-panel.open{display:block}
+    .ac-item{padding:8px 12px;border-bottom:1px solid #eef2f7;cursor:pointer;
+      font-size:13px;line-height:1.35;color:#0f172a}
+    .ac-item:last-child{border-bottom:0}
+    .ac-item:hover,.ac-item.sel{background:#e7f1fb}
+    .ac-item .ac-cod{font-family:Consolas,"Courier New",monospace;font-weight:700;color:#0b5fff}
+    .ac-item .ac-grp{display:block;font-size:11px;color:#6b7a88;margin-top:1px}
+    .ac-vacio{padding:10px 12px;font-size:12px;color:#6b7a88}
 
     .input-clear > .clear-btn{
       position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
@@ -336,9 +351,10 @@
       <div id="termWrap">
         <label id="lbl-term">Renglón · código o nombre</label>
         <div class="input-clear">
-          <input id="term" list="termOptions" placeholder="Cargando..." autocomplete="off">
+          <input id="term" placeholder="Cargando..." autocomplete="off" role="combobox"
+                 aria-autocomplete="list" aria-expanded="false" aria-controls="termAC">
+          <div class="ac-panel" id="termAC" role="listbox"></div>
         </div>
-        <datalist id="termOptions"></datalist>
       </div>
       <div>
         <label>Grupo</label>
@@ -891,7 +907,11 @@ function catResolver(txt, grupo){
 
 // Typeahead
 function fillDatalist(arr, q=''){
-  const dl = $('termOptions'); const norm = (q||'').trim().toLowerCase();
+  /* Vestigio del <datalist>, que ya se sustituyó por el panel propio. Sin esta
+     guarda, la llamada que quedaba viva lanzaba TypeError en cada foco del
+     campo porque #termOptions ya no está en el DOM. */
+  const dl = $('termOptions'); if(!dl) return;
+  const norm = (q||'').trim().toLowerCase();
   let suggestions=[];
   if (!norm){ suggestions = arr.slice(0, TYPEAHEAD_LIMIT); }
   else{
@@ -1078,9 +1098,12 @@ async function init(){
   if (termInp){
     termInp.addEventListener('focus', ()=>{
       termInp.value='';
-      if (typeof fillDatalist === 'function') fillDatalist([], '');
     });
     termInp.addEventListener('keydown', (e)=>{
+      /* Si hay una opción resaltada en el desplegable, manda ese Enter: este
+         escuchador se registró antes y si no cede, elegir con las flechas
+         nunca funcionaría. */
+      if (typeof AC_SEL !== 'undefined' && AC_SEL >= 0) return;
       if (e.key === 'Enter'){ e.preventDefault(); termInp.blur(); run(); }
     });
     // Disparo en 'change' SOLO si el valor coincide EXACTO con un item de la lista
@@ -1140,29 +1163,77 @@ async function init(){
   $('group').innerHTML = groups.map(g => `<option value="${g}">${g||'Todos'}</option>`).join('');
   from.value = meta.min_fecha||''; to.value = meta.max_fecha||'';
 
-  /* Sugerencias del catálogo, acotadas por el grupo activo. Si el catálogo no
-     cargó, se cae a las listas sueltas de ?list=true y el campo sigue sirviendo
-     para buscar por nombre: se pierde lo predictivo, no la función. */
+  /* ── Desplegable propio del buscador ────────────────────────────────────
+     El <datalist> nativo lo dibuja el sistema operativo: panel negro, sin
+     estilo posible y visualmente ajeno al resto del tablero. Este panel es
+     HTML normal, así que se ve como el del Tablero de Cobertura y además
+     puede mostrar el grupo de cada renglón, que el datalist no permitía. */
+  let AC_HITS = [], AC_SEL = -1;
+  const acPanel = () => $('termAC');
+
+  function acCerrar(){
+    const p = acPanel();
+    if(p){ p.classList.remove('open'); p.innerHTML=''; }
+    termInp.setAttribute('aria-expanded','false');
+    AC_HITS=[]; AC_SEL=-1;
+  }
+  function acPintarSel(){
+    const p = acPanel(); if(!p) return;
+    [...p.querySelectorAll('.ac-item')].forEach((el2,k)=>{
+      el2.classList.toggle('sel', k===AC_SEL);
+      if(k===AC_SEL) el2.scrollIntoView({block:'nearest'});
+    });
+  }
+  function acElegir(o){
+    termInp.value = catEtiqueta(o);
+    F.renglon = termInp.value;
+    acCerrar();
+    render();
+  }
   function sugerir(q){
-    const dl = $('termOptions'); if(!dl) return;
-    if(!CAT.length){ fillDatalist(sups, q); return; }
+    const p = acPanel(); if(!p) return;
+    if(!CAT.length){ acCerrar(); return; }
+    const t = catNorm(q);
+    if(!t){ acCerrar(); return; }
     const g = groupSel.value;
     const pool = g ? CAT.filter(o => o.grp === g) : CAT;
-    const t = catNorm(q);
-    let hits;
-    if(!t) hits = pool.slice(0, 20);
-    else {
-      const empieza = pool.filter(o => o.cod.startsWith(t) || catNorm(o.sum).startsWith(t));
-      const dentro  = pool.filter(o => !empieza.includes(o) && catNorm(catEtiqueta(o)).includes(t));
-      hits = empieza.concat(dentro).slice(0, 20);
-    }
-    dl.innerHTML = hits.map(o =>
-      `<option value="${catEtiqueta(o).replace(/"/g,'')}">${o.grp}</option>`).join('');
+    /* Primero lo que EMPIEZA por lo escrito, después lo que lo contiene: quien
+       teclea un código espera verlo arriba, no sepultado entre coincidencias
+       parciales de las descripciones. */
+    const empieza = pool.filter(o => o.cod.startsWith(t) || catNorm(o.sum).startsWith(t));
+    const dentro  = pool.filter(o => !empieza.includes(o) && catNorm(o.cod+' '+o.sum).includes(t));
+    AC_HITS = empieza.concat(dentro).slice(0, 40);
+    AC_SEL = -1;
+    const esc = x => String(x==null?'':x).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    p.innerHTML = AC_HITS.length
+      ? AC_HITS.map((o,k)=>'<div class="ac-item" role="option" data-k="'+k+'">'+
+          '<span class="ac-cod">'+esc(o.cod)+'</span> — '+esc(o.sum)+
+          '<span class="ac-grp">'+esc(o.grp)+'</span></div>').join('')
+      : '<div class="ac-vacio">Sin coincidencias'+(g?(' en '+esc(g)):'')+'</div>';
+    p.classList.add('open');
+    termInp.setAttribute('aria-expanded','true');
   }
-  function fillTerms(){ termWrap.classList.remove('hidden'); sugerir(termInp.value||''); }
+
+  acPanel().addEventListener('mousedown', e=>{
+    const it = e.target.closest('.ac-item'); if(!it) return;
+    e.preventDefault();                      // no quitar el foco antes del clic
+    const o = AC_HITS[Number(it.dataset.k)];
+    if(o) acElegir(o);
+  });
+  termInp.addEventListener('keydown', e=>{
+    if(!AC_HITS.length) return;
+    if(e.key==='ArrowDown'){ e.preventDefault(); AC_SEL=(AC_SEL+1)%AC_HITS.length; acPintarSel(); }
+    else if(e.key==='ArrowUp'){ e.preventDefault(); AC_SEL=(AC_SEL<=0?AC_HITS.length:AC_SEL)-1; acPintarSel(); }
+    else if(e.key==='Enter' && AC_SEL>=0){ e.preventDefault(); acElegir(AC_HITS[AC_SEL]); }
+    else if(e.key==='Escape'){ acCerrar(); }
+  });
+  termInp.addEventListener('blur', ()=> setTimeout(acCerrar, 120));
+
+  function fillTerms(){ termWrap.classList.remove('hidden'); }
   modeSel.addEventListener('change', fillTerms);
   termInp.addEventListener('input', e => sugerir(e.target.value||''));
-  groupSel.addEventListener('change', () => sugerir(termInp.value||''));
+  termInp.addEventListener('focus', e => sugerir(e.target.value||''));
+  groupSel.addEventListener('change', () => { if(document.activeElement===termInp) sugerir(termInp.value||''); });
 
   fillTerms();
 
