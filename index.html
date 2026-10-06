@@ -4725,5 +4725,290 @@ window.addEventListener('load', ()=>{
 
 
 
+<!-- ============================================================
+     EVALUACIÓN DE PLANIFICADORES · POR CRITERIOS (3 CEDIS) · 05-oct-2026
+     Vive dentro de la pestaña "Evaluación de Analistas". Agrega arriba dos
+     vistas: "Por criterios" (nueva, por defecto) y "Score anterior" (la de
+     siempre, intacta, durante el mes de transición). No modifica el bloque
+     anterior: solo lo envuelve y lo muestra u oculta.
+     Datos: API_BASE?report=criterios (PLANIFICADORES_CRITERIOS.gs).
+     Pegar ANTES de </body>, DESPUÉS del bloque de Evaluación de Analistas.
+     ============================================================ -->
+<style>
+  .ev-hide-pc{display:none!important}
+  .pc-sub{display:flex;gap:0;margin:2px 0 12px;border:1px solid var(--accent);border-radius:4px;overflow:hidden;width:max-content}
+  .pc-sub button{font:inherit;font-size:12px;padding:6px 14px;border:0;background:#fff;color:var(--accent);cursor:pointer;font-weight:600}
+  .pc-sub button.on{background:var(--accent);color:#fff}
+  .pc-sub button + button{border-left:1px solid var(--accent)}
+  .pc-wrap{overflow:auto;max-height:520px;border:1px solid var(--border);background:#fff}
+  .pc-tbl{border-collapse:separate;border-spacing:0;font-size:12px;width:max-content;min-width:100%}
+  .pc-tbl th,.pc-tbl td{padding:5px 9px;border-bottom:1px solid var(--border2);border-right:1px solid #eef0f3;text-align:center;white-space:nowrap}
+  .pc-tbl thead th{position:sticky;z-index:2;font-size:10px;font-weight:700}
+  .pc-tbl thead tr.g th{top:0;color:#fff;letter-spacing:.04em;text-transform:uppercase}
+  .pc-tbl thead tr.c th{top:25px;white-space:normal;min-width:78px;max-width:110px;line-height:1.25;cursor:help}
+  .pc-tbl td:first-child,.pc-tbl th:first-child{position:sticky;left:0;z-index:3;text-align:left;background:#fff;font-weight:600;min-width:170px}
+  .pc-tbl thead th:first-child{z-index:4}
+  .pc-tbl tbody tr{cursor:pointer}
+  .pc-tbl tbody tr:hover td{background:#e8f0fc}
+  .pc-tbl tbody tr.sel td{background:#deeeff}
+  .pc-tbl tbody tr.aux td{color:#888;font-style:italic}
+  .pc-tbl td.z{color:#bbb}
+  .pc-tbl td.alto{color:var(--red);font-weight:700}
+  .pc-g0{background:#1a4a7a}.pc-g1{background:#5F5E5A}.pc-g2{background:#185FA5}.pc-g3{background:#0F6E56}.pc-g4{background:#854F0B}.pc-g5{background:#791F1F}
+  .pc-c0{background:#eef4fb;color:#1a4a7a}.pc-c1{background:#F1EFE8;color:#5F5E5A}.pc-c2{background:#E6F1FB;color:#185FA5}.pc-c3{background:#E1F5EE;color:#0F6E56}.pc-c4{background:#FAEEDA;color:#854F0B}.pc-c5{background:#FCEBEB;color:#791F1F}
+  .pc-chips{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}
+  .pc-chip{font:inherit;font-size:11.5px;padding:4px 10px;border:1px solid var(--border);border-radius:14px;background:#fff;cursor:pointer}
+  .pc-chip.on{border-color:var(--accent);background:var(--accent);color:#fff}
+  .pc-b{display:inline-block;font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:10px;white-space:nowrap}
+  .pc-AGOTADO{background:#FCEBEB;color:#791F1F}.pc-CRITICO{background:#FAEEDA;color:#854F0B}.pc-BAJO{background:#FEF9C3;color:#7a5a00}
+  .pc-OPTIMO{background:#E1F5EE;color:#0F6E56}.pc-EXCESO{background:#E6F1FB;color:#185FA5}
+  .pc-g-NO{background:#F1EFE8;color:#5F5E5A}.pc-g-CUB{background:#E1F5EE;color:#0F6E56}.pc-g-INS{background:#FEF9C3;color:#7a5a00}
+  .pc-g-VEN{background:#FAEEDA;color:#854F0B}.pc-g-SIN{background:#FCEBEB;color:#791F1F}
+  .pc-def{display:none;background:#fff;border:1px solid var(--border);padding:10px 14px;margin:8px 0;font-size:12px;line-height:1.55}
+  .pc-def.on{display:block}
+  .pc-def h4{margin:10px 0 3px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--accent)}
+  .pc-def dt{font-weight:700;margin-top:4px}.pc-def dd{margin:0 0 2px 0;color:#333}
+  .pc-nota{font-size:11px;color:var(--muted);margin:6px 0}
+  .pc-pt{display:inline-block;min-width:44px;font-weight:700;border-radius:3px;padding:1px 6px;font-family:Consolas,monospace}
+  .pc-pt.v{background:#E1F5EE;color:#0F6E56}.pc-pt.a{background:#FAEEDA;color:#854F0B}.pc-pt.r{background:#FCEBEB;color:#791F1F}.pc-pt.n{background:#F1EFE8;color:#5F5E5A}
+  .pc-lect{background:#fff;border:1px solid var(--border);border-left:3px solid var(--accent);padding:8px 12px;margin:0 0 10px;font-size:12.5px;line-height:1.55}
+  .pc-lect b{color:var(--accent)} .pc-lect ul{margin:4px 0 0 18px;padding:0}
+  .pc-g6{background:#0B3A6B}.pc-c6{background:#eef4fb;color:#0B3A6B}
+</style>
+
+<div id="pcCriterios" class="ev-hide-pc">
+  <div class="ev-sh">
+    <div class="ev-st">Planificadores por criterios · CEDIS Panamá, Divisa y Chiriquí</div>
+    <div class="ev-sd">Puntaje de 0 a 100 construido con criterios verificables renglón por renglón (sin letras). Haga clic en un planificador para ver sus renglones y los puntos de cada uno. Pase el cursor sobre un encabezado para ver cómo se calcula.</div>
+  </div>
+  <div class="ev-toolbar">
+    <label class="ev-meta">Vista:</label>
+    <select class="ev-sel" id="pcCedis">
+      <option value="N">Nacional (3 CEDIS)</option>
+      <option value="0">CEDIS Panamá</option><option value="1">CEDIS Divisa</option><option value="2">CEDIS Chiriquí</option>
+    </select>
+    <label class="ev-meta">Planificador:</label>
+    <select class="ev-sel" id="pcPlan"><option value="">Todos</option></select>
+    <button class="ev-btn" id="pcDefBtn" type="button">Cómo se calcula</button>
+    <button class="ev-btn" id="pcXls" type="button">Descargar Excel</button>
+    <span class="ev-meta" id="pcMeta">cargando…</span>
+  </div>
+  <div class="pc-def" id="pcDef"></div>
+  <div class="ev-kg" id="pcKpis"></div>
+  <div class="pc-lect" id="pcLect" style="display:none"></div>
+  <div class="pc-wrap"><table class="pc-tbl" id="pcTbl"></table></div>
+  <div class="pc-nota" id="pcNota"></div>
+
+  <div class="ev-panel" style="margin-top:12px">
+    <div class="ev-ph"><span id="pcDetTit">&#9612; DETALLE POR RENGLÓN</span><span class="ev-cnt" id="pcDetCnt"></span></div>
+    <div class="ev-pb">
+      <div class="ev-toolbar" style="margin:4px 0">
+        <input class="ev-sel" id="pcBuscar" placeholder="Buscar código o nombre" autocomplete="off" style="min-width:240px">
+      </div>
+      <div class="pc-chips" id="pcChips"></div>
+      <div class="pc-wrap" style="max-height:560px"><table class="pc-tbl" id="pcDet"></table></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var API = (typeof API_BASE !== 'undefined') ? API_BASE : '';
+  var CED = ['CEDIS Panamá','CEDIS Divisa','CEDIS Chiriquí'];
+  var GN = { NO:'No requiere orden', CUB:'Cubierto por orden vigente', INS:'Orden insuficiente', VEN:'Solo orden vencida (>30 d)', SIN:'Sin orden registrada' };
+  var D = null, cargando = false, filtroG = '', planSel = '';
+  var $ = function(id){ return document.getElementById(id); };
+  var esc = function(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); };
+  var fmt = function(n){ var v=Number(n); return isFinite(v)?v.toLocaleString('es-PA'):''; };
+
+  /* definiciones: una sola fuente para los encabezados (tooltip) y el panel "Cómo se calcula" */
+  var DEF = {
+    'Posición':'Lugar en el ranking por puntaje. La cartera sin dueño definido queda fuera del ranking.',
+    'Puntaje':'85 % Gestión de compra + 15 % Seguimiento del panel (si no tiene órdenes con fuente de recepción, Puntaje = Gestión). Verde 70 o más · ámbar 40-69 · rojo menos de 40.',
+    'Gestión (0-100)':'Promedio ponderado de sus renglones con demanda en cada CEDIS: 1 si no requiere orden o está cubierto por orden vigente; 0.5 si la orden no alcanza o hay más de 12 meses de cobertura; 0 si solo hay una orden vencida o ninguna. Peso: Vital 1.6, Esencial 1.3, o la clase ABC-XYZ (AX 1.6 … CZ 0.6).',
+    'Seguimiento (0-100)':'100 × (1 − recepciones sin confirmar de más de 7 días ÷ órdenes con fuente de recepción). Hoy solo hay fuente para medicamentos y odontología de CEDIS Panamá.',
+    'Renglones con demanda':'Renglones asignados al planificador con consumo mayor que cero (en el CEDIS de la vista; en Nacional, en al menos uno).',
+    'Vitales':'Clasificación VITAL del maestro de renglones (MAESTROS_DINALOG). Solo medicamentos.',
+    'Esenciales':'Clasificación ESENCIAL del maestro de renglones. Solo medicamentos.',
+    'Óptimo':'Panamá: estado de Curvas. Divisa y Chiriquí: cobertura entre 2.5 y 12 meses.',
+    'Bajo':'Panamá: estado de Curvas. Divisa y Chiriquí: cobertura entre 1 y 2.5 meses (75 días).',
+    'Crítico':'Panamá: estado de Curvas. Divisa y Chiriquí: cobertura menor de 1 mes.',
+    'Agotado':'Panamá: estado de Curvas. Divisa y Chiriquí: saldo 0.',
+    'Exceso':'Panamá: estado de Curvas. Divisa y Chiriquí: más de 12 meses de cobertura.',
+    'Vitales agotados':'Renglones vitales en estado Agotado.',
+    'Bajo el punto de reorden':'Disponible por debajo del punto de reorden (Curvas en Panamá; 2.5 meses de consumo en Divisa y Chiriquí). Son los que necesitan una orden.',
+    'Cubiertos por orden vigente':'Bajo el punto de reorden, pero disponible + tránsito vigente lo alcanza.',
+    'Orden insuficiente':'Hay tránsito vigente, pero no alcanza el punto de reorden.',
+    'Solo orden vencida (>30 d)':'La única orden registrada venció hace más de 30 días sin entrada registrada: ya no cuenta como cobertura.',
+    'Sin orden registrada':'Bajo el punto de reorden y sin ninguna orden en el panel de Tránsitos (ni cita confirmada, en Panamá).',
+    '% con orden vigente':'(Cubiertos + Orden insuficiente) ÷ Bajo el punto de reorden.',
+    'Vitales sin orden':'Renglones vitales bajo el punto de reorden y sin orden registrada.',
+    'Más de 12 meses de cobertura':'Disponible + tránsito vigente mayor que 12 meses de consumo (posible sobrepedido).',
+    'Órdenes registradas':'Filas que el planificador cargó en el panel de Tránsitos.',
+    'Recepciones sin confirmar (>7 d)':'Órdenes con entrada en Recepción de CEDIS Panamá hace más de 7 días que el planificador no confirmó en el panel (medicamentos y odontología).',
+    'Vencidas sin entrada':'Órdenes de CEDIS Panamá cuya fecha de entrega pasó sin ninguna entrada: deben escalarse al proveedor.',
+    'Registros sin CEDIS':'Órdenes cargadas sin indicar el CEDIS destino (se cuentan para Panamá).',
+    'Sin N° de OC SAP':'Solicitudes cargadas sin el número de OC SAP: impide conciliarlas con Recepción.',
+    'Lotes vencidos':'Reporte de Vencimientos de Curvas (solo CEDIS Panamá).',
+    'Lotes por vencer':'Lotes en estado crítico, riesgo o alerta en el Reporte de Vencimientos (CEDIS Panamá).',
+    'Valor en riesgo (B/.)':'Valor de los lotes vencidos o por vencer (CEDIS Panamá).'
+  };
+  function pct(a,b){ return b ? Math.round(1000*a/b)/10 : ''; }
+  function columnas(v){
+    var gest = [['Bajo el punto de reorden',function(k){return k.bajoRop;}],['Cubiertos por orden vigente',function(k){return k.cub;}],['Orden insuficiente',function(k){return k.ins;}],
+      ['Solo orden vencida (>30 d)',function(k){return k.ven;}],['Sin orden registrada',function(k){return k.sin;},'alto'],['% con orden vigente',function(k){return pct(k.cub+k.ins,k.bajoRop);}],
+      ['Vitales sin orden',function(k){return k.vitSin;},'alto'],['Más de 12 meses de cobertura',function(k){return k.exceso;}]];
+    var pt = function(x){ return x==null||x==='' ? '' : '§'+x; };      /* § = celda de puntaje (se pinta con color) */
+    if (v === 'N') return [
+      ['Resultado',6,[['Posición',function(a){return a.posicion||'';}],['Puntaje',function(a){return a.aux?'':pt(a.puntaje);}],['Gestión (0-100)',function(a){return a.aux?'':pt(a.gestion);}],['Seguimiento (0-100)',function(a){return a.aux?'':pt(a.seguimiento);}]]],
+      ['Cartera',1,[['Renglones con demanda',function(a){return a.renglones;}],['Vitales',function(a){return a.vitales;}],['Esenciales',function(a){return a.esenciales;}]]],
+      ['Gestión de compra · 3 CEDIS',3,gest.map(function(g){return [g[0],function(a){return g[1](a.nacional);},g[2]];})],
+      ['Seguimiento del panel',4,[['Órdenes registradas',function(a){return a.panel.ordenes;}],['Recepciones sin confirmar (>7 d)',function(a){return a.panel.pend;},'alto'],
+        ['Vencidas sin entrada',function(a){return a.panel.vse;}],['Registros sin CEDIS',function(a){return a.panel.sinCedi;}],['Sin N° de OC SAP',function(a){return a.panel.sinOC;}]]],
+      ['Vencimientos CEDIS Panamá',5,[['Lotes vencidos',function(a){return a.venc.vencidos;}],['Lotes por vencer',function(a){return a.venc.porVencer;}],['Valor en riesgo (B/.)',function(a){return fmt(a.venc.valor);}]]]];
+    var key = D.cedis[+v];
+    var k = function(f){ return function(a){ var x=a.ced[key]; return x?f(x):''; }; };
+    return [
+      ['Resultado',6,[['Gestión (0-100)',k(function(x){return pt(x.gestion);})]]],
+      ['Inventario · '+CED[+v],2,[['Renglones con demanda',k(function(x){return x.renglones;})],['Óptimo',k(function(x){return x.OPTIMO;})],['Bajo',k(function(x){return x.BAJO;})],
+        ['Crítico',k(function(x){return x.CRITICO;})],['Agotado',k(function(x){return x.AGOTADO;})],['Exceso',k(function(x){return x.EXCESO;})],['Vitales agotados',k(function(x){return x.vitAgot;}),'alto']]],
+      ['Gestión de compra · '+CED[+v],3,gest.map(function(g){return [g[0],k(g[1]),g[2]];})]];
+  }
+  function aux(a){ return a.sigla==='SIN ASIGNAR' || /por confirmar/i.test(a.nombre); }
+
+  function renderTabla(){
+    var v = $('pcCedis').value, cols = columnas(v);
+    var lista = D.planificadores.filter(function(a){ return (v==='N' || a.ced[D.cedis[+v]]) && (!planSel || a.sigla===planSel); });
+    if (v !== 'N') { var kk = D.cedis[+v]; lista.sort(function(x,y){ return ((x.aux?1:0)-(y.aux?1:0)) || (((y.ced[kk]||{}).gestion||0)-((x.ced[kk]||{}).gestion||0)); }); }
+    var h = '<thead><tr class="g"><th class="pc-g0"></th>' + cols.map(function(g){ return '<th class="pc-g'+g[1]+'" colspan="'+g[2].length+'">'+esc(g[0])+'</th>'; }).join('') + '</tr>' +
+      '<tr class="c"><th class="pc-c0">Planificador</th>' + cols.map(function(g){ return g[2].map(function(c){ return '<th class="pc-c'+g[1]+'" title="'+esc(DEF[c[0]]||'')+'">'+esc(c[0])+'</th>'; }).join(''); }).join('') + '</tr></thead><tbody>';
+    lista.forEach(function(a){
+      h += '<tr data-s="'+esc(a.sigla)+'" class="'+(aux(a)?'aux ':'')+(a.sigla===planSel?'sel':'')+'"><td>'+esc(a.nombre)+'</td>' + cols.map(function(g){ return g[2].map(function(c){
+        var val = c[1](a);
+        if (typeof val === 'string' && val.charAt(0) === '§') { var n = +val.slice(1); return '<td><span class="pc-pt '+(n>=70?'v':n>=40?'a':'r')+'">'+n+'</span></td>'; }
+        var z = (val===0 || val==='0'); return '<td class="'+(z?'z':(c[2]||''))+'">'+esc(val===''?'—':val)+'</td>'; }).join(''); }).join('') + '</tr>';
+    });
+    $('pcTbl').innerHTML = h + '</tbody>';
+    /* KPIs de la selección */
+    var t = {bajo:0,orden:0,sin:0,vit:0,pend:0,ren:0};
+    lista.forEach(function(a){ var k = v==='N' ? a.nacional : (a.ced[D.cedis[+v]]||{}); t.bajo+=k.bajoRop||0; t.orden+=(k.cub||0)+(k.ins||0); t.sin+=k.sin||0; t.vit+=k.vitSin||0; t.pend+=a.panel.pend; t.ren+=(v==='N'?a.renglones:(k.renglones||0)); });
+    var kb = function(cl,l,val,s){ return '<div class="ev-kb '+cl+'"><div class="ev-kl">'+l+'</div><div class="ev-kv">'+val+'</div><div class="ev-ks">'+s+'</div></div>'; };
+    $('pcKpis').innerHTML = kb('b','Renglones con demanda',fmt(t.ren),v==='N'?'en al menos un CEDIS':CED[+v]) +
+      kb('a','Bajo el punto de reorden',fmt(t.bajo),v==='N'?'renglón × CEDIS':'necesitan orden') +
+      kb('g','Con orden vigente',fmt(t.orden),(pct(t.orden,t.bajo)||0)+' % de los que la necesitan') +
+      kb('r','Sin orden registrada',fmt(t.sin),'bajo reorden y sin orden en el panel') +
+      kb('r','Vitales sin orden',fmt(t.vit),'medicamentos vitales') +
+      kb('p','Recepciones sin confirmar',fmt(t.pend),'más de 7 días · CEDIS Panamá');
+    $('pcNota').textContent = v==='N' ? 'Nacional suma los tres CEDIS: un renglón que está bajo el punto de reorden en dos CEDIS cuenta dos veces en Gestión de compra.' :
+      (v==='0' ? 'CEDIS Panamá: estado y punto de reorden de Curvas; disponible = inventario − reservas.' : CED[+v]+': estado por cobertura en Saldos en línea (saldo total, sin separar reservas ni lotes vencidos). Punto de reorden = 2.5 meses de consumo.');
+    renderDetalle();
+  }
+
+  function renderDetalle(){
+    var v = $('pcCedis').value, q = ($('pcBuscar').value||'').toLowerCase().trim(), idx = v==='N' ? null : +v;
+    var nombre = {}; D.planificadores.forEach(function(a){ nombre[a.sigla]=a.nombre; });
+    var base = D.detalle.filter(function(f){ return (!planSel || f.a===planSel) && (idx===null || f.p[idx]); });
+    /* cada chip cuenta renglones (en Nacional, los que tienen esa situación en al menos un CEDIS), igual que el filtro */
+    var cnt = {}; base.forEach(function(f){ var u = {}; (idx===null?f.p:[f.p[idx]]).forEach(function(x){ if(x) u[x[5]]=1; }); Object.keys(u).forEach(function(g){ cnt[g]=(cnt[g]||0)+1; }); });
+    $('pcChips').innerHTML = '<button class="pc-chip'+(filtroG===''?' on':'')+'" data-g="">Todos</button>' +
+      ['SIN','VEN','INS','CUB','NO'].map(function(g){ return '<button class="pc-chip'+(filtroG===g?' on':'')+'" data-g="'+g+'">'+GN[g]+' · '+(cnt[g]||0)+'</button>'; }).join('');
+    var filas = base.filter(function(f){
+      if (filtroG && !(idx===null ? f.p.some(function(x){return x&&x[5]===filtroG;}) : f.p[idx][5]===filtroG)) return false;
+      if (q && (f.c+' '+f.s).toLowerCase().indexOf(q)<0) return false; return true; });
+    var orden = {SIN:0,VEN:1,INS:2,CUB:3,NO:4};
+    filas.sort(function(a,b){ var ga = idx===null ? Math.min.apply(null,a.p.map(function(x){return x?orden[x[5]]:9;})) : orden[a.p[idx][5]];
+      var gb = idx===null ? Math.min.apply(null,b.p.map(function(x){return x?orden[x[5]]:9;})) : orden[b.p[idx][5]];
+      return (ga-gb) || ((b.v==='Vital')-(a.v==='Vital')) || a.c.localeCompare(b.c); });
+    var max = 600, h;
+    if (idx===null){
+      h = '<thead><tr class="g"><th class="pc-g0" colspan="'+(planSel?4:5)+'">Renglón</th>' + CED.map(function(c,i){ return '<th class="pc-g'+(2+i%2)+'" colspan="2">'+c+'</th>'; }).join('') + '</tr><tr class="c">' +
+        (planSel?'':'<th class="pc-c0">Planificador</th>') + '<th class="pc-c0">Código</th><th class="pc-c0" style="min-width:260px">Suministro</th><th class="pc-c0">Vital / Esencial</th><th class="pc-c0">Clase</th>' +
+        CED.map(function(c,i){ return '<th class="pc-c'+(2+i%2)+'">Estado</th><th class="pc-c'+(2+i%2)+'">Gestión</th>'; }).join('') + '</tr></thead><tbody>';
+      filas.slice(0,max).forEach(function(f){ h += '<tr>' + (planSel?'':'<td>'+esc(nombre[f.a]||f.a)+'</td>') + '<td>'+esc(f.c)+'</td><td style="text-align:left;white-space:normal;min-width:260px">'+esc(f.s)+'</td><td>'+esc(f.v)+'</td><td>'+esc(f.k)+'</td>' +
+        f.p.map(function(x){ return x ? '<td><span class="pc-b pc-'+esc(x[0])+'">'+esc(x[0])+'</span></td><td><span class="pc-b pc-g-'+x[5]+'" title="Disponible '+fmt(x[1])+' · consumo '+fmt(x[2])+'/mes · tránsito '+fmt(x[3])+' · '+x[4]+' meses">'+esc(GN[x[5]])+'</span></td>' : '<td class="z">—</td><td class="z">—</td>'; }).join('') + '</tr>'; });
+    } else {
+      h = '<thead><tr class="c">' + (planSel?'':'<th class="pc-c0">Planificador</th>') + '<th class="pc-c0">Código</th><th class="pc-c0" style="min-width:260px">Suministro</th><th class="pc-c0">Vital / Esencial</th><th class="pc-c0">Clase</th>' +
+        ['Estado','Disponible','Consumo mensual','Tránsito vigente','Meses de cobertura (con tránsito)','Gestión'].map(function(t){ return '<th class="pc-c2">'+t+'</th>'; }).join('') + '</tr></thead><tbody>';
+      filas.slice(0,max).forEach(function(f){ var x=f.p[idx]; h += '<tr>' + (planSel?'':'<td>'+esc(nombre[f.a]||f.a)+'</td>') + '<td>'+esc(f.c)+'</td><td style="text-align:left;white-space:normal;min-width:260px">'+esc(f.s)+'</td><td>'+esc(f.v)+'</td><td>'+esc(f.k)+'</td>' +
+        '<td><span class="pc-b pc-'+esc(x[0])+'">'+esc(x[0])+'</span></td><td>'+fmt(x[1])+'</td><td>'+fmt(x[2])+'</td><td>'+fmt(x[3])+'</td><td>'+x[4]+'</td><td><span class="pc-b pc-g-'+x[5]+'">'+esc(GN[x[5]])+'</span></td></tr>'; });
+    }
+    $('pcDet').innerHTML = h + '</tbody>';
+    $('pcDetTit').textContent = '▌ DETALLE POR RENGLÓN — ' + (planSel ? (nombre[planSel]||planSel) : 'TODOS') + (idx===null ? ' · 3 CEDIS' : ' · '+CED[idx]);
+    $('pcDetCnt').textContent = fmt(filas.length) + ' renglón(es)' + (filas.length>max ? ' · se muestran '+max+' (use el filtro o el Excel)' : '');
+  }
+
+  function renderDef(){
+    var g = [['Resultado',['Puntaje','Gestión (0-100)','Seguimiento (0-100)','Posición']],['Cartera',['Renglones con demanda','Vitales','Esenciales']],['Inventario',['Óptimo','Bajo','Crítico','Agotado','Exceso','Vitales agotados']],
+      ['Gestión de compra',['Bajo el punto de reorden','Cubiertos por orden vigente','Orden insuficiente','Solo orden vencida (>30 d)','Sin orden registrada','% con orden vigente','Vitales sin orden','Más de 12 meses de cobertura']],
+      ['Seguimiento del panel',['Órdenes registradas','Recepciones sin confirmar (>7 d)','Vencidas sin entrada','Registros sin CEDIS','Sin N° de OC SAP']],
+      ['Vencimientos',['Lotes vencidos','Lotes por vencer','Valor en riesgo (B/.)']]];
+    $('pcDef').innerHTML = g.map(function(s){ return '<h4>'+s[0]+'</h4><dl>'+s[1].map(function(c){ return '<dt>'+esc(c)+'</dt><dd>'+esc(DEF[c])+'</dd>'; }).join('')+'</dl>'; }).join('') +
+      '<h4>Tránsito vigente</h4><p>Órdenes del panel para ese CEDIS sin recepción registrada ni confirmada, hasta 30 días después de su fecha de entrega. En Panamá, o la cita confirmada en el calendario, la que sea mayor. Una orden sin CEDIS se cuenta para Panamá.</p>' +
+      '<h4>Fuentes</h4><p>Reporte de Abastecimiento y de Vencimientos de Curvas (CEDIS Panamá) · Saldos en línea (Divisa y Chiriquí) · panel de Tránsitos y entradas de Recepción (SÍGUELO) · maestro de renglones (MAESTROS_DINALOG).</p>';
+  }
+
+  function excel(){
+    if (!D || typeof XLSX === 'undefined') { alert('El generador de Excel no está disponible.'); return; }
+    var wb = XLSX.utils.book_new();
+    ['N','0','1','2'].forEach(function(v){
+      var cols = columnas(v), aoa = [[ 'Planificador' ].concat([].concat.apply([], cols.map(function(g){ return g[2].map(function(c){ return g[0]+' · '+c[0]; }); })))];
+      var limpio = function(x){ return (typeof x==='string' && x.charAt(0)==='§') ? +x.slice(1) : x; };
+      D.planificadores.filter(function(a){ return v==='N' || a.ced[D.cedis[+v]]; }).forEach(function(a){ aoa.push([a.nombre].concat([].concat.apply([], cols.map(function(g){ return g[2].map(function(c){ return limpio(c[1](a)); }); })))); });
+      var ws = XLSX.utils.aoa_to_sheet(aoa); ws['!cols'] = [{wch:24}].concat(aoa[0].slice(1).map(function(){return {wch:16};}));
+      XLSX.utils.book_append_sheet(wb, ws, v==='N' ? 'Resumen nacional' : CED[+v]);
+    });
+    var nombre = {}; D.planificadores.forEach(function(a){ nombre[a.sigla]=a.nombre; });
+    var det = [['Planificador','Código','Suministro','Vital / Esencial','Clase'].concat([].concat.apply([], CED.map(function(c){ return [c+' · Estado',c+' · Disponible',c+' · Consumo mensual',c+' · Tránsito vigente',c+' · Meses de cobertura',c+' · Gestión']; })))];
+    D.detalle.forEach(function(f){ det.push([nombre[f.a]||f.a, f.c, f.s, f.v, f.k].concat([].concat.apply([], f.p.map(function(x){ return x ? [x[0],x[1],x[2],x[3],x[4],GN[x[5]]] : ['','','','','','']; })))); });
+    var wd = XLSX.utils.aoa_to_sheet(det); wd['!autofilter'] = { ref: 'A1:'+XLSX.utils.encode_col(det[0].length-1)+det.length }; XLSX.utils.book_append_sheet(wb, wd, 'Detalle por renglón');
+    var defs = [['Criterio','Cómo se calcula']]; Object.keys(DEF).forEach(function(k){ defs.push([k, DEF[k]]); });
+    var wc = XLSX.utils.aoa_to_sheet(defs); wc['!cols'] = [{wch:34},{wch:120}]; XLSX.utils.book_append_sheet(wb, wc, 'Cómo se calcula');
+    XLSX.writeFile(wb, 'Planificadores_por_criterios_' + D.generado + '.xlsx');
+  }
+
+  function cargar(){
+    if (cargando || D) return; cargando = true; $('pcMeta').textContent = 'cargando…';
+    fetch(API + '?report=criterios&ts=' + Date.now(), { cache:'no-store' }).then(function(r){ return r.json(); }).then(function(j){
+      cargando = false;
+      if (!j || j.error || !j.planificadores) { $('pcMeta').textContent = 'No se pudo cargar: ' + ((j&&j.error)||'sin datos'); return; }
+      D = j;
+      $('pcPlan').innerHTML = '<option value="">Todos</option>' + D.planificadores.map(function(a){ return '<option value="'+esc(a.sigla)+'">'+esc(a.nombre)+'</option>'; }).join('');
+      $('pcMeta').textContent = 'Calculado ' + D.generado + ' · Saldos en línea ' + (D.corteSaldos||'—') + ' · Recepción al ' + (D.corteEntradas||'—');
+      if (D.analisis && D.analisis.length) { $('pcLect').style.display=''; $('pcLect').innerHTML = '<b>Lectura del corte</b><ul>' + D.analisis.map(function(x){ return '<li>'+esc(x)+'</li>'; }).join('') + '</ul>'; }
+      renderDef(); renderTabla();
+    }).catch(function(e){ cargando = false; $('pcMeta').textContent = 'No se pudo cargar (' + e + ').'; });
+  }
+
+  /* montaje: sub-pestañas dentro de "Evaluación de Analistas" */
+  function montar(){
+    var ev = $('evalAnalistas'), pc = $('pcCriterios'); if (!ev || !pc) return false;
+    var viejo = document.createElement('div'); viejo.id = 'pcScoreViejo';
+    while (ev.firstChild) viejo.appendChild(ev.firstChild);
+    var sub = document.createElement('div'); sub.className = 'pc-sub';
+    sub.innerHTML = '<button type="button" class="on" data-p="c">Por criterios</button><button type="button" data-p="s">Score anterior (transición)</button>';
+    ev.appendChild(sub); ev.appendChild(pc); ev.appendChild(viejo);
+    pc.classList.remove('ev-hide-pc'); viejo.style.display = 'none';
+    sub.addEventListener('click', function(e){ var b = e.target.closest('button'); if (!b) return;
+      sub.querySelectorAll('button').forEach(function(x){ x.classList.toggle('on', x===b); });
+      var c = b.dataset.p === 'c'; pc.style.display = c ? '' : 'none'; viejo.style.display = c ? 'none' : '';
+      if (!c) setTimeout(function(){ window.dispatchEvent(new Event('resize')); }, 50); });   // los gráficos del score se redimensionan al mostrarse
+    /* carga perezosa: al abrir la pestaña de evaluación, o si ya está visible */
+    document.addEventListener('click', function(e){ var t = e.target.closest && e.target.closest('.ev-tab'); if (t && t.dataset.v === 'eval') cargar(); });
+    if (!ev.classList.contains('ev-hide')) cargar();
+    $('pcCedis').addEventListener('change', function(){ filtroG=''; renderTabla(); });
+    $('pcPlan').addEventListener('change', function(){ planSel = this.value; filtroG=''; renderTabla(); });
+    $('pcTbl').addEventListener('click', function(e){ var tr = e.target.closest('tr[data-s]'); if (!tr) return;
+      planSel = (planSel === tr.dataset.s) ? '' : tr.dataset.s; $('pcPlan').value = planSel; filtroG=''; renderTabla();
+      $('pcDetTit').scrollIntoView({ behavior:'smooth', block:'start' }); });
+    $('pcChips').addEventListener('click', function(e){ var b = e.target.closest('.pc-chip'); if (!b) return; filtroG = b.dataset.g; renderDetalle(); });
+    $('pcBuscar').addEventListener('input', function(){ renderDetalle(); });
+    $('pcDefBtn').addEventListener('click', function(){ $('pcDef').classList.toggle('on'); });
+    $('pcXls').addEventListener('click', excel);
+    return true;
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', montar); else montar();
+})();
+</script>
+
 </body>
 </html>
