@@ -4771,8 +4771,15 @@ window.addEventListener('load', ()=>{
   .pc-nota{font-size:11px;color:var(--muted);margin:6px 0}
   .pc-pt{display:inline-block;min-width:44px;font-weight:700;border-radius:3px;padding:1px 6px;font-family:Consolas,monospace}
   .pc-pt.v{background:#E1F5EE;color:#0F6E56}.pc-pt.a{background:#FAEEDA;color:#854F0B}.pc-pt.r{background:#FCEBEB;color:#791F1F}.pc-pt.n{background:#F1EFE8;color:#5F5E5A}
-  .pc-lect{background:#fff;border:1px solid var(--border);border-left:3px solid var(--accent);padding:8px 12px;margin:0 0 10px;font-size:12.5px;line-height:1.55}
-  .pc-lect b{color:var(--accent)} .pc-lect ul{margin:4px 0 0 18px;padding:0}
+  .pc-lect{background:#E6F1FB;border-radius:6px;padding:9px 13px;margin:0 0 10px;font-size:12.5px;line-height:1.55;color:#233}
+  .pc-lect b{color:#185FA5} .pc-lect ul{margin:4px 0 0 18px;padding:0}
+  /* tarjetas pastel tipo semáforo, sin barras laterales */
+  .pc-kg{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:10px}
+  .pc-k{border-radius:6px;padding:9px 11px}
+  .pc-k .l{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+  .pc-k .n{font-size:20px;font-weight:700;font-family:Consolas,monospace;margin-top:2px}
+  .pc-k .s{font-size:10.5px;opacity:.85}
+  .pc-k.v{background:#E1F5EE;color:#0F6E56}.pc-k.a{background:#FAEEDA;color:#854F0B}.pc-k.r{background:#FCEBEB;color:#791F1F}.pc-k.n{background:#E6F1FB;color:#185FA5}
   .pc-g6{background:#0B3A6B}.pc-c6{background:#eef4fb;color:#0B3A6B}
 </style>
 
@@ -4794,7 +4801,7 @@ window.addEventListener('load', ()=>{
     <span class="ev-meta" id="pcMeta">cargando…</span>
   </div>
   <div class="pc-def" id="pcDef"></div>
-  <div class="ev-kg" id="pcKpis"></div>
+  <div class="pc-kg" id="pcKpis"></div>
   <div class="pc-lect" id="pcLect" style="display:none"></div>
   <div class="pc-wrap"><table class="pc-tbl" id="pcTbl"></table></div>
   <div class="pc-nota" id="pcNota"></div>
@@ -4892,13 +4899,14 @@ window.addEventListener('load', ()=>{
     /* KPIs de la selección */
     var t = {bajo:0,orden:0,sin:0,vit:0,pend:0,ren:0};
     lista.forEach(function(a){ var k = v==='N' ? a.nacional : (a.ced[D.cedis[+v]]||{}); t.bajo+=k.bajoRop||0; t.orden+=(k.cub||0)+(k.ins||0); t.sin+=k.sin||0; t.vit+=k.vitSin||0; t.pend+=a.panel.pend; t.ren+=(v==='N'?a.renglones:(k.renglones||0)); });
-    var kb = function(cl,l,val,s){ return '<div class="ev-kb '+cl+'"><div class="ev-kl">'+l+'</div><div class="ev-kv">'+val+'</div><div class="ev-ks">'+s+'</div></div>'; };
-    $('pcKpis').innerHTML = kb('b','Renglones con demanda',fmt(t.ren),v==='N'?'en al menos un CEDIS':CED[+v]) +
-      kb('a','Bajo el punto de reorden',fmt(t.bajo),v==='N'?'renglón × CEDIS':'necesitan orden') +
-      kb('g','Con orden vigente',fmt(t.orden),(pct(t.orden,t.bajo)||0)+' % de los que la necesitan') +
-      kb('r','Sin orden registrada',fmt(t.sin),'bajo reorden y sin orden en el panel') +
-      kb('r','Vitales sin orden',fmt(t.vit),'medicamentos vitales') +
-      kb('p','Recepciones sin confirmar',fmt(t.pend),'más de 7 días · CEDIS Panamá');
+    var kb = function(cl,l,val,s){ return '<div class="pc-k '+cl+'"><div class="l">'+l+'</div><div class="n">'+val+'</div><div class="s">'+s+'</div></div>'; };
+    var po = pct(t.orden,t.bajo)||0;
+    $('pcKpis').innerHTML = kb('n','Renglones con demanda',fmt(t.ren),v==='N'?'en al menos un CEDIS':CED[+v]) +
+      kb('n','Bajo el punto de reorden',fmt(t.bajo),v==='N'?'renglón × CEDIS':'necesitan orden') +
+      kb(po>=70?'v':po>=40?'a':'r','Con orden vigente',po+' %',fmt(t.orden)+' renglones') +
+      kb(t.sin?'r':'v','Sin orden registrada',fmt(t.sin),'bajo reorden y sin orden en el panel') +
+      kb(t.vit?'r':'v','Vitales sin orden',fmt(t.vit),'medicamentos vitales') +
+      kb(t.pend?'a':'v','Recepciones sin confirmar',fmt(t.pend),'más de 7 días · CEDIS Panamá');
     $('pcNota').textContent = v==='N' ? 'Nacional suma los tres CEDIS: un renglón que está bajo el punto de reorden en dos CEDIS cuenta dos veces en Gestión de compra.' :
       (v==='0' ? 'CEDIS Panamá: estado y punto de reorden de Curvas; disponible = inventario − reservas.' : CED[+v]+': estado por cobertura en Saldos en línea (saldo total, sin separar reservas ni lotes vencidos). Punto de reorden = 2.5 meses de consumo.');
     renderDetalle();
