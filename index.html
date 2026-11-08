@@ -663,8 +663,8 @@ async function safeFetchList(force=false){
  *  contrato de datos es idéntico y el resto del tablero no se entera.
  *  Si algún JSON falla, safeFetchSerie cae al backend como antes.
  * ════════════════════════════════════════════════════════════════════ */
-const CURVAS_URL = 'https://torredecontrolcss.github.io/Curvas_de_Inventario/curvas_inventario.json';
-const F8_URL     = 'https://torredecontrolcss.github.io/Curvas_de_Inventario/f8_estado.json';
+const CURVAS_URL = 'https://torrecontrolcss.org/Curvas_de_Inventario/curvas_inventario.json';
+const F8_URL     = 'https://torrecontrolcss.org/Curvas_de_Inventario/f8_estado.json';
 let CURVAS = null, F8EST = null;
 
 /* Descarga con respaldo. En el almacén la conexión se cae a mitad de bajada, y
@@ -869,7 +869,7 @@ async function safeFetchSerie(params, force=false){
  *  Ahora además acota las sugerencias, así que se puede buscar un renglón
  *  dentro de un grupo, que antes no se podía.
  * ════════════════════════════════════════════════════════════════════ */
-const CATALOGO_URL = 'https://torredecontrolcss.github.io/Curvas_de_Inventario/catalogo_inventario.json';
+const CATALOGO_URL = 'https://torrecontrolcss.org/Curvas_de_Inventario/catalogo_inventario.json';
 let CAT = [];              // [{cod, sum, grp, busca}]
 const CAT_TTL_MS = 60 * 60 * 1000;
 
