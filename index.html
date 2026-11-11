@@ -500,9 +500,9 @@ const ANA_NOMBRES = {
   "JME":"José M. Espinosa","JE":"José M. Espinosa","FC":"Fernando Calderón",
   "WP":"William Pui","NS":"Nohelia Sánchez","OC":"Orlando Cerrud","JL":"Jenny López",
   "LM":"Lorena Montero","MF":"Marisol Flores","DC":"Dax Castro","YR":"Yaricell Rivera",
-  "ON":"Orlando Navarro","DH":"Daira Herrera","EB":"Edilma Batista","DD":"Desiluz Doviaza",
+  "ON":"Orlando Navarro","DH":"Daira Herrera","EE":"Elias Espinosa","EB":"Edilma Batista","DD":"Desiluz Doviaza",
   "EM":"Edwin Macías","FM":"Francisco Mora","RG":"Rubén González",
-  "SF":"Selene Fernández","YV":"Yarelis Vásquez","MAR":"MAR (por confirmar)"
+  "SF":"Selene Fernández","YV":"Yarelis Vásquez","MAR":"Marcelino Rodríguez"
 };
 function anaNorm(c){ c=String(c==null?'':c).trim(); return c.indexOf('.')>=0?c.replace(/\.0+$/,''):c; }
 function anaNombre(ini){ if(!ini||ini==='SIN ASIGNAR')return'Sin asignar'; return ANA_NOMBRES[ini]||ini; }
@@ -4033,15 +4033,15 @@ window.addEventListener('load', ()=>{
     var s=document.createElement('script'); s.src='https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js'; s.onload=cb; document.head.appendChild(s); }
   var API=(typeof API_BASE!=='undefined')?API_BASE:'';
   // Mapa iniciales -> nombre completo (Depto. Planeación de Suministros).
-  // MAR queda "por confirmar" hasta verificar con el departamento.
+  // Mismo mapa que publica el backend en kpi_inventario_renglones.json (campo analistas).
   var NOMBRES={
     "SS":"Sim\u00f3n Sotillo","VD":"Vladimir De Le\u00f3n","BS":"Braulio Serrano",
     "JME":"Jos\u00e9 M. Espinosa","JE":"Jos\u00e9 M. Espinosa","FC":"Fernando Calder\u00f3n",
     "WP":"William Pui","NS":"Nohelia S\u00e1nchez","OC":"Orlando Cerrud","JL":"Jenny L\u00f3pez",
     "LM":"Lorena Montero","MF":"Marisol Flores","DC":"Dax Castro","YR":"Yaricell Rivera",
-    "ON":"Orlando Navarro","DH":"Daira Herrera","EB":"Edilma Batista","DD":"Desiluz Doviaza",
+    "ON":"Orlando Navarro","DH":"Daira Herrera","EE":"Elias Espinosa","EB":"Edilma Batista","DD":"Desiluz Doviaza",
     "EM":"Edwin Mac\u00edas","FM":"Francisco Mora","RG":"Rub\u00e9n Gonz\u00e1lez",
-    "SF":"Selene Fern\u00e1ndez","YV":"Yarelis V\u00e1squez","MAR":"MAR (por confirmar)"
+    "SF":"Selene Fern\u00e1ndez","YV":"Yarelis V\u00e1squez","MAR":"Marcelino Rodr\u00edguez"
   };
   function nombreDe(ini){ if(ini==='SIN ASIGNAR')return'Sin asignar'; return NOMBRES[ini]||ini; }
   function nombreFull(ini){ if(ini==='SIN ASIGNAR')return'SIN ASIGNAR'; var n=NOMBRES[ini]; return n?(ini+' \u2014 '+n):ini; }
